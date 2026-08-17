@@ -110,7 +110,7 @@
             };
             aarch64-darwin = {
               url = "https://dl.google.com/android/cli/latest/darwin_arm64/android";
-              hash = "sha256-TURp8m8eCQK5Ptql2WmTTqbmnx1hngkqT4kyFgQqhI8=";
+              hash = "sha256-D6ND/alDO3x05OuR06GM7GBHeinAFaAY3RiSIqPQ0CA=";
             };
             x86_64-darwin = {
               url = "https://dl.google.com/android/cli/latest/darwin_x86_64/android";
