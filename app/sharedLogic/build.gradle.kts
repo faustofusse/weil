@@ -50,6 +50,9 @@ kotlin {
             api(project(":core"))
             // put your Multiplatform dependencies here
         }
+        androidMain.dependencies {
+            implementation(libs.libsql)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }

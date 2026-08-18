@@ -18,6 +18,9 @@
         };
 
         platformVersion = "36";
+        # Keep the userdata partition small: a 6G partition needs ~7.2G of free
+        # space to create, which fails on full disks.
+        dataPartitionSize = "4G";
         abiVersion = if pkgs.stdenv.isLinux then "x86_64" else "arm64-v8a";
         buildToolsVersion = "36.0.0";
         cmdLineToolsVersion = "20.0";
@@ -64,16 +67,20 @@
           fi
 
           # Ensure the AVD config is correct for the Pixel 8
+          # NB: the emulator rewrites config.ini as 'key = value' (with spaces,
+          # byte sizes) on boot, so all patterns below allow optional spaces.
           ${pkgs.gnused}/bin/sed -i \
-            -e 's/^hw\.keyboard=.*/hw.keyboard=yes/' \
-            -e 's/^hw\.lcd\.width=.*/hw.lcd.width=1080/' \
-            -e 's/^hw\.lcd\.height=.*/hw.lcd.height=2400/' \
-            -e 's/^hw\.lcd\.density=.*/hw.lcd.density=420/' \
-            -e 's/^hw\.initialOrientation=.*/hw.initialOrientation=portrait/' \
-            -e 's/^hw\.gpu\.enabled=.*/hw.gpu.enabled=yes/' \
-            -e 's/^hw\.gpu\.mode=.*/hw.gpu.mode=host/' \
-            -e 's/^avd\.name=.*/avd.name=${avdName}/' \
-            -e 's/^hw\.mainKeys=.*/hw.mainKeys=no/' \
+            -e 's/^hw\.keyboard[[:space:]]*=.*/hw.keyboard=yes/' \
+            -e 's/^hw\.lcd\.width[[:space:]]*=.*/hw.lcd.width=1080/' \
+            -e 's/^hw\.lcd\.height[[:space:]]*=.*/hw.lcd.height=2400/' \
+            -e 's/^hw\.lcd\.density[[:space:]]*=.*/hw.lcd.density=420/' \
+            -e 's/^hw\.initialOrientation[[:space:]]*=.*/hw.initialOrientation=portrait/' \
+            -e 's/^hw\.gpu\.enabled[[:space:]]*=.*/hw.gpu.enabled=yes/' \
+            -e 's/^hw\.gpu\.mode[[:space:]]*=.*/hw.gpu.mode=host/' \
+            -e 's/^avd\.name[[:space:]]*=.*/avd.name=${avdName}/' \
+            -e 's/^hw\.mainKeys[[:space:]]*=.*/hw.mainKeys=no/' \
+            -e 's/^disk\.dataPartition\.size[[:space:]]*=.*/disk.dataPartition.size=${dataPartitionSize}/' \
+            -e 's/^disk\.dataPartition\.path[[:space:]]*=.*/disk.dataPartition.path=userdata-qemu.img/' \
             "${configIni}" 2>/dev/null || true
 
           # Add missing keys if not present
@@ -86,9 +93,12 @@
             "hw.gpu.enabled=yes" \
             "hw.gpu.mode=host" \
             "avd.name=${avdName}" \
-            "hw.mainKeys=no"; do
+            "hw.mainKeys=no" \
+            "disk.dataPartition.size=${dataPartitionSize}" \
+            "disk.dataPartition.path=userdata-qemu.img"; do
             key="''${key_val%%=*}"
-            if ! grep -q "^''${key}=" "${configIni}"; then
+            # `key = value` (spaced) and `key=value` forms both count as present
+            if ! grep -qE "^''${key}[[:space:]]*=" "${configIni}"; then
               echo "$key_val" >> "${configIni}"
             fi
           done
@@ -100,7 +110,14 @@
           export ANDROID_SDK_ROOT="$ANDROID_HOME" # deprecada
           export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk-bundle"
           export GRADLE_OPTS="-Dorg.gradle.project.android.aapt2FromMavenOverride=$ANDROID_HOME/build-tools/${buildToolsVersion}/aapt2"
-        '' + avdScript;
+        '' + avdScript + ''
+
+          # Android Studio needs a stable SDK path; it can't follow the
+          # per-build Nix store path on its own.
+          if [ ! -e "$PWD/.android/sdk/libexec/android-sdk" ]; then
+            echo "hint: run 'nix build .#sdk -o .android/sdk' so Android Studio can use the Nix SDK"
+          fi
+        '';
 
         androidCli = let
           platformData = {
@@ -154,6 +171,30 @@
               buildInputs = commonPackages;
               shellHook = commonShellEnv;
             };
+
+        # `nix run .#emulator` — launches the Pixel AVD with the Nix SDK env,
+        # no need to remember ANDROID_* variables (your shell profile points
+        # at ~/Library/Android/sdk where this system image does not exist).
+        apps.emulator = {
+          type = "app";
+          program = "${pkgs.writeShellScriptBin "emulator-pixel" ''
+            export ANDROID_HOME="${androidSdk}/libexec/android-sdk"
+            export ANDROID_SDK_ROOT="$ANDROID_HOME"
+            export PATH="${androidSdk}/bin:${androidSdk}/libexec/android-sdk/platform-tools:$PATH"
+            ${avdScript}
+            exec emulator @${avdName} "$@"
+          ''}/bin/emulator-pixel";
+        };
+
+        # `nix build .#sdk -o .android/sdk` — exposes the Nix Android SDK at a
+        # stable, GC-rooted path inside the project so Android Studio can use it
+        # (point local.properties sdk.dir at .android/sdk/libexec/android-sdk).
+        # A per-project link avoids conflicts between similar flakes.
+        # Re-run after flake updates.
+        packages = {
+          sdk = androidSdk;
+          default = androidSdk;
+        };
       }
     );
 }

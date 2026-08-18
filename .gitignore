@@ -1,6 +1,10 @@
+*.pem
 *.iml
 .kotlin
 .gradle
+.android
+.android/
+result
 **/build/
 xcuserdata
 !src/**/build/

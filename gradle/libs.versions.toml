@@ -17,6 +17,8 @@ kotlinx-coroutines = "1.11.0"
 ktor = "3.5.1"
 logback = "1.6.1"
 material3 = "1.11.0-alpha07"
+libsql = "0.1.2"
+material3Version = "1.4.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -42,6 +44,8 @@ ktor-serverCore = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor
 ktor-serverNetty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
 ktor-serverTestHost = { module = "io.ktor:ktor-server-test-host-jvm", version.ref = "ktor" }
 wrappers-browser = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlin-wrappers" }
+libsql = { module = "tech.turso.libsql:libsql", version.ref = "libsql" }
+androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3Version" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
