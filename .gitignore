@@ -2,6 +2,7 @@
 *.iml
 .kotlin
 .gradle
+.swiftpm-locks/
 .android
 .android/
 result

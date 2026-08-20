@@ -1,3 +1,6 @@
+@file:OptIn(ExperimentalKotlinGradlePluginApi::class)
+
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -14,6 +17,14 @@ kotlin {
             baseName = "SharedLogic"
             isStatic = true
         }
+    }
+
+    swiftPMDependencies {
+        swiftPackage(
+            url = url("https://github.com/tursodatabase/libsql-swift"),
+            version = from("0.1.1"),
+            products = listOf(product("Libsql")),
+        )
     }
     
     jvm()
