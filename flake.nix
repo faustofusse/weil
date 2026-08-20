@@ -166,7 +166,12 @@
               '';
             }).env
           else
-            pkgs.mkShell {
+            # mkShellNoCC: this shell only needs the JDK + Android SDK. The
+            # standard mkShell drags in the Darwin C toolchain, whose setup
+            # hooks point SDKROOT/DEVELOPER_DIR at the Nix Apple SDK and put
+            # the xcbuild `xcrun` shim on PATH — all of which break the real
+            # Xcode toolchain (SwiftPM integration, Kotlin/Native, xcrun).
+            pkgs.mkShellNoCC {
               name = "android-phone-shell";
               buildInputs = commonPackages;
               shellHook = commonShellEnv;
