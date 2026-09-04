@@ -145,19 +145,22 @@ private fun bindValue(value: Any?): CValue<libsql_value_t> =
     }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun CValue<libsql_result_value_t>.toKotlinValue(): Any? {
-    val value = useContents { ok }
-    return when (value.type) {
-        LIBSQL_TYPE_INTEGER -> value.value.integer
-        LIBSQL_TYPE_REAL -> value.value.real
+private fun CValue<libsql_result_value_t>.toKotlinValue(): Any? = useContents {
+    // All struct field access must happen inside this scope: the pointed
+    // memory is only valid while useContents is running.
+    when (ok.type) {
+        LIBSQL_TYPE_INTEGER -> ok.value.integer
+        LIBSQL_TYPE_REAL -> ok.value.real
         LIBSQL_TYPE_TEXT -> {
-            val slice = value.value.text
+            val slice = ok.value.text
             val bytes = slice.ptr!!.reinterpret<UByteVar>().readBytes(slice.len.toInt())
             libsql_slice_deinit(slice.asCValue())
-            bytes.decodeToString()
+            // Text slices are NUL-terminated and the length includes the
+            // terminator — stop at it, like the Swift String(cString:) wrapper.
+            bytes.decodeToString().substringBefore('\u0000')
         }
         LIBSQL_TYPE_BLOB -> {
-            val slice = value.value.blob
+            val slice = ok.value.blob
             val bytes = slice.ptr!!.reinterpret<UByteVar>().readBytes(slice.len.toInt())
             libsql_slice_deinit(slice.asCValue())
             bytes
