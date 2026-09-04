@@ -13,19 +13,13 @@ let package = Package(
     )
   ],
   dependencies: [
-    .package(
-      url: "https://github.com/tursodatabase/libsql-swift",
-      from: "0.1.1"
-    )
+    .package(path: "subpackages/_app_sharedLogic")
   ],
   targets: [
     .target(
       name: "KotlinMultiplatformLinkedPackage",
       dependencies: [
-        .product(
-          name: "Libsql",
-          package: "libsql-swift"
-        )
+        .product(name: "_app_sharedLogic", package: "_app_sharedLogic")
       ]
     )
   ]

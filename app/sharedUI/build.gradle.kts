@@ -8,6 +8,18 @@ plugins {
 }
 
 kotlin {
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64()
+    ).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "SharedUI"
+            isStatic = true
+            // Surface sharedLogic's ObjC API through `import SharedUI` in Swift
+            export(project(":app:sharedLogic"))
+        }
+    }
+
     jvm()
     
     android {
