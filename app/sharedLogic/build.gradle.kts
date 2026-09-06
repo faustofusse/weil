@@ -59,7 +59,13 @@ kotlin {
             implementation(libs.ktor.serializationKotlinxJson)
         }
         androidMain.dependencies {
-            implementation(libs.libsql)
+            // JNA on Android: the "jna" artifact ships both a desktop .jar and
+            // an .aar with jni/<abi>/libjnidispatch.so. Gradle resolves the jar
+            // by default, which breaks at runtime on Android ("Native library
+            // (com/sun/jna/android-aarch64/libjnidispatch.so) not found").
+            // The @aar classifier forces the Android variant; its
+            // libjnidispatch.so is 16 KB-aligned (verified 5.17.0).
+            implementation("net.java.dev.jna:jna:${libs.versions.jna.get()}@aar")
             implementation(libs.ktor.clientOkhttp)
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentialsPlayServices)

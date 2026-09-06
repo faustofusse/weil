@@ -29,7 +29,10 @@ class MainActivity : ComponentActivity() {
             passkeys = AndroidPasskeys(this),
             dbContext = dbDispatcher,
             dbFactory = { userId, url, token ->
-                AndroidDatabase(applicationContext, "databases/$userId/local.db", url, token)
+                // "turso.db" (not the old "local.db"): the new Turso sync
+                // engine derives its rewrite/metadata sidecars from the path,
+                // so it must not collide with the old libsql replica's files.
+                AndroidDatabase(applicationContext, "databases/$userId/turso.db", url, token)
             },
         )
 

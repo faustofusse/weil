@@ -32,6 +32,10 @@
           abiVersions = [ abiVersion ];
           includeEmulator = true;
           includeSystemImages = true;
+          # NDK is required by cargo-ndk when building
+          # libturso_sync_sdk_kit.so (see jniLibs README).
+          includeNDK = true;
+          ndkVersions = [ "29.0.14206865" ];
           systemImageTypes = [ "google_apis" ]; # or "google_apis_playstore" for Play Store
         };
         androidSdk = androidComposition.androidsdk;
@@ -40,6 +44,13 @@
           androidCli
           androidSdk
           pkgs.jdk17
+          # Rustup for building libturso_sync_sdk_kit.so (vendored in
+          # app/sharedLogic/src/androidMain/jniLibs). The turso repo pins
+          # channel 1.88 + Android tier-2 targets via rust-toolchain.toml;
+          # rustup auto-installs them on first build. cargo-ndk drives the
+          # NDK clang from $ANDROID_NDK_ROOT.
+          pkgs.rustup
+          pkgs.cargo-ndk
         ];
 
         avdName = "pixel";

@@ -43,6 +43,14 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            // jna@aar bundles ABIs no modern Android device or emulator uses.
+            excludes += listOf(
+                "lib/armeabi/**",
+                "lib/mips/**",
+                "lib/mips64/**",
+            )
+        }
     }
     buildTypes {
         release {
