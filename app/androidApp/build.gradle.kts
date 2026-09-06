@@ -18,8 +18,6 @@ dependencies {
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
-
-    implementation(libs.libsql)
 }
 
 android {
@@ -27,22 +25,19 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "ar.fausto.weil"
+        applicationId = "ar.fausto.finance"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
-
-        // Turso cloud (new rust-rewrite platform — serves the replication
-        // protocol embedded replicas need). Override for other environments:
-        //   ./gradlew installDebug -PlibsqlUrl=http://host:8080 -PlibsqlToken=<token>
-        // or in ~/.gradle/gradle.properties.
-        val libsqlUrl = (project.findProperty("libsqlUrl") as String?)
-            ?: "libsql://weil-prueba-2-faustofusse.aws-us-east-1.turso.io"
-        val libsqlToken = (project.findProperty("libsqlToken") as String?)
-            ?: "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODcwMTc3MjMsImlkIjoiMDFhMDEyOGQtYWEwMS03YTBiLTgyZjMtYzI5MzZhNWY1MmNiIiwia2lkIjoiVWxab2RGd2tXZE9GXzIwRFBuc2dhNUVQXy1MS2VuZzJlSjNxM0M1SDk4NCIsInJpZCI6IjhlYWQ0NWE4LTNhMmYtNDkyNC04Y2I0LTE0NmYzMjhjZDRhMyJ9.liZJUfz_oF2asp4P9JukdVbJlsVFbVPIC4EjKn6l1GwlCFYapsoH2mFkSe1-kQC1MMGjeHgM0bWRQxKQ9lsADg"
-        buildConfigField("String", "LIBSQL_URL", "\"$libsqlUrl\"")
-        buildConfigField("String", "LIBSQL_AUTH_TOKEN", "\"$libsqlToken\"")
+    }
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "finance-debug"
+            keyPassword = "android"
+        }
     }
     packaging {
         resources {

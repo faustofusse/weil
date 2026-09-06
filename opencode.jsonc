@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "references": {
+    "auth": {
+      "path": "../auth",
+      "description": "This is the auth worker. There are docs in the docs directory"
+    },
+    "example": {
+      "path": "../gim/web",
+      "description": "Example web that uses the same auth worker"
+    },
+    "turso": {
+      "repository": "tursodatabase/turso",
+      "branch": "main",
+      "description": "new turso"
+    }
+  }
+}

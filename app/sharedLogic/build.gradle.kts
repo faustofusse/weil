@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidMultiplatformLibrary)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -52,50 +53,31 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":core"))
-            // put your Multiplatform dependencies here
+            implementation(libs.kotlinx.serialization.json)
+            implementation(libs.ktor.clientCore)
+            implementation(libs.ktor.clientContentNegotiation)
+            implementation(libs.ktor.serializationKotlinxJson)
         }
         androidMain.dependencies {
             implementation(libs.libsql)
+            implementation(libs.ktor.clientOkhttp)
+            implementation(libs.androidx.credentials)
+            implementation(libs.androidx.credentialsPlayServices)
+            implementation(libs.androidx.securityCrypto)
         }
         iosMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.ktor.clientDarwin)
+        }
+        jvmMain.dependencies {
+            implementation(libs.ktor.clientCio)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
         jsMain.dependencies {
             implementation(libs.wrappers.browser)
+            implementation(libs.ktor.clientJs)
         }
     }
-}
-
-val generateLibsqlConfig by tasks.registering {
-    val url = providers.gradleProperty("libsqlUrl")
-        .orElse("libsql://weil-prueba-2-faustofusse.aws-us-east-1.turso.io")
-    val token = providers.gradleProperty("libsqlToken")
-        .orElse("eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODcwMTc3MjMsImlkIjoiMDFhMDEyOGQtYWEwMS03YTBiLTgyZjMtYzI5MzZhNWY1MmNiIiwia2lkIjoiVWxab2RGd2tXZE9GXzIwRFBuc2dhNUVQXy1MS2VuZzJlSjNxM0M1SDk4NCIsInJpZCI6IjhlYWQ0NWE4LTNhMmYtNDkyNC04Y2I0LTE0NmYzMjhjZDRhMyJ9.liZJUfz_oF2asp4P9JukdVbJlsVFbVPIC4EjKn6l1GwlCFYapsoH2mFkSe1-kQC1MMGjeHgM0bWRQxKQ9lsADg")
-
-    inputs.property("libsqlUrl", url)
-    inputs.property("libsqlToken", token)
-    outputs.dir(layout.buildDirectory.dir("generated/libsqlConfig/kotlin"))
-
-    doLast {
-        val outDir = outputs.files.singleFile
-        val file = File(outDir, "ar/fausto/weil/LibsqlConfig.kt")
-        file.parentFile.mkdirs()
-        file.writeText(
-            """
-            package ar.fausto.weil
-
-            object LibsqlConfig {
-                const val URL = "${url.get()}"
-                const val AUTH_TOKEN = "${token.get()}"
-            }
-            """.trimIndent()
-        )
-    }
-}
-
-kotlin.sourceSets.named("iosMain") {
-    kotlin.srcDir(generateLibsqlConfig)
 }

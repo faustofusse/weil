@@ -1,3 +1,6 @@
 <resources>
     <string name="app_name">Weil</string>
+    <string name="asset_statements" translatable="false">
+        [{"include": "https://finance.fausto.ar/.well-known/assetlinks.json"}]
+    </string>
 </resources>

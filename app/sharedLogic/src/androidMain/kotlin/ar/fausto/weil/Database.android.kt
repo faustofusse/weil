@@ -1,37 +1,50 @@
 package ar.fausto.weil
 
 import android.content.Context
-import tech.turso.libsql.Libsql
 import tech.turso.libsql.Connection
 import tech.turso.libsql.EmbeddedReplicaDatabase
+import tech.turso.libsql.Libsql
 import java.io.File
+
+private const val SCHEMA_SQL =
+    "drop table if exists cuentas; create table if not exists accounts(id text primary key not null, name text not null);"
 
 class AndroidDatabase(
     context: Context,
-    private val url: String,
-    private val authToken: String,
+    path: String,
+    url: String,
+    authToken: String,
 ) : Database {
-    var db: EmbeddedReplicaDatabase? = null
-    var connection: Connection? = null
+    private var db: EmbeddedReplicaDatabase? = null
+    private var connection: Connection? = null
 
     init {
+        val file = File(context.filesDir, path)
+        file.parentFile?.mkdirs()
         db = Libsql.open(
-            path = File(context.filesDir, "local.db").absolutePath,
+            path = file.absolutePath,
             url = url,
             authToken = authToken,
             syncInterval = 2_000L,
             readYourWrites = true,
         )
         connection = db?.connect()
-        connection?.executeBatch("create table if not exists cuentas(id text, nombre text)")
+        connection?.executeBatch(SCHEMA_SQL)
     }
 
     override fun sync() {
         db?.sync()
     }
 
-    override fun execute(sql: String) {
-        connection?.execute(sql)
+    override fun close() {
+        connection?.close()
+        db?.close()
+        connection = null
+        db = null
+    }
+
+    override fun execute(sql: String, params: Map<String, Any>?) {
+        connection?.execute(sql, params ?: emptyMap())
     }
 
     override fun <T> query(sql: String, params: Map<String, Any>?, block: (Sequence<Row>) -> T): T {

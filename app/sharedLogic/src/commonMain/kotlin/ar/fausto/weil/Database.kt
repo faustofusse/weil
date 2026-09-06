@@ -4,7 +4,9 @@ typealias Row = List<Any?>
 
 interface Database {
     fun sync()
-    fun execute(sql: String)
+    fun close()
+
+    fun execute(sql: String, params: Map<String, Any>? = null)
 
     /**
      * Streams rows without buffering the whole result set in memory.
@@ -14,6 +16,10 @@ interface Database {
      *
      * The Sequence must be consumed inside [block]; storing or returning it
      * escapes the cursor's lifetime and will crash or read a closed cursor.
+     *
+     * Named parameters use SQL `:name` placeholders and map keys that include
+     * the leading colon (":name") — the underlying libsql core matches the
+     * raw token, and a missing colon silently binds nothing.
      */
     fun <T> query(sql: String, params: Map<String, Any>?, block: (Sequence<Row>) -> T): T
 

@@ -3,20 +3,34 @@ package ar.fausto.weil
 import cnames.structs.libsql_error_t
 import kotlinx.cinterop.*
 import platform.Foundation.NSDocumentDirectory
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 import swiftPMImport.Weil.app.app.sharedLogic.*
 
+private const val SCHEMA_SQL =
+    "drop table if exists cuentas; create table if not exists accounts(id text primary key not null, name text not null);"
+
 /**
- * Default path for the local embedded-replica database inside the iOS app sandbox.
+ * Default path for the local embedded-replica database inside the iOS app sandbox,
+ * isolated per user id so switching accounts never mixes replicas.
  */
-fun defaultDatabasePath(): String {
+@OptIn(ExperimentalForeignApi::class)
+fun defaultDatabasePath(userId: String): String {
     val dirs = NSSearchPathForDirectoriesInDomains(
         NSDocumentDirectory,
         NSUserDomainMask,
         true,
     )
-    return (dirs.firstOrNull() as? String ?: "") + "/local.db"
+    val documents = dirs.firstOrNull() as? String ?: ""
+    val dir = "$documents/databases/$userId"
+    NSFileManager.defaultManager.createDirectoryAtPath(
+        dir,
+        withIntermediateDirectories = true,
+        attributes = null,
+        error = null,
+    )
+    return "$dir/local.db"
 }
 
 /**
@@ -54,7 +68,7 @@ class IOSDatabase(
             errIf(conn)
             connection = conn
 
-            val setup = "create table if not exists cuentas(id text, nombre text);".cstr.ptr
+            val setup = SCHEMA_SQL.cstr.ptr
             val batch = libsql_connection_batch(conn, setup)
             errIf(batch)
         }
@@ -66,11 +80,20 @@ class IOSDatabase(
         errIf(result)
     }
 
-    override fun execute(sql: String) {
+    override fun execute(sql: String, params: Map<String, Any>?) {
         val connection = connection ?: return
         memScoped {
-            val batch = libsql_connection_batch(connection, sql.cstr.ptr)
-            errIf(batch)
+            val stmt = libsql_connection_prepare(connection, sql.cstr.ptr)
+            errIf(stmt)
+            try {
+                params?.forEach { (name, value) ->
+                    val bind = libsql_statement_bind_named(stmt, name.cstr.ptr, bindValue(value))
+                    errIf(bind)
+                }
+                errIf(libsql_statement_execute(stmt))
+            } finally {
+                libsql_statement_deinit(stmt)
+            }
         }
     }
 
@@ -119,7 +142,7 @@ class IOSDatabase(
         }
     }
 
-    fun close() {
+    override fun close() {
         connection?.let { libsql_connection_deinit(it) }
         db?.let { libsql_database_deinit(it) }
         connection = null
