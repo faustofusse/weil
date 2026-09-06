@@ -2,6 +2,7 @@ package ar.fausto.weil
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.UserAgent
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -25,7 +26,10 @@ class AuthApi(
     private val store: SecureStore,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
-    private val client = platformHttpClient { install(ContentNegotiation) { json(json) } }
+    private val client = platformHttpClient {
+        install(ContentNegotiation) { json(json) }
+        platformUserAgent()?.let { ua -> install(UserAgent) { agent = ua } }
+    }
     private val cookieName = "auth_$slug"
 
     private fun url(path: String) = "$baseUrl/apps/$slug$path"

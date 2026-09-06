@@ -1,6 +1,7 @@
 package ar.fausto.weil
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
@@ -21,6 +22,9 @@ import io.ktor.http.HttpHeaders
 
 actual fun platformHttpClient(block: HttpClientConfig<*>.() -> Unit): HttpClient =
     HttpClient(OkHttp) { block() }
+
+actual fun platformUserAgent(): String? =
+    "weil (Android ${Build.VERSION.RELEASE}; ${Build.MODEL})"
 
 actual suspend fun captureSessionCookie(response: HttpResponse, cookieName: String, store: SecureStore) {
     val cookies = response.headers.getAll(HttpHeaders.SetCookie) ?: return

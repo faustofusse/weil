@@ -8,6 +8,9 @@ import io.ktor.client.statement.HttpResponse
 actual fun platformHttpClient(block: HttpClientConfig<*>.() -> Unit): HttpClient =
     HttpClient(CIO) { block() }
 
+actual fun platformUserAgent(): String? =
+    "weil (JVM; ${System.getProperty("os.name")} ${System.getProperty("os.version")})"
+
 actual suspend fun captureSessionCookie(response: HttpResponse, cookieName: String, store: SecureStore) {
 }
 

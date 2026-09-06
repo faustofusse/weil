@@ -8,6 +8,8 @@ import io.ktor.client.statement.HttpResponse
 actual fun platformHttpClient(block: HttpClientConfig<*>.() -> Unit): HttpClient =
     HttpClient(Js) { block() }
 
+actual fun platformUserAgent(): String? = null
+
 actual suspend fun captureSessionCookie(response: HttpResponse, cookieName: String, store: SecureStore) {
 }
 

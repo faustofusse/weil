@@ -6,6 +6,7 @@ import io.ktor.client.engine.darwin.Darwin
 import io.ktor.client.statement.HttpResponse
 import platform.Foundation.NSDate
 import platform.Foundation.timeIntervalSince1970
+import platform.UIKit.UIDevice
 
 object IosBridges {
     var secureStore: SecureStore? = null
@@ -41,6 +42,11 @@ private fun translatePasskeyError(e: Throwable): Throwable {
 
 actual fun platformHttpClient(block: HttpClientConfig<*>.() -> Unit): HttpClient =
     HttpClient(Darwin) { block() }
+
+actual fun platformUserAgent(): String? {
+    val device = UIDevice.currentDevice
+    return "weil (${device.systemName} ${device.systemVersion}; ${device.model})"
+}
 
 actual suspend fun captureSessionCookie(response: HttpResponse, cookieName: String, store: SecureStore) {
 }

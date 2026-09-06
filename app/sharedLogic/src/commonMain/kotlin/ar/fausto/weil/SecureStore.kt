@@ -13,6 +13,8 @@ internal const val COOKIE_STORE_PREFIX = "cookie:"
 
 expect fun platformHttpClient(block: HttpClientConfig<*>.() -> Unit = {}): HttpClient
 
+expect fun platformUserAgent(): String?
+
 expect suspend fun captureSessionCookie(response: HttpResponse, cookieName: String, store: SecureStore)
 
 expect fun storedCookieHeader(cookieName: String, store: SecureStore): String?
