@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,16 +42,31 @@ fun EmailScreen(
     onNavigateBack: () -> Unit,
 ) {
     var items by remember { mutableStateOf(emptyList<Email>()) }
+    var cursor by remember { mutableStateOf<EmailCursor?>(null) }
+    var hasMore by remember { mutableStateOf(true) }
+    var isInitialLoading by remember { mutableStateOf(true) }
+    var isLoadingMore by remember { mutableStateOf(false) }
     var isSyncing by remember { mutableStateOf(false) }
     var syncError by remember { mutableStateOf<String?>(null) }
+    var totalCount by remember { mutableStateOf(0L) }
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
+    suspend fun loadFirst() {
+        val page = emails.page()
+        items = page.items
+        cursor = page.nextCursor
+        hasMore = page.nextCursor != null
+        totalCount = emails.count()
+    }
 
     fun sync() {
         scope.launch {
             isSyncing = true
             syncError = null
             try {
-                items = emails.list()
+                emails.syncNow()
+                loadFirst()
             } catch (e: Throwable) {
                 syncError = e.message ?: e.toString()
             } finally {
@@ -58,14 +75,48 @@ fun EmailScreen(
         }
     }
 
-    LaunchedEffect(Unit) { sync() }
+    fun loadMore() {
+        val currentCursor = cursor ?: return
+        if (isLoadingMore || !hasMore) return
+        isLoadingMore = true
+        scope.launch {
+            try {
+                val page = emails.page(before = currentCursor)
+                items = items + page.items
+                cursor = page.nextCursor
+                hasMore = page.nextCursor != null
+            } catch (e: Throwable) {
+                syncError = e.message ?: e.toString()
+            } finally {
+                isLoadingMore = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        try {
+            emails.syncNow()
+            loadFirst()
+        } catch (e: Throwable) {
+            syncError = e.message ?: e.toString()
+        } finally {
+            isInitialLoading = false
+        }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .collect { last ->
+                if (last != null && last >= items.size - 10) loadMore()
+            }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Emails (${items.size})")
+                        Text("Emails ($totalCount)")
                         if (syncError != null) {
                             Icon(
                                 imageVector = Icons.Filled.Warning,
@@ -97,9 +148,12 @@ fun EmailScreen(
                 .padding(innerPadding),
         ) {
             when {
-                isSyncing && items.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        androidx.compose.material3.CircularProgressIndicator()
+                isInitialLoading -> {
+                    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                        repeat(8) {
+                            EmailCardSkeleton()
+                            Spacer(Modifier.height(8.dp))
+                        }
                     }
                 }
                 items.isEmpty() -> {
@@ -109,12 +163,24 @@ fun EmailScreen(
                 }
                 else -> {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     ) {
                         items(items, key = { it.id }) { email ->
                             EmailCard(email = email)
                             Spacer(Modifier.height(8.dp))
+                        }
+                        if (hasMore) {
+                            item(key = "skeleton-footer") {
+                                Column {
+                                    if (isLoadingMore) {
+                                        EmailCardSkeleton()
+                                        Spacer(Modifier.height(8.dp))
+                                        EmailCardSkeleton()
+                                    }
+                                }
+                            }
                         }
                     }
                 }
