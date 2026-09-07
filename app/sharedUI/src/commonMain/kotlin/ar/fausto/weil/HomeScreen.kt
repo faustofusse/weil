@@ -23,21 +23,24 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
-    accounts: AccountsRepository,
+    accountsState: AccountsState,
     onNavigateToProfile: () -> Unit,
     onNavigateToNotifications: () -> Unit,
 ) {
@@ -62,23 +65,51 @@ fun HomeScreen(
                 .padding(innerPadding)
                 .padding(16.dp),
         ) {
-            AccountsSection(accounts = accounts)
+            AccountsSection(state = accountsState)
         }
     }
 }
 
-/** Compact accounts CRUD block living on the home screen. */
-@Composable
-private fun AccountsSection(
-    accounts: AccountsRepository,
+/** Accounts list state hoisted above the nav host so the list survives
+ * navigating away and back without reloading from empty. Kept in AppRoot
+ * via remember, so it lives and dies with the whole session. */
+@Stable
+class AccountsState(
+    private val accounts: AccountsRepository,
 ) {
-    var items by remember { mutableStateOf<List<Account>>(emptyList()) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var newName by remember { mutableStateOf("") }
-    var editing by remember { mutableStateOf<Account?>(null) }
-    var editName by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
+    var items by mutableStateOf<List<Account>>(emptyList())
+        private set
+    var busy by mutableStateOf(false)
+        private set
+    var error by mutableStateOf<String?>(null)
+        private set
+
+    private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+    var loaded = false
+        private set
+
+    fun refresh() {
+        scope.launch { load() }
+    }
+
+    private suspend fun load() {
+        busy = true
+        error = null
+        try {
+            items = accounts.list()
+            loaded = true
+        } catch (e: Throwable) {
+            error = e.message ?: e.toString()
+        } finally {
+            busy = false
+        }
+    }
+
+    fun add(name: String) = mutate { accounts.add(name) }
+
+    fun delete(id: String) = mutate { accounts.delete(id) }
+
+    fun rename(id: String, name: String) = mutate { accounts.rename(id, name) }
 
     fun mutate(action: suspend () -> Unit) {
         scope.launch {
@@ -94,16 +125,22 @@ private fun AccountsSection(
             }
         }
     }
+}
 
-    LaunchedEffect(Unit) {
-        busy = true
-        try {
-            items = accounts.list()
-        } catch (e: Throwable) {
-            error = e.message ?: e.toString()
-        } finally {
-            busy = false
-        }
+/** Compact accounts CRUD block living on the home screen. */
+@Composable
+fun AccountsSection(
+    state: AccountsState,
+) {
+    var newName by remember { mutableStateOf("") }
+    var editing by remember { mutableStateOf<Account?>(null) }
+    var editName by remember { mutableStateOf("") }
+    val items = state.items
+    val busy = state.busy
+    val error = state.error
+
+    if (!state.loaded) {
+        LaunchedEffect(Unit) { state.refresh() }
     }
 
     Text(
@@ -150,7 +187,7 @@ private fun AccountsSection(
                     }) {
                         Text("Edit")
                     }
-                    TextButton(onClick = { mutate { accounts.delete(account.id) } }) {
+                    TextButton(onClick = { state.delete(account.id) }) {
                         Text("Delete")
                     }
                 }
@@ -174,7 +211,7 @@ private fun AccountsSection(
         Button(
             onClick = {
                 val name = newName.trim()
-                mutate { accounts.add(name) }
+                state.add(name)
                 newName = ""
             },
             enabled = newName.isNotBlank() && !busy,
@@ -201,7 +238,7 @@ private fun AccountsSection(
                         val id = account.id
                         val name = editName.trim()
                         editing = null
-                        if (name.isNotEmpty()) mutate { accounts.rename(id, name) }
+                        if (name.isNotEmpty()) state.rename(id, name)
                     },
                 ) { Text("Save") }
             },

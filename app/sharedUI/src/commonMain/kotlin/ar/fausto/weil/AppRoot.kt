@@ -73,6 +73,7 @@ fun RootScreen(graph: AppGraph) {
             // stack between [LoginRoute] and [HomeRoute], and NavDisplay
             // animates that replace with the shared transition specs.
             val loggedIn = authState is AuthState.LoggedIn
+            val accountsState = remember(graph.accounts) { AccountsState(graph.accounts) }
             val backStack = remember(loggedIn) {
                 mutableStateListOf<Any>(if (loggedIn) HomeRoute else LoginRoute)
             }
@@ -101,7 +102,7 @@ fun RootScreen(graph: AppGraph) {
                             }
                             entry<HomeRoute> {
                                 HomeScreen(
-                                    accounts = graph.accounts,
+                                    accountsState = accountsState,
                                     onNavigateToProfile = { navigate(ProfileRoute) },
                                     onNavigateToNotifications = { navigate(NotificationsRoute) },
                                 )
