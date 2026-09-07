@@ -21,10 +21,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -117,6 +119,8 @@ fun NotificationsScreen(
                     .fillMaxSize()
                     .padding(16.dp),
             ) {
+                NotificationAccessBanner()
+                Spacer(Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -135,6 +139,32 @@ fun NotificationsScreen(
                         Spacer(Modifier.height(8.dp))
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationAccessBanner() {
+    val access = notificationAccess ?: return
+    val granted by access.enabled.collectAsState()
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (granted) {
+                "✓ Notification access: GRANTED"
+            } else {
+                "✗ Notification access: NOT GRANTED"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        if (!granted) {
+            TextButton(onClick = { access.openSettings() }) {
+                Text("Grant")
             }
         }
     }

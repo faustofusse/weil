@@ -101,7 +101,8 @@ fun RootScreen(graph: AppGraph) {
                             }
                             entry<HomeRoute> {
                                 HomeScreen(
-                                    onNavigateToAccounts = { navigate(AccountsRoute) },
+                                    accounts = graph.accounts,
+                                    onNavigateToProfile = { navigate(ProfileRoute) },
                                     onNavigateToNotifications = { navigate(NotificationsRoute) },
                                 )
                             }
@@ -111,9 +112,8 @@ fun RootScreen(graph: AppGraph) {
                                     onNavigateBack = { pop() },
                                 )
                             }
-                            entry<AccountsRoute> {
-                                AccountsScreen(
-                                    accounts = graph.accounts,
+                            entry<ProfileRoute> {
+                                ProfileScreen(
                                     onNavigateBack = { pop() },
                                     onSignOut = { scope.launch { graph.auth.signOut() } },
                                 )

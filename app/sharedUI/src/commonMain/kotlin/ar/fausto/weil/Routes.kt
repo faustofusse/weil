@@ -8,4 +8,4 @@ object HomeRoute
 
 object NotificationsRoute
 
-object AccountsRoute
+object ProfileRoute
