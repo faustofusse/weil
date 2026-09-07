@@ -8,9 +8,6 @@ import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 import swiftPMImport.Weil.app.app.sharedLogic.*
 
-private const val SCHEMA_SQL =
-    "drop table if exists cuentas; create table if not exists accounts(id text primary key not null, name text not null);"
-
 /**
  * Default path for the local embedded-replica database inside the iOS app sandbox,
  * isolated per user id so switching accounts never mixes replicas.

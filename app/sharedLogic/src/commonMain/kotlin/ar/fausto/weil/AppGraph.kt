@@ -9,13 +9,14 @@ object AuthConfig {
 
 class AppGraph(
     store: SecureStore,
-    passkeys: PasskeyCeremony,
+    passkeys: () -> PasskeyCeremony,
     dbContext: CoroutineContext,
     dbFactory: (userId: String, url: String, token: String) -> Database,
 ) {
     val auth = AuthRepository(AuthApi(AuthConfig.BASE_URL, AuthConfig.SLUG, store), store, passkeys)
     val db = DatabaseProvider(auth, dbContext, dbFactory)
     val accounts = AccountsRepository(db)
+    val notifications = NotificationsRepository(db)
 
     init {
         auth.restore()

@@ -13,6 +13,10 @@
       "repository": "tursodatabase/turso",
       "branch": "main",
       "description": "new turso"
-    }
+    },
+    "old": {
+      "path": "../weil.bak",
+      "description": "old app"
+    },
   }
 }

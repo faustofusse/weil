@@ -16,10 +16,12 @@ junit = "4.13.2"
 kotlin = "2.4.20-RC"
 kotlin-wrappers = "2026.7.7"
 kotlinx-coroutines = "1.11.0"
+kotlinx-datetime = "0.8.0"
 kotlinx-serialization = "1.9.0"
 ktor = "3.5.1"
 logback = "1.6.1"
 material3 = "1.11.0-alpha07"
+navigation3 = "1.1.1"
 jna = "5.17.0"
 material3Version = "1.4.0"
 
@@ -54,6 +56,8 @@ compose-components-resources = { module = "org.jetbrains.compose.components:comp
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutinesSwing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
+navigation3Ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 ktor-serverCore = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
 ktor-serverNetty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }

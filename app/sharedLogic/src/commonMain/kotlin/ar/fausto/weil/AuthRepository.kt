@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonObject
 class AuthRepository(
     private val api: AuthApi,
     private val store: SecureStore,
-    private val passkeys: PasskeyCeremony,
+    private val passkeys: () -> PasskeyCeremony,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val _state = MutableStateFlow<AuthState>(AuthState.Restoring)
@@ -35,7 +35,7 @@ class AuthRepository(
         }
         try {
             val start = api.loginStart()
-            val responseJson = passkeys.assert(json.encodeToString(start.options))
+            val responseJson = passkeys().assert(json.encodeToString(start.options))
             finish(api.loginFinish(json.decodeFromString<JsonObject>(responseJson)))
         } catch (e: PasskeyCancelled) {
             throw e
@@ -47,7 +47,7 @@ class AuthRepository(
 
     private suspend fun register() {
         val start = api.registerStart()
-        val responseJson = passkeys.create(json.encodeToString(start.options))
+        val responseJson = passkeys().create(json.encodeToString(start.options))
         finish(api.registerFinish(json.decodeFromString<JsonObject>(responseJson), start.handle))
     }
 

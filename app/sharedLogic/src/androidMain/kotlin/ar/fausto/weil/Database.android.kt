@@ -11,9 +11,6 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-private const val SCHEMA_SQL =
-    "drop table if exists cuentas; create table if not exists accounts(id text primary key not null, name text not null);"
-
 private const val TURSO_LOG_PREFIX = "turso: "
 
 internal class TursoException(message: String) : RuntimeException(message)
