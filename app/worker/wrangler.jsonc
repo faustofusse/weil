@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "finance",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "auth",
+      "database_id": "b6532fe4-d2a1-42b2-b783-00d97405614b"
+    }
+  ],
+  "vars": {
+    "TURSO_ORG": "faustofusse",
+    "APP_SLUG": "finance",
+    "FORWARD_TO": "faustofusse@gmail.com"
+  }
+}

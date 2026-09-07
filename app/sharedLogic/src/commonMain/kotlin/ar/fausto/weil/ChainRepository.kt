@@ -16,6 +16,12 @@ class ChainRepository(private val api: AuthApi, private val auth: AuthRepository
 
     suspend fun approve(requestId: String) = api.chainApprove(requestId)
 
+    suspend fun getEmail(): String? = api.getEmail()
+
+    suspend fun setEmail(email: String) {
+        api.setEmail(email)
+    }
+
     /**
      * Revoking rotates the user's Turso tokens: the revoked device loses DB
      * access immediately, and every other device's JWT dies with it (they

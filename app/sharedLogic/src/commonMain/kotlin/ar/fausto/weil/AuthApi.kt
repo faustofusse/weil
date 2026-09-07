@@ -88,6 +88,17 @@ class AuthApi(
 
     suspend fun chainRequest(): ChainRequest = post("/chain/request", "{}")
 
+    // ---- contact email (ingest routing) ----
+
+    suspend fun getEmail(): String? {
+        val v = authedGet<JsonObject>("/email")["email"] ?: return null
+        val p = v as? kotlinx.serialization.json.JsonPrimitive ?: return null
+        return if (p.isString) p.content else null
+    }
+
+    suspend fun setEmail(email: String): JsonObject =
+        authedPost("/email", kotlinx.serialization.json.buildJsonObject { put("email", email) }.toString())
+
     suspend fun chainRequestStatus(requestId: String): ChainRequestStatus {
         val resp = client.get(url("/chain/request/$requestId"))
         throwOnStatus(resp)

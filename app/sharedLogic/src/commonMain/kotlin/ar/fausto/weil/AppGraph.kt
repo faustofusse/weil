@@ -21,6 +21,7 @@ class AppGraph(
     val db = DatabaseProvider(auth, dbContext, dbFactory)
     val accounts = AccountsRepository(db)
     val notifications = NotificationsRepository(db)
+    val emails = EmailsRepository(db)
     val scanner: QrScanner? get() = qrScannerProvider()
 
     init {

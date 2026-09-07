@@ -1,0 +1,17 @@
+{
+  "name": "finance-worker",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250903.0",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.42.0"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.15"
+  }
+}

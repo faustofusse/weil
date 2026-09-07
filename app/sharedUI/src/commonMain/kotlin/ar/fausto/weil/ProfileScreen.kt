@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,9 +40,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun ProfileScreen(
+    chain: ChainRepository,
     chainState: ChainState,
     onNavigateBack: () -> Unit,
     onSignOut: () -> Unit,
@@ -64,6 +68,8 @@ fun ProfileScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
         ) {
+            AccountEmailSection(chain)
+            Spacer(Modifier.height(24.dp))
             ChainSection(chainState)
             Spacer(Modifier.height(32.dp))
             Button(
@@ -295,5 +301,102 @@ private fun ChainDeviceRow(
                 )
             }
         }
+    }
+}
+
+/** Contact email the finance worker routes wallet mail from. Lives on the auth
+ * server (users.email), so only signed-in authenticated calls are involved. */
+@Composable
+private fun AccountEmailSection(chain: ChainRepository) {
+    var email by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        busy = true
+        try {
+            email = chain.getEmail()
+        } catch (e: Throwable) {
+            error = e.message ?: e.toString()
+        } finally {
+            busy = false
+        }
+    }
+
+    Text("Contact email", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Emails sent here are ingested into your account's database (and forwarded to Gmail).",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 2.dp, bottom = 4.dp),
+    )
+
+    when {
+        busy -> Text("…", style = MaterialTheme.typography.bodyMedium)
+        error != null -> Text(
+            error ?: "",
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        else -> {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    email ?: "Not set",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (email == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = {
+                    draft = email ?: ""
+                    editing = true
+                }) {
+                    Text("Edit")
+                }
+            }
+        }
+    }
+
+    if (editing) {
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text("Contact email") },
+            text = {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val value = draft.trim()
+                        editing = false
+                        if (!value.contains('@')) return@TextButton
+                        busy = true
+                        error = null
+                        scope.launch {
+                            try {
+                                chain.setEmail(value)
+                                email = chain.getEmail()
+                            } catch (e: Throwable) {
+                                error = e.message ?: e.toString()
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    },
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editing = false }) { Text("Cancel") }
+            },
+        )
     }
 }

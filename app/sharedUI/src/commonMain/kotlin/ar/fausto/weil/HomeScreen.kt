@@ -43,6 +43,7 @@ fun HomeScreen(
     accountsState: AccountsState,
     onNavigateToProfile: () -> Unit,
     onNavigateToNotifications: () -> Unit,
+    onNavigateToEmails: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -51,6 +52,9 @@ fun HomeScreen(
                 actions = {
                     IconButton(onClick = onNavigateToNotifications) {
                         Icon(Icons.Filled.Notifications, contentDescription = "View notifications")
+                    }
+                    IconButton(onClick = onNavigateToEmails) {
+                        Icon(Icons.Filled.Email, contentDescription = "View emails")
                     }
                     IconButton(onClick = onNavigateToProfile) {
                         Icon(Icons.Filled.AccountCircle, contentDescription = "View profile")

@@ -115,6 +115,13 @@ fun RootScreen(graph: AppGraph) {
                                     accountsState = accountsState,
                                     onNavigateToProfile = { navigate(ProfileRoute) },
                                     onNavigateToNotifications = { navigate(NotificationsRoute) },
+                                    onNavigateToEmails = { navigate(EmailsRoute) },
+                                )
+                            }
+                            entry<EmailsRoute> {
+                                EmailScreen(
+                                    emails = graph.emails,
+                                    onNavigateBack = { pop() },
                                 )
                             }
                             entry<NotificationsRoute> {
@@ -125,6 +132,7 @@ fun RootScreen(graph: AppGraph) {
                             }
                             entry<ProfileRoute> {
                                 ProfileScreen(
+                                    chain = graph.chain,
                                     chainState = chainState,
                                     onNavigateBack = { pop() },
                                     onSignOut = { scope.launch { graph.auth.signOut() } },

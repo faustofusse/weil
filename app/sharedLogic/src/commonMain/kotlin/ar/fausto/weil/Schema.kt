@@ -24,4 +24,12 @@ const val SCHEMA_SQL =
     "is_system_app integer not null default 0," +
     "first_seen_at integer not null," +
     "notification_count integer not null default 0," +
-    "last_notification_at integer);"
+    "last_notification_at integer);" +
+    "create table if not exists emails(" +
+    "id text primary key not null," +
+    "from_email text not null," +
+    "to_email text not null," +
+    "subject text," +
+    "body_text text," +
+    "received_at integer not null);" +
+    "create index if not exists idx_emails_received on emails(received_at desc);"
