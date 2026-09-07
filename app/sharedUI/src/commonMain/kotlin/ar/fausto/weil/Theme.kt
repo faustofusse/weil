@@ -2,28 +2,24 @@ package ar.fausto.weil
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/** One background everywhere: splash, login, and every app screen. */
-val AppBackground = Color(0xFF141218)
+/** Holds the active theme so a future settings screen can swap it at runtime. */
+class AppThemeState(initial: AppTheme = AppTheme.Weil) {
+    var theme by mutableStateOf(initial)
+}
 
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
-
-private val DarkColors = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80,
-    background = AppBackground,
-    surface = AppBackground,
-)
+val LocalAppThemeState = compositionLocalOf<AppThemeState> {
+    error("AppThemeState not provided")
+}
 
 private val FinanceTypography = Typography(
     bodyLarge = TextStyle(
@@ -36,9 +32,9 @@ private val FinanceTypography = Typography(
 )
 
 @Composable
-fun FinanceTheme(content: @Composable () -> Unit) {
+fun FinanceTheme(theme: AppTheme, content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = DarkColors,
+        colorScheme = theme.colorScheme,
         typography = FinanceTypography,
         content = content,
     )

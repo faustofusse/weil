@@ -24,13 +24,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -60,117 +60,119 @@ private val slideOut = { full: Int -> (full * -0.2f).toInt() }
 fun RootScreen(graph: AppGraph) {
     val authState by graph.auth.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val themeState = remember { AppThemeState() }
 
-    AnimatedContent(
-        targetState = authState is AuthState.Restoring,
-        transitionSpec = {
-            val enter = fadeIn(tween(260, easing = FastOutSlowInEasing)) +
-                scaleIn(initialScale = 0.97f, animationSpec = tween(260, easing = FastOutSlowInEasing))
-            val exit = fadeOut(tween(160)) +
-                scaleOut(targetScale = 0.97f, animationSpec = tween(160))
-            enter togetherWith exit
-        },
-        label = "authState",
-    ) { restoring ->
-        if (restoring) {
-            SplashScreen()
-        } else {
-            // The login screen lives in the back stack: sign-in/out swap the
-            // stack between [LoginRoute] and [HomeRoute], and NavDisplay
-            // animates that replace with the shared transition specs.
-            val loggedIn = authState is AuthState.LoggedIn
-            val accountsState = remember(graph.accounts) { AccountsState(graph.accounts) }
-            val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
-            val backStack = remember(loggedIn) {
-                mutableStateListOf<Any>(if (loggedIn) HomeRoute else LoginRoute)
-            }
+    // The theme wraps every state, splash included, so nothing renders unthemed.
+    // The state rides in a CompositionLocal: a future settings screen swaps
+    // themes with one assignment, no prop drilling.
+    CompositionLocalProvider(LocalAppThemeState provides themeState) {
+        FinanceTheme(themeState.theme) {
+            AnimatedContent(
+                targetState = authState is AuthState.Restoring,
+                transitionSpec = {
+                    val enter = fadeIn(tween(260, easing = FastOutSlowInEasing)) +
+                        scaleIn(initialScale = 0.97f, animationSpec = tween(260, easing = FastOutSlowInEasing))
+                    val exit = fadeOut(tween(160)) +
+                        scaleOut(targetScale = 0.97f, animationSpec = tween(160))
+                    enter togetherWith exit
+                },
+                label = "authState",
+            ) { restoring ->
+                if (restoring) {
+                    SplashScreen()
+                } else {
+                    // The login screen lives in the back stack: sign-in/out swap the
+                    // stack between [LoginRoute] and [HomeRoute], and NavDisplay
+                    // animates that replace with the shared transition specs.
+                    val loggedIn = authState is AuthState.LoggedIn
+                    val accountsState = remember(graph.accounts) { AccountsState(graph.accounts) }
+                    val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
+                    val backStack = remember(loggedIn) {
+                        mutableStateListOf<Any>(if (loggedIn) HomeRoute else LoginRoute)
+                    }
 
-            fun navigate(route: Any) {
-                backStack.add(route)
-            }
+                    fun navigate(route: Any) {
+                        backStack.add(route)
+                    }
 
-            fun pop() {
-                if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
-            }
+                    fun pop() {
+                        if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
+                    }
 
-            FinanceTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    NavDisplay(
-                        backStack = backStack,
-                        onBack = { pop() },
-                        entryProvider = entryProvider {
-                            entry<LoginRoute> {
-                                LoginScreen(
-                                    onSignIn = { graph.auth.signIn() },
-                                    onJoinChain = { id, token -> graph.auth.joinChain(id, token) },
-                                    chain = graph.chain,
-                                    scanner = { graph.scanner },
-                                )
-                            }
-                            entry<HomeRoute> {
-                                HomeScreen(
-                                    accountsState = accountsState,
-                                    onNavigateToProfile = { navigate(ProfileRoute) },
-                                    onNavigateToNotifications = { navigate(NotificationsRoute) },
-                                    onNavigateToEmails = { navigate(EmailsRoute) },
-                                )
-                            }
-                            entry<EmailsRoute> {
-                                EmailScreen(
-                                    emails = graph.emails,
-                                    onNavigateBack = { pop() },
-                                )
-                            }
-                            entry<NotificationsRoute> {
-                                NotificationsScreen(
-                                    notifications = graph.notifications,
-                                    onNavigateBack = { pop() },
-                                )
-                            }
-                            entry<ProfileRoute> {
-                                ProfileScreen(
-                                    chain = graph.chain,
-                                    chainState = chainState,
-                                    onNavigateBack = { pop() },
-                                    onSignOut = { scope.launch { graph.auth.signOut() } },
-                                )
-                            }
-                        },
-                        transitionSpec = {
-                            (slideInHorizontally(initialOffsetX = slideIn) + fadeIn()) togetherWith
-                                (slideOutHorizontally(targetOffsetX = slideOut) + fadeOut())
-                        },
-                        popTransitionSpec = {
-                            (slideInHorizontally(initialOffsetX = slideOut) + fadeIn()) togetherWith
-                                (slideOutHorizontally(targetOffsetX = slideIn) + fadeOut())
-                        },
-                        predictivePopTransitionSpec = {
-                            (slideInHorizontally(initialOffsetX = slideOut) + fadeIn()) togetherWith
-                                (slideOutHorizontally(targetOffsetX = slideIn) + fadeOut())
-                        },
-                    )
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        NavDisplay(
+                            backStack = backStack,
+                            onBack = { pop() },
+                            entryProvider = entryProvider {
+                                entry<LoginRoute> {
+                                    LoginScreen(
+                                        onSignIn = { graph.auth.signIn() },
+                                        onJoinChain = { id, token -> graph.auth.joinChain(id, token) },
+                                        chain = graph.chain,
+                                        scanner = { graph.scanner },
+                                    )
+                                }
+                                entry<HomeRoute> {
+                                    HomeScreen(
+                                        accountsState = accountsState,
+                                        onNavigateToProfile = { navigate(ProfileRoute) },
+                                        onNavigateToNotifications = { navigate(NotificationsRoute) },
+                                        onNavigateToEmails = { navigate(EmailsRoute) },
+                                    )
+                                }
+                                entry<EmailsRoute> {
+                                    EmailScreen(
+                                        emails = graph.emails,
+                                        onNavigateBack = { pop() },
+                                    )
+                                }
+                                entry<NotificationsRoute> {
+                                    NotificationsScreen(
+                                        notifications = graph.notifications,
+                                        onNavigateBack = { pop() },
+                                    )
+                                }
+                                entry<ProfileRoute> {
+                                    ProfileScreen(
+                                        chain = graph.chain,
+                                        chainState = chainState,
+                                        onNavigateBack = { pop() },
+                                        onSignOut = { scope.launch { graph.auth.signOut() } },
+                                    )
+                                }
+                            },
+                            transitionSpec = {
+                                (slideInHorizontally(initialOffsetX = slideIn) + fadeIn()) togetherWith
+                                    (slideOutHorizontally(targetOffsetX = slideOut) + fadeOut())
+                            },
+                            popTransitionSpec = {
+                                (slideInHorizontally(initialOffsetX = slideOut) + fadeIn()) togetherWith
+                                    (slideOutHorizontally(targetOffsetX = slideIn) + fadeOut())
+                            },
+                            predictivePopTransitionSpec = {
+                                (slideInHorizontally(initialOffsetX = slideOut) + fadeIn()) togetherWith
+                                    (slideOutHorizontally(targetOffsetX = slideIn) + fadeOut())
+                            },
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-/** Accent colors of the dark login canvas (background comes from the theme). */
-private val LoginError = Color(0xFFCF6679)
-private val LoginButtonContent = Color(0xFF311B92)
-
 @Composable
 private fun SplashScreen() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppBackground),
+            .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center,
     ) {
-        CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f))
+        CircularProgressIndicator(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
     }
 }
 
@@ -215,7 +217,7 @@ fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppBackground),
+            .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -227,14 +229,14 @@ fun LoginScreen(
             Text(
                 "Finance",
                 style = MaterialTheme.typography.headlineLarge,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.graphicsLayer(alpha = titleFade),
             )
             Spacer(Modifier.height(6.dp))
             Text(
                 "Your accounts, one place",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.55f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
                 modifier = Modifier.graphicsLayer(alpha = titleFade),
             )
             Spacer(Modifier.height(40.dp))
@@ -242,10 +244,6 @@ fun LoginScreen(
                 onClick = { launchAction(onSignIn) },
                 enabled = !busy,
                 shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFD0BCFF),
-                    contentColor = LoginButtonContent,
-                ),
                 contentPadding = PaddingValues(horizontal = 28.dp, vertical = 14.dp),
                 modifier = Modifier.graphicsLayer(alpha = buttonFade),
             ) {
@@ -253,7 +251,7 @@ fun LoginScreen(
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
-                        color = LoginButtonContent,
+                        color = MaterialTheme.colorScheme.onPrimary,
                     )
                 } else {
                     Text("Continue with passkey")
@@ -262,7 +260,7 @@ fun LoginScreen(
             Spacer(Modifier.height(20.dp))
             Text(
                 error ?: "",
-                color = LoginError,
+                color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
             )
@@ -401,7 +399,7 @@ private fun PairingSection(
         localError?.let {
             Text(
                 it,
-                color = LoginError,
+                color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
             )
@@ -434,7 +432,7 @@ private fun PairingSection(
                 Text(
                     "Pairing request expired",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 )
                 TextButton(onClick = { showRequestQr() }) {
                     Text("New QR")
@@ -448,7 +446,7 @@ private fun PairingSection(
                     Text(
                         if (joining) "Approved — creating your passkey…" else "Approved",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     )
                     if (!joining) {
                         TextButton(onClick = { joinAttempt++ }) {
@@ -459,6 +457,7 @@ private fun PairingSection(
                     Image(
                         painter = rememberQrCodePainter(current.url),
                         contentDescription = "Pairing request QR code",
+                        // White backing is theme-independent: scanners need max contrast.
                         modifier = Modifier
                             .padding(horizontal = 48.dp, vertical = 8.dp)
                             .background(Color.White, RoundedCornerShape(12.dp))
@@ -467,14 +466,14 @@ private fun PairingSection(
                     Text(
                         "Approve from the signed-in device: Profile → Approve device",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.55f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
                         textAlign = TextAlign.Center,
                     )
                     val remaining = ((expiresAt - now) / 1000).coerceAtLeast(0)
                     Text(
                         "Expires in ${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.55f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
