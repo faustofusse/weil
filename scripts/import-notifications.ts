@@ -44,22 +44,29 @@ async function main() {
   const db = await platformClient({ org, dbName: user.turso_db_name, hostname: user.turso_db_hostname, tursoApiToken: token });
   let insN = 0;
   let insA = 0;
+  // batch to avoid 10k sequential round trips; libsql executes a batch atomically
+  const CHUNK = 200;
   try {
-    for (const n of notifications) {
-      const result = await db.execute({
-        sql: `insert or ignore into notifications(id, package_name, title, text, category, post_time, received_at)
-              values (?, ?, ?, ?, ?, ?, ?)`,
-        args: [
-          n.id,
-          n.packageName,
-          n.title,
-          n.text,
-          n.category ?? null,
-          toMillis(n.postTime),
-          toMillis(n.receivedAt ?? Date.now()),
-        ],
-      });
-      insN += Number(result.rowsAffected) > 0 ? 1 : 0;
+    for (let i = 0; i < notifications.length; i += CHUNK) {
+      const chunk = notifications.slice(i, i + CHUNK);
+      const results = await db.batch(
+        chunk.map((n) => ({
+          sql: `insert or ignore into notifications(id, package_name, title, text, category, post_time, received_at)
+                values (?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            n.id,
+            n.packageName,
+            n.title,
+            n.text,
+            n.category ?? null,
+            toMillis(n.postTime),
+            toMillis(n.receivedAt ?? Date.now()),
+          ],
+        })),
+        'write',
+      );
+      insN += results.reduce((a, r) => a + Math.min(Number(r.rowsAffected), 1), 0);
+      console.log(`notifications ${Math.min(i + CHUNK, notifications.length)}/${notifications.length} (inserted so far: ${insN})`);
     }
     for (const a of applications) {
       const result = await db.execute({
