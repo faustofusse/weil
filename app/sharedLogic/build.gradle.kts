@@ -70,6 +70,7 @@ kotlin {
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentialsPlayServices)
             implementation(libs.androidx.securityCrypto)
+            implementation(libs.play.services.codeScanner)
         }
         iosMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)

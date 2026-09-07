@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 
 class AuthRepository(
     private val api: AuthApi,
@@ -49,6 +50,17 @@ class AuthRepository(
         val start = api.registerStart()
         val responseJson = passkeys().create(json.encodeToString(start.options))
         finish(api.registerFinish(json.decodeFromString<JsonObject>(responseJson), start.handle))
+    }
+
+    /**
+     * Join an existing account's sync chain: two-phase chain/join ceremony that
+     * registers a new passkey on the linked user and signs this device in.
+     */
+    suspend fun joinChain(chainId: String, token: String?) {
+        val start = api.chainJoinStart(chainId, token)
+        val options = start.getValue("options").jsonObject
+        val responseJson = passkeys().create(json.encodeToString(options))
+        finish(api.chainJoinFinish(chainId, token, json.decodeFromString<JsonObject>(responseJson)))
     }
 
     suspend fun ensureFreshToken(): TokenInfo {

@@ -48,6 +48,9 @@ class WeilApplication : Application() {
                 // CredentialManager needs a foreground activity; sign-in only
                 // ever happens while one is front (service never calls it).
                 passkeys = { AndroidPasskeys(requireNotNull(currentActivity) { "no foreground activity" }) },
+                // The Google code scanner also needs a foreground activity;
+                // scanning only ever starts from profile/login screens.
+                qrScanner = { AndroidQrScanner(requireNotNull(currentActivity) { "no foreground activity" }) },
                 dbContext = dbDispatcher,
                 dbFactory = { userId, url, token ->
                     // "turso.db" (not the old "local.db"): the new Turso sync

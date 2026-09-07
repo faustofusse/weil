@@ -11,6 +11,7 @@ import platform.UIKit.UIDevice
 object IosBridges {
     var secureStore: SecureStore? = null
     var passkeyCeremony: PasskeyCeremony? = null
+    var qrScanner: QrScanner? = null
 }
 
 private const val PASSKEY_CANCELLED_MARKER = "passkey cancelled"

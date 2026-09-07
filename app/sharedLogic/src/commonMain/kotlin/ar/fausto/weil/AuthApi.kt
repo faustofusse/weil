@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.UserAgent
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -14,6 +15,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -69,7 +71,68 @@ class AuthApi(
         }
     }
 
-    private suspend inline fun <reified T> post(path: String, body: String): T {
+    // ---- sync chains (device pairing) ----
+
+    suspend fun chainDevices(): List<ChainDevice> =
+        authedGet<ChainDevicesResponse>("/chain").devices
+
+    suspend fun chainRevoke(credId: String) {
+        authedPost<JsonObject>("/chain/$credId/revoke", "{}")
+    }
+
+    suspend fun chainInvite(): ChainInvite = authedPost("/chain/invite", "{}")
+
+    suspend fun chainApprove(requestId: String) {
+        authedPost<JsonObject>("/chain/approve/$requestId", "{}")
+    }
+
+    suspend fun chainRequest(): ChainRequest = post("/chain/request", "{}")
+
+    suspend fun chainRequestStatus(requestId: String): ChainRequestStatus {
+        val resp = client.get(url("/chain/request/$requestId"))
+        throwOnStatus(resp)
+        return resp.body()
+    }
+
+    suspend fun chainJoinStart(chainId: String, token: String?): JsonObject =
+        post(
+            "/chain/join/$chainId",
+            buildJsonObject { if (token != null) put("token", token) }.toString(),
+        )
+
+    suspend fun chainJoinFinish(chainId: String, token: String?, response: JsonObject): AuthFinish =
+        postFinish(
+            "/chain/join/$chainId",
+            buildJsonObject {
+                if (token != null) put("token", token)
+                put("response", response)
+            },
+        )
+
+    private suspend inline fun <reified T> authedGet(path: String): T {
+        val resp = client.get(url(path)) {
+            storedCookieHeader(cookieName, store)?.let { header(HttpHeaders.Cookie, it) }
+        }
+        throwOnStatus(resp)
+        captureSessionCookie(resp, cookieName, store)
+        return resp.body<T>()
+    }
+
+    private suspend inline fun <reified T> authedPost(path: String, body: String): T {
+        val resp = client.post(url(path)) {
+            contentType(ContentType.Application.Json)
+            storedCookieHeader(cookieName, store)?.let { header(HttpHeaders.Cookie, it) }
+            setBody(body)
+        }
+        throwOnStatus(resp)
+        captureSessionCookie(resp, cookieName, store)
+        return resp.body<T>()
+    }
+
+    @Serializable
+private data class ChainDevicesResponse(val devices: List<ChainDevice> = emptyList())
+
+private suspend inline fun <reified T> post(path: String, body: String): T {
         val resp = client.post(url(path)) {
             contentType(ContentType.Application.Json)
             setBody(body)

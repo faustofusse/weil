@@ -11,6 +11,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +29,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -44,6 +47,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
+import io.github.alexzhirkevich.qrose.rememberQrCodePainter
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** Transition specs copied from the old finance app's NavDisplay setup. */
@@ -74,6 +80,7 @@ fun RootScreen(graph: AppGraph) {
             // animates that replace with the shared transition specs.
             val loggedIn = authState is AuthState.LoggedIn
             val accountsState = remember(graph.accounts) { AccountsState(graph.accounts) }
+            val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
             val backStack = remember(loggedIn) {
                 mutableStateListOf<Any>(if (loggedIn) HomeRoute else LoginRoute)
             }
@@ -98,6 +105,9 @@ fun RootScreen(graph: AppGraph) {
                             entry<LoginRoute> {
                                 LoginScreen(
                                     onSignIn = { graph.auth.signIn() },
+                                    onJoinChain = { id, token -> graph.auth.joinChain(id, token) },
+                                    chain = graph.chain,
+                                    scanner = { graph.scanner },
                                 )
                             }
                             entry<HomeRoute> {
@@ -115,6 +125,7 @@ fun RootScreen(graph: AppGraph) {
                             }
                             entry<ProfileRoute> {
                                 ProfileScreen(
+                                    chainState = chainState,
                                     onNavigateBack = { pop() },
                                     onSignOut = { scope.launch { graph.auth.signOut() } },
                                 )
@@ -158,6 +169,9 @@ private fun SplashScreen() {
 @Composable
 fun LoginScreen(
     onSignIn: suspend () -> Unit,
+    onJoinChain: suspend (chainId: String, token: String?) -> Unit,
+    chain: ChainRepository,
+    scanner: () -> QrScanner?,
 ) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -244,6 +258,222 @@ fun LoginScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
             )
+            Spacer(Modifier.height(8.dp))
+            PairingSection(
+                chain = chain,
+                scanner = scanner,
+                onJoinChain = onJoinChain,
+            )
+        }
+    }
+}
+
+/**
+ * Device-pairing entry points on the login screen: scan an invite QR shown by
+ * an already-signed-in device, or show a request QR for that device to scan.
+ */
+@Composable
+private fun PairingSection(
+    chain: ChainRepository,
+    scanner: () -> QrScanner?,
+    onJoinChain: suspend (chainId: String, token: String?) -> Unit,
+) {
+    var optionsOpen by remember { mutableStateOf(false) }
+    var request by remember { mutableStateOf<ChainRequest?>(null) }
+    var expiresAt by remember { mutableStateOf(0L) }
+    var status by remember { mutableStateOf("waiting") }
+    var localError by remember { mutableStateOf<String?>(null) }
+    var joining by remember { mutableStateOf(false) }
+    var joinAttempt by remember { mutableStateOf(0) }
+    var now by remember { mutableStateOf(epochMillis()) }
+    val scope = rememberCoroutineScope()
+
+    fun showRequestQr() {
+        scope.launch {
+            localError = null
+            try {
+                val created = chain.request()
+                request = created
+                expiresAt = epochMillis() + created.expiresIn * 1000
+                status = "waiting"
+            } catch (e: Throwable) {
+                localError = e.message ?: e.toString()
+            }
+        }
+    }
+
+    fun scanInvite() {
+        scope.launch {
+            localError = null
+            val qr = scanner()
+            if (qr == null) {
+                localError = "QR scanning is not available on this device"
+                return@launch
+            }
+            try {
+                val raw = qr.scan() ?: return@launch
+                val link = ChainLink.parse(raw, AuthConfig.SLUG)
+                when {
+                    link == null -> localError = "That QR code is not a device invite"
+                    link.action != ChainLink.Action.Join ->
+                        localError = "That QR code is a pairing request, not an invite"
+                    else -> {
+                        joining = true
+                        try {
+                            onJoinChain(link.id, link.token)
+                        } catch (_: PasskeyCancelled) {
+                        } catch (e: Throwable) {
+                            localError = e.message ?: e.toString()
+                        } finally {
+                            joining = false
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                localError = e.message ?: e.toString()
+            }
+        }
+    }
+
+    // One-second ticker while a request QR is on screen.
+    LaunchedEffect(request?.id) {
+        if (request == null) return@LaunchedEffect
+        while (true) {
+            now = epochMillis()
+            delay(1000)
+        }
+    }
+
+    // Poll the request until an existing device approves or it expires.
+    LaunchedEffect(request?.id) {
+        val current = request ?: return@LaunchedEffect
+        while (isActive) {
+            try {
+                when (chain.requestStatus(current.id).status) {
+                    "approved" -> {
+                        status = "approved"
+                        return@LaunchedEffect
+                    }
+                    "expired" -> {
+                        status = "expired"
+                        return@LaunchedEffect
+                    }
+                }
+            } catch (_: Throwable) {
+                // transient network errors — keep polling until expiry
+            }
+            delay(2000)
+        }
+    }
+
+    // Join (auto on first approval; retried from the Continue button).
+    LaunchedEffect(status, joinAttempt) {
+        val current = request ?: return@LaunchedEffect
+        if (status != "approved") return@LaunchedEffect
+        joining = true
+        try {
+            onJoinChain(current.id, null)
+            // Success flips the auth state; the back stack swaps to home.
+        } catch (_: PasskeyCancelled) {
+            // user aborted the ceremony — Continue retries
+        } catch (e: Throwable) {
+            localError = e.message ?: e.toString()
+        } finally {
+            joining = false
+        }
+    }
+
+    fun reset() {
+        request = null
+        status = "waiting"
+        localError = null
+    }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        localError?.let {
+            Text(
+                it,
+                color = LoginError,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        val current = request
+        when {
+            current == null && !optionsOpen -> {
+                TextButton(onClick = { optionsOpen = true }) {
+                    Text("Pair with an existing account")
+                }
+            }
+            current == null -> {
+                if (scanner() != null) {
+                    TextButton(onClick = { scanInvite() }, enabled = !joining) {
+                        Text(if (joining) "Joining…" else "Scan invite QR")
+                    }
+                }
+                TextButton(onClick = { showRequestQr() }, enabled = !joining) {
+                    Text("Show QR to the other device")
+                }
+                TextButton(onClick = {
+                    optionsOpen = false
+                    localError = null
+                }) {
+                    Text("Back")
+                }
+            }
+            status == "expired" -> {
+                Text(
+                    "Pairing request expired",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.7f),
+                )
+                TextButton(onClick = { showRequestQr() }) {
+                    Text("New QR")
+                }
+                TextButton(onClick = { reset() }) {
+                    Text("Cancel")
+                }
+            }
+            else -> {
+                if (status == "approved") {
+                    Text(
+                        if (joining) "Approved — creating your passkey…" else "Approved",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.7f),
+                    )
+                    if (!joining) {
+                        TextButton(onClick = { joinAttempt++ }) {
+                            Text("Continue")
+                        }
+                    }
+                } else {
+                    Image(
+                        painter = rememberQrCodePainter(current.url),
+                        contentDescription = "Pairing request QR code",
+                        modifier = Modifier
+                            .padding(horizontal = 48.dp, vertical = 8.dp)
+                            .background(Color.White, RoundedCornerShape(12.dp))
+                            .padding(10.dp),
+                    )
+                    Text(
+                        "Approve from the signed-in device: Profile → Approve device",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.55f),
+                        textAlign = TextAlign.Center,
+                    )
+                    val remaining = ((expiresAt - now) / 1000).coerceAtLeast(0)
+                    Text(
+                        "Expires in ${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.55f),
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                TextButton(onClick = { reset() }) {
+                    Text("Cancel")
+                }
+            }
         }
     }
 }

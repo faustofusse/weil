@@ -41,3 +41,37 @@ class ApiException(val code: Int, message: String) : Exception("HTTP $code: $mes
 class SessionExpired(message: String = "session expired") : Exception(message)
 
 data class Account(val id: String, val name: String)
+
+@Serializable
+data class ChainDevice(
+    val id: String,
+    val label: String? = null,
+    @SerialName("display_name") val displayName: String? = null,
+    val current: Boolean = false,
+    @SerialName("device_type") val deviceType: String? = null,
+    @SerialName("backed_up") val backedUp: Int? = null,
+    @SerialName("created_at") val createdAt: Long? = null,
+    @SerialName("last_used_at") val lastUsedAt: Long? = null,
+    @SerialName("revoked_at") val revokedAt: Long? = null,
+)
+
+@Serializable
+data class ChainInvite(
+    val url: String,
+    val id: String,
+    val token: String,
+    @SerialName("expires_in") val expiresIn: Long = 0,
+)
+
+@Serializable
+data class ChainRequest(
+    val url: String,
+    val id: String,
+    @SerialName("expires_in") val expiresIn: Long = 0,
+)
+
+@Serializable
+data class ChainRequestStatus(
+    val status: String,
+    @SerialName("join_url") val joinUrl: String? = null,
+)
