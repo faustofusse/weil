@@ -40,7 +40,7 @@ async function main() {
           e.to_email,
           e.subject ?? null,
           e.body_text ?? null,
-          e.received_at < 1e12 ? e.received_at : Math.round(e.received_at / 1000),
+          e.received_at < 1e12 ? e.received_at * 1000 : e.received_at,
         ],
       });
       if (Number(result.rowsAffected) > 0) inserted++;

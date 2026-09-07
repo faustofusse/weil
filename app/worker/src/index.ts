@@ -69,7 +69,7 @@ export default {
       const date = /^date:\s*(.*)$/im.exec(headers)?.[1]?.trim() ?? new Date().toISOString();
 
       const id = await sha256Hex(`${message.from}|${to}|${date}|${message.headers.get('subject') ?? ''}`);
-      const receivedAt = Math.floor(Date.now() / 1000);
+      const receivedAt = Date.now();
 
       ctx.waitUntil((async () => {
         const db = await platformClient(env, user.turso_db_name, user.turso_db_hostname);

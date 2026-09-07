@@ -32,4 +32,5 @@ const val SCHEMA_SQL =
     "subject text," +
     "body_text text," +
     "received_at integer not null);" +
-    "create index if not exists idx_emails_received on emails(received_at desc);"
+    "create index if not exists idx_emails_received on emails(received_at desc);" +
+    "update emails set received_at = received_at * 1000 where received_at < 1000000000000;"
