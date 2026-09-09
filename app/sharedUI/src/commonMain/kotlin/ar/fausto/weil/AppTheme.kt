@@ -13,8 +13,8 @@ enum class AppTheme(val displayName: String, val colorScheme: ColorScheme) {
     Weil(
         displayName = "Weil",
         colorScheme = darkColorScheme(
-            primary = Color(0xFFD0BCFF),
-            onPrimary = Color(0xFF311B92),
+            primary = Color(0xFFF2B8B5),
+            onPrimary = Color(0xFF601410),
             secondary = Color(0xFFCCC2DC),
             tertiary = Color(0xFFEFB8C8),
             background = Color(0xFF141218),

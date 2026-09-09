@@ -49,6 +49,7 @@ data class ChainDevice(
     @SerialName("display_name") val displayName: String? = null,
     val current: Boolean = false,
     @SerialName("device_type") val deviceType: String? = null,
+    @SerialName("user_agent") val userAgent: String? = null,
     @SerialName("backed_up") val backedUp: Int? = null,
     @SerialName("created_at") val createdAt: Long? = null,
     @SerialName("last_used_at") val lastUsedAt: Long? = null,

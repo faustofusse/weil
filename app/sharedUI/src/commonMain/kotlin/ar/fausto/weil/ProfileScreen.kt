@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -34,10 +32,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.alexzhirkevich.qrose.options.QrBackground
+import io.github.alexzhirkevich.qrose.options.QrBrush
+import io.github.alexzhirkevich.qrose.options.solid
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -58,6 +62,15 @@ fun ProfileScreen(
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Navigate back")
                     }
                 },
+                actions = {
+                    IconButton(onClick = onSignOut) {
+                        Icon(
+                            Icons.Filled.Logout,
+                            contentDescription = "Sign out",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                },
             )
         },
     ) { innerPadding ->
@@ -71,17 +84,6 @@ fun ProfileScreen(
             AccountEmailSection(chain)
             Spacer(Modifier.height(24.dp))
             ChainSection(chainState)
-            Spacer(Modifier.height(32.dp))
-            Button(
-                onClick = onSignOut,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Sign out")
-            }
         }
     }
 }
@@ -245,7 +247,15 @@ private fun InviteQrCard(
             }
         } else {
             Image(
-                painter = rememberQrCodePainter(invite.url),
+                painter = rememberQrCodePainter(invite.url) {
+                    colors {
+                        dark = QrBrush.solid(Color.Black)
+                        light = QrBrush.solid(Color.White)
+                    }
+                    background {
+                        fill = SolidColor(Color.White)
+                    }
+                },
                 contentDescription = "Pairing QR code",
                 modifier = Modifier
                     .fillMaxWidth()
@@ -283,6 +293,15 @@ private fun ChainDeviceRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
+            val userAgent = device.userAgent
+            if (userAgent != null) {
+                Text(
+                    userAgent,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(
                 buildString {
                     append(chainDeviceName(device))
@@ -291,6 +310,7 @@ private fun ChainDeviceRow(
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         if (device.revokedAt == null) {
