@@ -22,6 +22,31 @@ fun formatTimestamp(timestamp: Long): String {
     return "$year-$month-$day $hour:$minute:$second"
 }
 
+/** "HH:mm" (24h) for secondary lines under a day header. */
+fun timeShort(timestamp: Long): String {
+    val dt = Instant.fromEpochMilliseconds(timestamp)
+        .toLocalDateTime(TimeZone.currentSystemDefault())
+    return dt.hour.toString().padStart(2, '0') + ":" + dt.minute.toString().padStart(2, '0')
+}
+
+/** "Today" / "Yesterday" / "Mon 8 Sep" for journal and register day headers. */
+fun dayGroupLabel(timestamp: Long): String {
+    val tz = TimeZone.currentSystemDefault()
+    val date = Instant.fromEpochMilliseconds(timestamp).toLocalDateTime(tz).date
+    val today = Instant.fromEpochMilliseconds(epochMillis()).toLocalDateTime(tz).date
+    return when {
+        date == today -> "Today"
+        today.toEpochDays() == date.toEpochDays() - 1 -> "Yesterday"
+        else -> {
+            val week = date.dayOfWeek.name.lowercase().take(3)
+                .replaceFirstChar { it.uppercase() }
+            val month = date.month.name.lowercase().take(3)
+                .replaceFirstChar { it.uppercase() }
+            "$week ${date.dayOfMonth} $month"
+        }
+    }
+}
+
 /** "YYYY-MM-DD" for user-facing input of the transaction date. */
 fun dateInputOf(timestamp: Long): String {
     val dt = Instant.fromEpochMilliseconds(timestamp)

@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package ar.fausto.weil
 
 import androidx.compose.foundation.clickable
@@ -10,16 +12,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -37,8 +44,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
-/** Journal of transactions, newest first, with indented postings per header. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Journal of transactions, newest first, grouped under day headers. */
 @Composable
 fun JournalScreen(
     ledger: TransactionsRepository,
@@ -128,7 +134,11 @@ fun JournalScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onNavigateToNew) {
+            FloatingActionButton(
+                onClick = onNavigateToNew,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
                 Icon(Icons.Filled.Add, contentDescription = "New transaction")
             }
         },
@@ -142,7 +152,11 @@ fun JournalScreen(
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = 16.dp,
+                    vertical = 8.dp,
+                ),
             ) {
                 error?.let { err ->
                     item(key = "error") {
@@ -156,29 +170,61 @@ fun JournalScreen(
                 }
                 if (items.isEmpty() && !isSyncing && error == null) {
                     item(key = "empty") {
-                        Text(
-                            "No transactions yet — press + to record one",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp),
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                "No transactions yet",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Tap + to record one",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                var lastDay: String? = null
+                for (tx in items) {
+                    val day = dayGroupLabel(tx.date)
+                    if (day != lastDay) {
+                        lastDay = day
+                        item(key = "day-$day") {
+                            Text(
+                                day,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                            )
+                        }
+                    }
+                    item(key = tx.id) {
+                        TransactionCard(
+                            tx = tx,
+                            paths = paths,
+                            onOpen = { onNavigateToEdit(tx.id) },
                         )
                     }
                 }
-                itemsIndexed(items, key = { _, it -> it.id }) { _, tx ->
-                    TransactionCard(
-                        tx = tx,
-                        paths = paths,
-                        onOpen = { id -> onNavigateToEdit(id) },
-                    )
-                }
                 if (isLoadingMore) {
                     item(key = "loading") {
-                        Text(
-                            "Loading more…",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp),
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
                     }
                 }
             }
@@ -196,65 +242,97 @@ suspend fun accountPaths(accounts: AccountsRepository): Map<String, String> =
 private fun TransactionCard(
     tx: Transaction,
     paths: Map<String, String>,
-    onOpen: (id: String) -> Unit,
+    onOpen: () -> Unit,
 ) {
-    Column(
+    Card(
+        onClick = onOpen,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onOpen(tx.id) }
-            .padding(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            .padding(vertical = 4.dp),
     ) {
-        Text(
-            formatTimestamp(tx.date) + "  " + tx.payee,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        tx.note?.let {
-            if (it.isNotBlank()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        tx.payee,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    tx.note?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 Text(
-                    it,
+                    timeShort(tx.date),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 8.dp),
                 )
             }
-        }
-        tx.postings.forEach { posting ->
-            Row(modifier = Modifier.padding(start = 16.dp)) {
+            Spacer(Modifier.height(4.dp))
+            // Two lines of posting detail, "+n more" below — a psychic
+            // 5-split stays one glance-tall card.
+            val shown = tx.postings.take(2)
+            for (posting in shown) {
+                Row(modifier = Modifier.padding(top = 2.dp)) {
+                    Text(
+                        paths[posting.accountId] ?: posting.accountId,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        formatMinorUnits(posting.amountMinor),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = amountColor(posting.amountMinor),
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
+                }
+            }
+            val hidden = tx.postings.size - shown.size
+            if (hidden > 0) {
                 Text(
-                    paths[posting.accountId] ?: posting.accountId,
-                    style = MaterialTheme.typography.bodyMedium,
+                    "+$hidden more",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    formatMinorUnits(posting.amountMinor),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (posting.amountMinor >= 0) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    modifier = Modifier.padding(start = 12.dp),
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
+            // per-commodity totals row when a transaction mixes commodities
+            val totals = tx.postings.groupBy({ it.commodity }, { it.amountMinor })
+                .mapValues { (_, amounts) -> amounts.sum() }
+            if (totals.size > 1) {
+                Row(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    totals.forEach { (commodity, amount) ->
+                        Text(
+                            "$commodity ${formatMinorUnits(amount)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
         }
-        // per-commodity totals row when a transaction mixes commodities
-        val totals = tx.postings.groupBy({ it.commodity }, { it.amountMinor })
-            .mapValues { (_, amounts) -> amounts.sum() }
-        if (totals.size > 1) {
-            Text(
-                formatTotals(totals),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, top = 2.dp),
-            )
-        }
-        Spacer(Modifier.height(4.dp))
     }
+    // Thin rule between consecutive day blocks is the day header; nothing
+    // extra needed between cards — the Card shape separates them.
+    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
 }

@@ -151,6 +151,42 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             }
         }
 
+    /** One transaction with its postings, or null when unknown. */
+    suspend fun get(id: String): Transaction? = db.use { d ->
+        val safe = quoteList(listOf(id))
+        val tx = d.query(
+            "select id, date, payee, note, created_at from ledger_transactions where id in ($safe)",
+            null,
+        ) { rows ->
+            rows.filter { it.size >= 5 }.map { row ->
+                Transaction(
+                    id = row[0]?.toString() ?: "",
+                    date = (row[1] as? Number)?.toLong() ?: 0L,
+                    payee = row[2]?.toString() ?: "",
+                    note = row[3]?.toString(),
+                    createdAt = (row[4] as? Number)?.toLong() ?: 0L,
+                    postings = emptyList(),
+                )
+            }.firstOrNull()
+        } ?: return@use null
+        tx.copy(
+            postings = d.query(
+                "select id, transaction_id, account_id, amount_minor, commodity from postings" +
+                    " where transaction_id in ($safe)",
+                null,
+            ) { rows ->
+                rows.filter { it.size >= 5 }.mapNotNull { row ->
+                    val postingId = row[0]?.toString() ?: return@mapNotNull null
+                    val txId = row[1]?.toString() ?: return@mapNotNull null
+                    val accountId = row[2]?.toString() ?: return@mapNotNull null
+                    val amount = (row[3] as? Number)?.toLong() ?: return@mapNotNull null
+                    val commodity = row[4]?.toString() ?: return@mapNotNull null
+                    Posting(postingId, txId, accountId, amount, commodity)
+                }.toList()
+            },
+        )
+    }
+
     /**
      * Register for an account (optionally a whole subtree via the account
      * tree): postings newest first with running balances computed by walking

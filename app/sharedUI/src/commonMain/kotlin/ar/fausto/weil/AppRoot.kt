@@ -26,6 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -89,6 +91,7 @@ fun RootScreen(graph: AppGraph) {
                         LedgerState(graph.accounts, graph.ledger)
                     }
                     val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
+                    val snackbarHostState = remember(loggedIn) { SnackbarHostState() }
                     val backStack = remember(loggedIn) {
                         mutableStateListOf<Any>(if (loggedIn) HomeRoute else LoginRoute)
                     }
@@ -101,10 +104,12 @@ fun RootScreen(graph: AppGraph) {
                         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
                     }
 
+                    Feedback.host = snackbarHostState
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background,
                     ) {
+                        Box {
                         NavDisplay(
                             backStack = backStack,
                             onBack = { pop() },
@@ -120,6 +125,7 @@ fun RootScreen(graph: AppGraph) {
                                 entry<HomeRoute> {
                                     HomeScreen(
                                         ledgerState = ledgerState,
+                                        onNavigateToNew = { navigate(TransactionNewRoute(null)) },
                                         onNavigateToProfile = { navigate(ProfileRoute) },
                                         onNavigateToNotifications = { navigate(NotificationsRoute) },
                                         onNavigateToEmails = { navigate(EmailsRoute) },
@@ -132,15 +138,16 @@ fun RootScreen(graph: AppGraph) {
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
                                         onNavigateBack = { pop() },
-                                        onNavigateToNew = { navigate(TransactionNewRoute) },
+                                        onNavigateToNew = { navigate(TransactionNewRoute()) },
                                         onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
                                     )
                                 }
-                                entry<TransactionNewRoute> {
+                                entry<TransactionNewRoute> { route ->
                                     TransactionEditScreen(
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
                                         editId = null,
+                                        prefillAccountId = route.accountId,
                                         onSaved = { pop() },
                                         onNavigateBack = { pop() },
                                     )
@@ -160,6 +167,7 @@ fun RootScreen(graph: AppGraph) {
                                         accountId = route.id,
                                         onNavigateBack = { pop() },
                                         onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
+                                        onNavigateToNew = { navigate(TransactionNewRoute(route.id)) },
                                     )
                                 }
                                 entry<EmailsRoute> {
@@ -196,6 +204,11 @@ fun RootScreen(graph: AppGraph) {
                                     (slideOutHorizontally(targetOffsetX = slideIn) + fadeOut())
                             },
                         )
+                        SnackbarHost(
+                            hostState = snackbarHostState,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+                        }
                     }
                 }
             }

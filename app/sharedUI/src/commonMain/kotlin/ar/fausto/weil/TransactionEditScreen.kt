@@ -1,6 +1,8 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package ar.fausto.weil
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,20 +10,30 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,21 +43,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
 /**
  * Create/edit a balanced transaction. Ledger-style: one posting may leave its
- * amount blank ("auto"), absorbing the per-commodity residual; Save is
+ * amount blank ("auto"), absorbing the per-commodity residual; Record is
  * enabled only when every commodity balances to zero.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionEditScreen(
     ledger: TransactionsRepository,
     accounts: AccountsRepository,
     editId: String?,
+    prefillAccountId: String? = null,
     onSaved: () -> Unit,
     onNavigateBack: () -> Unit,
 ) {
@@ -53,9 +66,10 @@ fun TransactionEditScreen(
     var payee by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var drafts by remember {
-        mutableStateOf(listOf(DraftPosting(null, ""), DraftPosting(null, "")))
+        mutableStateOf(listOf(DraftPosting(null, ""), DraftPosting(prefillAccountId, "")))
     }
     var pickingFor by remember { mutableStateOf<Int?>(null) }
+    var pickingDate by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var paths by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -70,8 +84,7 @@ fun TransactionEditScreen(
     LaunchedEffect(editId) {
         if (editId != null) {
             try {
-                val stored = ledger.page(limit = Int.MAX_VALUE)
-                    .firstOrNull { it.id == editId } ?: return@LaunchedEffect
+                val stored = ledger.get(editId) ?: return@LaunchedEffect
                 dateText = dateInputOf(stored.date)
                 payee = stored.payee
                 note = stored.note.orEmpty()
@@ -86,6 +99,7 @@ fun TransactionEditScreen(
     }
 
     Scaffold(
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text(if (editId == null) "New transaction" else "Edit transaction") },
@@ -101,8 +115,24 @@ fun TransactionEditScreen(
                                 busy = true
                                 scope.launch {
                                     try {
+                                        val stored = ledger.get(editId)
+                                        val draftsBackup = stored?.postings?.map {
+                                            DraftPosting(
+                                                it.accountId,
+                                                formatMinorUnits(it.amountMinor),
+                                                it.commodity,
+                                            )
+                                        }.orEmpty()
                                         ledger.delete(editId)
                                         onSaved()
+                                        Feedback.undoable("Transaction deleted") {
+                                            ledger.add(
+                                                stored?.date ?: epochMillis(),
+                                                stored?.payee.orEmpty().ifBlank { "(deleted)" },
+                                                stored?.note,
+                                                draftsBackup,
+                                            )
+                                        }
                                     } catch (e: Throwable) {
                                         if (e is kotlinx.coroutines.CancellationException) throw e
                                         error = e.message ?: e.toString()
@@ -115,6 +145,82 @@ fun TransactionEditScreen(
                 },
             )
         },
+        bottomBar = {
+            // Sticky footer: the record button stays visible over the
+            // keyboard, so validation feedback never scrolls away.
+            Surface(tonalElevation = 3.dp) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // Keep clear of the gesture/system nav bar when the
+                        // keyboard is closed.
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    val residuals = residualsOf(drafts)
+                    if (residuals.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            residuals.forEach { (commodity, residual) ->
+                                Text(
+                                    if (residual == 0L) {
+                                        "$commodity ✓"
+                                    } else {
+                                        "$commodity off by ${formatMinorUnits(residual)}"
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (residual == 0L) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.error
+                                    },
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                    }
+                    error?.let {
+                        Text(
+                            it,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                    }
+                    Button(
+                        onClick = {
+                            val date = parseDateInput(dateText)
+                            if (date == null) {
+                                error = "Invalid date: $dateText"
+                                return@Button
+                            }
+                            busy = true
+                            error = null
+                            scope.launch {
+                                try {
+                                    if (editId == null) {
+                                        ledger.add(date, payee, note.ifBlank { null }, drafts)
+                                    } else {
+                                        ledger.update(editId, date, payee, note.ifBlank { null }, drafts)
+                                    }
+                                    onSaved()
+                                } catch (e: Throwable) {
+                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                    error = e.message ?: e.toString()
+                                    busy = false
+                                }
+                            }
+                        },
+                        enabled = !busy && payee.isNotBlank() && isValidTransaction(drafts),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(if (editId == null) "Record" else "Save")
+                    }
+                }
+            }
+        },
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -125,17 +231,20 @@ fun TransactionEditScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OutlinedTextField(
-                value = dateText,
-                onValueChange = { dateText = it },
-                label = { Text("Date (YYYY-MM-DD)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
                 value = payee,
                 onValueChange = { payee = it },
                 label = { Text("Payee / description") },
                 singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = dateText,
+                onValueChange = { dateText = it },
+                label = { Text("Date (YYYY-MM-DD)") },
+                singleLine = true,
+                trailingIcon = {
+                    TextButton(onClick = { pickingDate = true }) { Text("Pick") }
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
@@ -163,67 +272,33 @@ fun TransactionEditScreen(
             TextButton(onClick = { drafts = drafts + DraftPosting(null, "") }) {
                 Text("+ add split")
             }
+        }
+    }
 
-            val residuals = residualsOf(drafts)
-            if (residuals.isNotEmpty()) {
-                Column {
-                    residuals.forEach { (commodity, residual) ->
-                        Text(
-                            if (residual == 0L) {
-                                "$commodity ✓"
-                            } else {
-                                "$commodity off by ${formatMinorUnits(residual)}"
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (residual == 0L) {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            } else {
-                                MaterialTheme.colorScheme.error
-                            },
-                        )
-                    }
-                }
-            }
-
-            error?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-            }
-
-            Button(
-                onClick = {
-                    val date = parseDateInput(dateText)
-                    if (date == null) {
-                        error = "invalid date: $dateText"
-                        return@Button
-                    }
-                    busy = true
-                    error = null
-                    scope.launch {
-                        try {
-                            if (editId == null) {
-                                ledger.add(date, payee, note.ifBlank { null }, drafts)
-                            } else {
-                                ledger.update(editId, date, payee, note.ifBlank { null }, drafts)
-                            }
-                            onSaved()
-                        } catch (e: Throwable) {
-                            if (e is kotlinx.coroutines.CancellationException) throw e
-                            error = e.message ?: e.toString()
-                        } finally {
-                            busy = false
-                        }
-                    }
-                },
-                enabled = !busy && payee.isNotBlank() && isValidTransaction(drafts),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (editId == null) "Record" else "Save")
-            }
+    if (pickingDate) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = parseDateInput(dateText) ?: epochMillis(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickingDate = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { dateText = dateInputOf(it) }
+                        pickingDate = false
+                    },
+                ) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickingDate = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = pickerState)
         }
     }
 
     pickingFor?.let { index ->
-        AccountPickerDialog(
+        AccountPickerSheet(
             tree = accountTree,
             title = "Choose account",
             exclude = emptySet(),
@@ -254,47 +329,50 @@ private fun PostingRow(
     onRemove: () -> Unit,
     canRemove: Boolean,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onAccount, modifier = Modifier.weight(1.6f)) {
-            Text(
-                paths[draft.accountId] ?: "Choose account ${index + 1}",
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        OutlinedTextField(
-            value = draft.amountText,
-            onValueChange = onAmount,
-            label = { Text(if (draft.amountText.isBlank()) "auto" else "Amount") },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-        )
-        OutlinedTextField(
-            value = draft.commodity,
-            onValueChange = onCommodity,
-            label = { Text("Ccy") },
-            singleLine = true,
-            modifier = Modifier.width(72.dp),
-        )
-        if (canRemove) {
-            IconButton(onClick = onRemove) {
-                Icon(Icons.Filled.Close, contentDescription = "Remove posting")
-            }
-        } else {
-            Spacer(Modifier.width(48.dp))
-        }
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        QUICK_COMMODITIES.forEach { chip ->
-            TextButton(onClick = { onCommodity(chip) }) {
+    Column {
+        // Row A: the account selector takes the whole line — colon paths
+        // finally fit.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(
+                onClick = onAccount,
+                modifier = Modifier.weight(1f),
+            ) {
                 Text(
-                    chip,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (draft.commodity.uppercase() == chip) {
-                        MaterialTheme.colorScheme.primary
+                    paths[draft.accountId] ?: "Choose account ${index + 1}",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = if (draft.accountId != null) {
+                        MaterialTheme.colorScheme.onSurface
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
+                )
+            }
+            if (canRemove) {
+                IconButton(onClick = onRemove) {
+                    Icon(Icons.Filled.Close, contentDescription = "Remove posting")
+                }
+            }
+        }
+        // Row B: amount + commodity chips, numeric keyboard for the amount.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = 4.dp),
+        ) {
+            OutlinedTextField(
+                value = draft.amountText,
+                onValueChange = onAmount,
+                label = { Text(if (draft.amountText.isBlank()) "Amount (auto)" else "Amount") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.weight(1f),
+            )
+            QUICK_COMMODITIES.forEach { chip ->
+                FilterChip(
+                    selected = draft.commodity.uppercase() == chip,
+                    onClick = { onCommodity(chip) },
+                    label = { Text(chip) },
+                    modifier = Modifier.padding(start = 6.dp),
                 )
             }
         }

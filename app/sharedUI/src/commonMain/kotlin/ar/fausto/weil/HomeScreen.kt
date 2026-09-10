@@ -1,8 +1,14 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package ar.fausto.weil
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,27 +26,33 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     ledgerState: LedgerState,
@@ -47,6 +60,7 @@ fun HomeScreen(
     onNavigateToNotifications: () -> Unit,
     onNavigateToEmails: () -> Unit,
     onNavigateToJournal: () -> Unit,
+    onNavigateToNew: () -> Unit,
     onNavigateToAccount: (id: String) -> Unit,
 ) {
     Scaffold(
@@ -69,23 +83,42 @@ fun HomeScreen(
                 },
             )
         },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onNavigateToNew,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "New transaction")
+            }
+        },
     ) { innerPadding ->
-        Column(
+        PullToRefreshBox(
+            isRefreshing = ledgerState.busy,
+            onRefresh = { ledgerState.refresh() },
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
+                .padding(innerPadding),
         ) {
-            NetWorthHeader(ledgerState)
-            Spacer(Modifier.height(12.dp))
-            AccountsSection(ledgerState, onNavigateToAccount = onNavigateToAccount)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+            ) {
+                NetWorthHeader(ledgerState)
+                Spacer(Modifier.height(12.dp))
+                AccountsSection(
+                    ledgerState,
+                    onNavigateToAccount = onNavigateToAccount,
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun NetWorthHeader(state: LedgerState) {
-    val netWorth = mwcamenteHash(state)
+    val netWorth = netWorthOf(state)
     Column {
         Text(
             "Net worth",
@@ -105,7 +138,10 @@ private fun NetWorthHeader(state: LedgerState) {
             )
         }
         if (state.busy) {
-            Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp,
@@ -121,10 +157,12 @@ private fun NetWorthHeader(state: LedgerState) {
     }
 }
 
-private fun mwcamenteHash(state: LedgerState): Map<String, Long> {
+private fun netWorthOf(state: LedgerState): Map<String, Long> {
     val acc = mutableMapOf<String, Long>()
     for (root in state.tree) {
-        if (root.account.type != AccountType.Asset && root.account.type != AccountType.Liability) continue
+        if (root.account.type != AccountType.Asset && root.account.type != AccountType.Liability) {
+            continue
+        }
         for ((c, v) in state.totals[root.account.id].orEmpty()) {
             acc[c] = (acc[c] ?: 0L) + v
         }
@@ -140,52 +178,70 @@ private fun AccountsSection(
     if (!state.loaded) {
         LaunchedEffect(Unit) { state.refresh() }
     }
-    var expandedIds by remember { mutableStateOf(setOf<String>()) }
     var adding by remember { mutableStateOf(false) }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            "Accounts",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = { adding = true }) {
-            Icon(Icons.Filled.Add, contentDescription = "Add account")
-        }
-    }
-
     if (state.tree.isEmpty() && !state.busy && state.error == null) {
-        Text(
-            "No accounts yet — add one below",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 8.dp),
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                "No accounts yet",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = { adding = true }) {
+                Text("Add your first account")
+            }
+            Text(
+                "Long-press any account later to rename, move or delete it",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     } else {
         val rows = buildList {
             for (type in AccountType.entries) {
                 val roots = state.tree.filter { it.account.type == type }
                 if (roots.isEmpty()) continue
                 add(TypeHeader(type))
-                addSection(roots, expandedIds, 0)
+                addSection(roots, state.expandedIds, 0)
             }
         }
         LazyColumn(modifier = Modifier.fillMaxWidth()) {
             items(rows, key = { it.key }) { row ->
                 when (row) {
-                    is TypeHeader -> Text(
-                        row.label,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
-                    )
+                    is TypeHeader -> {
+                        val perType = typeSum(state, row.type)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp, bottom = 2.dp),
+                        ) {
+                            Text(
+                                row.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                formatTotals(perType),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                    }
                     is NodeRow -> NodeRowView(
                         state = state,
                         row = row,
-                        expandedIds = expandedIds,
-                        onToggle = { id ->
-                            expandedIds = if (id in expandedIds) expandedIds - id else expandedIds + id
-                        },
+                        onToggle = { state.toggleExpanded(it) },
                         onOpen = { id -> onNavigateToAccount(id) },
                     )
                 }
@@ -196,6 +252,16 @@ private fun AccountsSection(
     if (adding) {
         AddAccountDialog(state = state, onDismiss = { adding = false })
     }
+}
+
+private fun typeSum(state: LedgerState, type: AccountType): Map<String, Long> {
+    val acc = mutableMapOf<String, Long>()
+    state.tree.filter { it.account.type == type }.forEach { root ->
+        for ((c, v) in state.totals[root.account.id].orEmpty()) {
+            acc[c] = (acc[c] ?: 0L) + v
+        }
+    }
+    return acc
 }
 
 private fun MutableList<TreeRow>.addSection(
@@ -228,54 +294,172 @@ data class NodeRow(val node: AccountNode, val depth: Int) : TreeRow {
 private fun NodeRowView(
     state: LedgerState,
     row: NodeRow,
-    expandedIds: Set<String>,
     onToggle: (id: String) -> Unit,
     onOpen: (id: String) -> Unit,
 ) {
-    var editing by remember { mutableStateOf(false) }
     val node = row.node
-    val hasChildren = node.children.isNotEmpty()
+    var actions by remember { mutableStateOf(false) }
+    val expanded = node.account.id in state.expandedIds
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 0f else -90f,
+        animationSpec = tween(180),
+        label = "chevron",
+    )
+    // Deep trees don't run off-screen: depth padding is capped and any deeper
+    // level keeps the max indent.
+    val indent = row.depth.coerceAtMost(6) * 14
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .combinedClickable(
+                onClick = { onOpen(node.account.id) },
+                onLongClick = { actions = true },
+            )
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Spacer(Modifier.width((row.depth * 16).dp))
-        if (hasChildren) {
-            IconButton(onClick = { onToggle(node.account.id) }) {
-                Icon(
-                    if (node.account.id in expandedIds) Icons.Filled.Remove else Icons.Filled.Add,
-                    contentDescription = if (node.account.id in expandedIds) "Collapse" else "Expand",
-                )
+        Spacer(Modifier.width(indent.dp))
+        Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+            if (node.children.isNotEmpty()) {
+                IconButton(onClick = { onToggle(node.account.id) }) {
+                    Icon(
+                        Icons.Filled.ExpandMore,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        modifier = Modifier.graphicsLayer(rotationZ = rotation),
+                    )
+                }
             }
-        } else {
-            Spacer(Modifier.width(48.dp))
         }
         Text(
             node.account.name,
             style = MaterialTheme.typography.bodyLarge,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .weight(1f)
-                .clickable { onOpen(node.account.id) }
-                .padding(vertical = 6.dp),
+            modifier = Modifier.weight(1f),
         )
-        Text(
-            formatTotals(state.totals[node.account.id].orEmpty()),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 8.dp),
-        )
-        TextButton(onClick = { editing = true }) {
-            Text("Edit")
+        Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
+            Text(
+                formatTotals(state.totals[node.account.id].orEmpty()),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
-    if (editing) {
-        EditAccountDialog(state = state, account = node.account, onDismiss = { editing = false })
+    if (actions) {
+        AccountActionsSheet(
+            state = state,
+            account = node.account,
+            onDismiss = { actions = false },
+        )
+    }
+}
+
+/** Long-press actions: rename, move under another same-type account, delete. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AccountActionsSheet(
+    state: LedgerState,
+    account: Account,
+    onDismiss: () -> Unit,
+) {
+    var renaming by remember { mutableStateOf(false) }
+    var moving by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf(account.name) }
+    val scope = rememberCoroutineScope()
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.padding(bottom = 16.dp)) {
+            Text(
+                account.name,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            ListItem(
+                headlineContent = { Text("Rename") },
+                modifier = Modifier.clickable {
+                    onDismiss()
+                    renaming = true
+                },
+            )
+            ListItem(
+                headlineContent = { Text("Move under…") },
+                modifier = Modifier.clickable {
+                    onDismiss()
+                    moving = true
+                },
+            )
+            ListItem(
+                headlineContent = {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                },
+                modifier = Modifier.clickable {
+                    onDismiss()
+                    val node = findNode(state.tree, account.id)
+                    scope.launch {
+                        try {
+                            state.deleteAccount(account.id)
+                            Feedback.undoable(
+                                "Account “${account.name}” deleted",
+                            ) {
+                                state.addAccount(
+                                    account.name,
+                                    account.type,
+                                    account.parentId,
+                                )
+                            }
+                        } catch (e: Throwable) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Feedback.undoable(
+                                e.message ?: e.toString(),
+                                actionLabel = "OK",
+                            ) {}
+                        }
+                    }
+                },
+            )
+        }
+    }
+    if (renaming) {
+        AlertDialog(
+            onDismissRequest = { renaming = false },
+            title = { Text("Rename") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        state.rename(account.id, name.trim())
+                        renaming = false
+                    },
+                    enabled = name.isNotBlank() && !state.busy,
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { renaming = false }) { Text("Cancel") }
+            },
+        )
+    }
+    if (moving) {
+        val node = findNode(state.tree, account.id)
+        AccountPickerSheet(
+            tree = state.tree.filter { it.account.type == account.type },
+            title = "Move under",
+            exclude = buildSet {
+                add(account.id)
+                node?.selfAndDescendants?.forEach { add(it.account.id) }
+            },
+            onDismiss = { moving = false },
+        ) { picked ->
+            state.reparent(account.id, picked.account.id)
+            moving = false
+        }
     }
 }
 
@@ -366,7 +550,7 @@ private fun AddAccountDialog(state: LedgerState, onDismiss: () -> Unit) {
     )
 
     if (pickingParent) {
-        AccountPickerDialog(
+        AccountPickerSheet(
             tree = state.tree,
             title = "Choose parent",
             exclude = emptySet(),
@@ -374,72 +558,6 @@ private fun AddAccountDialog(state: LedgerState, onDismiss: () -> Unit) {
         ) { picked ->
             parent = picked
             pickingParent = false
-        }
-    }
-}
-
-@Composable
-private fun EditAccountDialog(state: LedgerState, account: Account, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf(account.name) }
-    var pickingParent by remember { mutableStateOf(false) }
-    var excluded by remember(account.id) { mutableStateOf(setOf(account.id)) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit account") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Name") },
-                    singleLine = true,
-                )
-                Spacer(Modifier.height(8.dp))
-                TextButton(
-                    onClick = {
-                        val node = findNode(state.tree, account.id)
-                        excluded = buildSet {
-                            add(account.id)
-                            node?.selfAndDescendants?.forEach { add(it.account.id) }
-                        }
-                        pickingParent = true
-                    },
-                ) {
-                    Text(
-                        if (account.parentId == null) {
-                            "Move to a parent"
-                        } else {
-                            "Move under: ${findNode(state.tree, account.parentId!!)?.path ?: account.parentId}"
-                        },
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    state.rename(account.id, name.trim())
-                    onDismiss()
-                },
-                enabled = name.isNotBlank() && !state.busy,
-            ) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
-
-    if (pickingParent) {
-        AccountPickerDialog(
-            tree = state.tree.filter { it.account.type == account.type },
-            title = "Move under",
-            exclude = excluded,
-            onDismiss = { pickingParent = false },
-        ) { picked ->
-            state.reparent(account.id, picked.account.id)
-            pickingParent = false
-            onDismiss()
         }
     }
 }

@@ -1,6 +1,7 @@
 package ar.fausto.weil
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,9 +10,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,11 +31,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
@@ -44,6 +51,7 @@ fun AccountDetailScreen(
     accountId: String,
     onNavigateBack: () -> Unit,
     onNavigateToEdit: (id: String) -> Unit,
+    onNavigateToNew: () -> Unit,
 ) {
     val ledger = ledgerState.ledger
     val accounts = ledgerState.accounts
@@ -54,6 +62,7 @@ fun AccountDetailScreen(
     var hasMore by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
 
     suspend fun loadAll() {
         node = ledgerState.tree
@@ -108,6 +117,15 @@ fun AccountDetailScreen(
         }
     }
 
+    // Consistent with the journal: infinite scroll instead of a manual button.
+    LaunchedEffect(listState, hasMore, entries.size) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .distinctUntilChanged()
+            .collect { last ->
+                if (last != null && last >= entries.size - 5) loadMore()
+            }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -124,6 +142,15 @@ fun AccountDetailScreen(
                     }
                 },
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onNavigateToNew,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "New transaction")
+            }
         },
     ) { innerPadding ->
         Column(
@@ -146,7 +173,10 @@ fun AccountDetailScreen(
                     Text("Include sub-accounts", style = MaterialTheme.typography.bodyMedium)
                 }
             }
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            ) {
                 if (entries.isEmpty() && !loadingMore && error == null) {
                     item(key = "empty") {
                         Text(
@@ -163,10 +193,15 @@ fun AccountDetailScreen(
                         onOpen = { id -> onNavigateToEdit(id) },
                     )
                 }
-                if (hasMore) {
-                    item(key = "more") {
-                        TextButton(onClick = { loadMore() }, enabled = !loadingMore) {
-                            Text(if (loadingMore) "Loading…" else "Load more")
+                if (loadingMore) {
+                    item(key = "loading") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         }
                     }
                 }
@@ -180,31 +215,35 @@ private fun RegisterRowView(
     entry: RegisterEntry,
     onOpen: (id: String) -> Unit,
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onOpen(entry.posting.transactionId) }
-            .padding(vertical = 6.dp),
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            formatTimestamp(entry.date) + "  " + entry.payee,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Row {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                entry.payee,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                timeShort(entry.date),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.End) {
             Text(
                 formatMinorUnits(entry.posting.amountMinor),
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (entry.posting.amountMinor >= 0) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.weight(1f),
+                color = amountColor(entry.posting.amountMinor),
+                modifier = Modifier.padding(end = 12.dp),
             )
             Text(
-                "balance ${entry.balanceAfter.format()} ${entry.balanceAfter.commodity}",
+                entry.balanceAfter.format() + " " + entry.balanceAfter.commodity,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

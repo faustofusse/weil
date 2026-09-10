@@ -21,6 +21,9 @@ class LedgerState(
 ) {
     var tree by mutableStateOf<List<AccountNode>>(emptyList())
         private set
+    /** Survives navigation because the state lives above the nav host. */
+    var expandedIds by mutableStateOf<Set<String>>(emptySet())
+        private set
     var busy by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
@@ -96,6 +99,10 @@ class LedgerState(
 
     fun deleteAccount(id: String) =
         mutate { accounts.delete(id) }
+
+    fun toggleExpanded(id: String) {
+        expandedIds = if (id in expandedIds) expandedIds - id else expandedIds + id
+    }
 
     companion object {
         /** Leaf sums merged bottom-up; children first so each node holds its subtree. */

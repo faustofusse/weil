@@ -14,7 +14,8 @@ object ProfileRoute
 
 object JournalRoute
 
-object TransactionNewRoute
+/** [accountId] pre-seeds the first posting when adding from an account screen. */
+data class TransactionNewRoute(val accountId: String? = null)
 
 data class TransactionEditRoute(val id: String)
 
