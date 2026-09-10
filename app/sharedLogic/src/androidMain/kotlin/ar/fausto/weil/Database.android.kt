@@ -99,6 +99,7 @@ class AndroidDatabase(
 
             // Idempotent schema setup; no-op against an already-bootstrapped schema.
             executeBatch(SCHEMA_SQL)
+            migrateSchema()
         } catch (t: Throwable) {
             connection?.let { existing -> runCatching { native.turso_connection_close(existing, err) } }
             runCatching { native.turso_sync_database_deinit(syncDb) }

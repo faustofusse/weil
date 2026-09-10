@@ -20,6 +20,7 @@ class AppGraph(
     val chain = ChainRepository(authApi, auth)
     val db = DatabaseProvider(auth, dbContext, dbFactory)
     val accounts = AccountsRepository(db)
+    val ledger = TransactionsRepository(db)
     val notifications = NotificationsRepository(db)
     val emails = EmailsRepository(db)
     val scanner: QrScanner? get() = qrScannerProvider()

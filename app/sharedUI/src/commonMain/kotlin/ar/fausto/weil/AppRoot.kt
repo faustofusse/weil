@@ -85,7 +85,9 @@ fun RootScreen(graph: AppGraph) {
                     // stack between [LoginRoute] and [HomeRoute], and NavDisplay
                     // animates that replace with the shared transition specs.
                     val loggedIn = authState is AuthState.LoggedIn
-                    val accountsState = remember(graph.accounts) { AccountsState(graph.accounts) }
+                    val ledgerState = remember(loggedIn) {
+                        LedgerState(graph.accounts, graph.ledger)
+                    }
                     val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
                     val backStack = remember(loggedIn) {
                         mutableStateListOf<Any>(if (loggedIn) HomeRoute else LoginRoute)
@@ -117,10 +119,47 @@ fun RootScreen(graph: AppGraph) {
                                 }
                                 entry<HomeRoute> {
                                     HomeScreen(
-                                        accountsState = accountsState,
+                                        ledgerState = ledgerState,
                                         onNavigateToProfile = { navigate(ProfileRoute) },
                                         onNavigateToNotifications = { navigate(NotificationsRoute) },
                                         onNavigateToEmails = { navigate(EmailsRoute) },
+                                        onNavigateToJournal = { navigate(JournalRoute) },
+                                        onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
+                                    )
+                                }
+                                entry<JournalRoute> {
+                                    JournalScreen(
+                                        ledger = graph.ledger,
+                                        accounts = graph.accounts,
+                                        onNavigateBack = { pop() },
+                                        onNavigateToNew = { navigate(TransactionNewRoute) },
+                                        onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
+                                    )
+                                }
+                                entry<TransactionNewRoute> {
+                                    TransactionEditScreen(
+                                        ledger = graph.ledger,
+                                        accounts = graph.accounts,
+                                        editId = null,
+                                        onSaved = { pop() },
+                                        onNavigateBack = { pop() },
+                                    )
+                                }
+                                entry<TransactionEditRoute> { route ->
+                                    TransactionEditScreen(
+                                        ledger = graph.ledger,
+                                        accounts = graph.accounts,
+                                        editId = route.id,
+                                        onSaved = { pop() },
+                                        onNavigateBack = { pop() },
+                                    )
+                                }
+                                entry<AccountDetailRoute> { route ->
+                                    AccountDetailScreen(
+                                        ledgerState = ledgerState,
+                                        accountId = route.id,
+                                        onNavigateBack = { pop() },
+                                        onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
                                     )
                                 }
                                 entry<EmailsRoute> {
@@ -195,6 +234,7 @@ fun LoginScreen(
                 action()
             } catch (_: PasskeyCancelled) {
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()
             } finally {
                 busy = false
@@ -303,6 +343,7 @@ private fun PairingSection(
                 expiresAt = epochMillis() + created.expiresIn * 1000
                 status = "waiting"
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 localError = e.message ?: e.toString()
             }
         }
@@ -329,6 +370,7 @@ private fun PairingSection(
                             onJoinChain(link.id, link.token)
                         } catch (_: PasskeyCancelled) {
                         } catch (e: Throwable) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
                             localError = e.message ?: e.toString()
                         } finally {
                             joining = false
@@ -336,6 +378,7 @@ private fun PairingSection(
                     }
                 }
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 localError = e.message ?: e.toString()
             }
         }
@@ -383,6 +426,7 @@ private fun PairingSection(
         } catch (_: PasskeyCancelled) {
             // user aborted the ceremony — Continue retries
         } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             localError = e.message ?: e.toString()
         } finally {
             joining = false

@@ -40,8 +40,6 @@ class ApiException(val code: Int, message: String) : Exception("HTTP $code: $mes
 
 class SessionExpired(message: String = "session expired") : Exception(message)
 
-data class Account(val id: String, val name: String)
-
 @Serializable
 data class ChainDevice(
     val id: String,

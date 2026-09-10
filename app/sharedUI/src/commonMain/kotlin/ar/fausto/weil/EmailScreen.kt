@@ -68,6 +68,7 @@ fun EmailScreen(
                 emails.syncNow()
                 loadFirst()
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 syncError = e.message ?: e.toString()
             } finally {
                 isSyncing = false
@@ -86,6 +87,7 @@ fun EmailScreen(
                 cursor = page.nextCursor
                 hasMore = page.nextCursor != null
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 syncError = e.message ?: e.toString()
             } finally {
                 isLoadingMore = false
@@ -98,6 +100,7 @@ fun EmailScreen(
             emails.syncNow()
             loadFirst()
         } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             syncError = e.message ?: e.toString()
         } finally {
             isInitialLoading = false

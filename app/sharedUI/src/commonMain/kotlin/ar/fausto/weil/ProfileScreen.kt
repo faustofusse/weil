@@ -340,6 +340,7 @@ private fun AccountEmailSection(chain: ChainRepository) {
         try {
             email = chain.getEmail()
         } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             error = e.message ?: e.toString()
         } finally {
             busy = false
@@ -406,6 +407,7 @@ private fun AccountEmailSection(chain: ChainRepository) {
                                 chain.setEmail(value)
                                 email = chain.getEmail()
                             } catch (e: Throwable) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
                                 error = e.message ?: e.toString()
                             } finally {
                                 busy = false

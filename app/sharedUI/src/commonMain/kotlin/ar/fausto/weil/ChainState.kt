@@ -46,6 +46,7 @@ class ChainState(
                 devices = chain.list()
                 loaded = true
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()
             } finally {
                 busy = false
@@ -63,6 +64,7 @@ class ChainState(
                 invite = created
                 inviteExpiresAt = epochMillis() + created.expiresIn * 1000
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()
             } finally {
                 busy = false
@@ -88,6 +90,7 @@ class ChainState(
                     notice = "${chainDeviceName(device)} revoked — its database access is gone"
                 }
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()
             } finally {
                 busy = false
@@ -117,6 +120,7 @@ class ChainState(
                 devices = chain.list()
                 notice = "Device approved — finish pairing on the other device"
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()
             } finally {
                 busy = false

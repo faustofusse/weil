@@ -97,6 +97,7 @@ fun NotificationsScreen(
                 notifications.syncNow()
                 loadFirst()
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 syncError = e.message ?: e.toString()
             } finally {
                 isSyncing = false
@@ -118,6 +119,7 @@ fun NotificationsScreen(
                 cursor = page.nextCursor
                 hasMore = page.nextCursor != null
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 syncError = e.message ?: e.toString()
             } finally {
                 isLoadingMore = false
@@ -130,6 +132,7 @@ fun NotificationsScreen(
             notifications.syncNow()
             loadFirst()
         } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             syncError = e.message ?: e.toString()
         } finally {
             isInitialLoading = false
@@ -144,6 +147,7 @@ fun NotificationsScreen(
         try {
             loadFirst()
         } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             syncError = e.message ?: e.toString()
         }
     }

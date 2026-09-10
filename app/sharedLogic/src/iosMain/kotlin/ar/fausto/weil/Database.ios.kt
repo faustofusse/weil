@@ -68,6 +68,7 @@ class IOSDatabase(
             val setup = SCHEMA_SQL.cstr.ptr
             val batch = libsql_connection_batch(conn, setup)
             errIf(batch)
+            migrateSchema()
         }
     }
 

@@ -59,5 +59,35 @@ object Icons {
             "Logout",
             "M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z",
         )
+
+        val MenuBook: ImageVector = materialIcon(
+            "MenuBook",
+            "M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.25 20.45 5.25 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z",
+        )
+
+        val Add: ImageVector = materialIcon(
+            "Add",
+            "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+        )
+
+        val Remove: ImageVector = materialIcon(
+            "Remove",
+            "M19 13H5v-2h14v2z",
+        )
+
+        val ExpandMore: ImageVector = materialIcon(
+            "ExpandMore",
+            "M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z",
+        )
+
+        val ChevronRight: ImageVector = materialIcon(
+            "ChevronRight",
+            "M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z",
+        )
+
+        val Close: ImageVector = materialIcon(
+            "Close",
+            "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 12.59 6.41 14 12 13.41 17.59 19 19 17.41 13.41 12z",
+        )
     }
 }
