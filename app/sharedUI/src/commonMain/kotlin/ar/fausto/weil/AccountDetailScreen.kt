@@ -2,16 +2,20 @@ package ar.fausto.weil
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -20,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -167,32 +172,49 @@ fun AccountDetailScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp),
         ) {
             item(key = "header") {
-                Column(modifier = Modifier.padding(bottom = 8.dp)) {
-                    node?.let { n ->
-                        if (n.path != n.account.name) {
-                            Text(
-                                n.path,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp, bottom = 16.dp),
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                        node?.let { n ->
+                            if (n.path != n.account.name) {
+                                Text(
+                                    n.path,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                            }
+                        }
+                        // BalanceText right-aligns for its usual row use; here
+                        // it's the sole element so pull it back to the card's
+                        // leading edge to match the net-worth hero card.
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            BalanceText(
+                                totals = ledgerState.totals[accountId].orEmpty(),
+                                style = MaterialTheme.typography.displaySmall,
+                                signalNegative = node?.account?.type == AccountType.Asset ||
+                                    node?.account?.type == AccountType.Expense,
+                                modifier = Modifier.align(Alignment.CenterStart),
                             )
                         }
-                    }
-                    Text(
-                        formatTotals(ledgerState.totals[accountId].orEmpty()),
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                    (error ?: ledgerState.error)?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (node?.children?.isNotEmpty() == true) {
-                        FilterChip(
-                            selected = includeSubtree,
-                            onClick = { includeSubtree = !includeSubtree },
-                            label = { Text(stringResource(Res.string.detail_include_subaccounts)) },
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
+                        if (node?.children?.isNotEmpty() == true) {
+                            FilterChip(
+                                selected = includeSubtree,
+                                onClick = { includeSubtree = !includeSubtree },
+                                label = { Text(stringResource(Res.string.detail_include_subaccounts)) },
+                                modifier = Modifier.padding(top = 12.dp),
+                            )
+                        }
+                        (error ?: ledgerState.error)?.let {
+                            ErrorBanner(it, modifier = Modifier.padding(top = 12.dp))
+                        }
                     }
                 }
             }

@@ -6,22 +6,31 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -34,15 +43,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.account_add_title
 import weil.app.sharedui.generated.resources.app_title
+import weil.app.sharedui.generated.resources.home_accounts_count_many
+import weil.app.sharedui.generated.resources.home_accounts_count_one
 import weil.app.sharedui.generated.resources.home_accounts_title
 import weil.app.sharedui.generated.resources.home_add_first_account
-import weil.app.sharedui.generated.resources.home_long_press_hint
 import weil.app.sharedui.generated.resources.home_net_worth
 import weil.app.sharedui.generated.resources.home_new_expense
 import weil.app.sharedui.generated.resources.home_no_accounts_yet
@@ -153,21 +165,45 @@ fun HomeScreen(
                 // Bottom room so the FAB never covers the last row.
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
             ) {
-                item(key = "net-worth") { NetWorthHeader(ledgerState) }
+                item(key = "net-worth") { NetWorthCard(ledgerState) }
 
                 item(key = "accounts-header") {
+                    // A count, not a total: the net worth card above already
+                    // shows the sum, so repeating it here was the same number
+                    // twice on one screen. How many accounts you have is the
+                    // one thing that card doesn't say.
+                    val accountCount = assets.sumOf { it.selfAndDescendants.size }
                     SectionHeader(
                         title = stringResource(Res.string.home_accounts_title),
                         trailing = {
-                            Text(
-                                formatTotals(typeSum(ledgerState, AccountType.Asset)),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            IconButton(onClick = { adding = true }) {
-                                Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.account_add_title))
+                            if (accountCount > 0) {
+                                // No weight here: the title already carries the
+                                // Row's only weight and expands to fill
+                                // whatever this pill doesn't use, which is what
+                                // pins the pill to the trailing edge. Giving the
+                                // pill a weight too just split the row in half.
+                                ValuePill(
+                                    text = if (accountCount == 1) {
+                                        stringResource(Res.string.home_accounts_count_one)
+                                    } else {
+                                        stringResource(Res.string.home_accounts_count_many, accountCount)
+                                    },
+                                )
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            FilledTonalIconButton(
+                                onClick = { adding = true },
+                                modifier = Modifier.size(32.dp),
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                ),
+                            ) {
+                                Icon(
+                                    Icons.Filled.Add,
+                                    contentDescription = stringResource(Res.string.account_add_title),
+                                    modifier = Modifier.size(18.dp),
+                                )
                             }
                         },
                     )
@@ -183,26 +219,18 @@ fun HomeScreen(
                 } else {
                     val rows = buildList { addSection(assets, ledgerState.expandedIds, 0) }
                         .filterIsInstance<NodeRow>()
-                    items(rows, key = { it.key }) { row ->
+                    // One decision for the whole card: no sub-accounts anywhere
+                    // means no fold column, so names start at the card edge.
+                    val foldable = rows.any { it.node.children.isNotEmpty() }
+                    itemsIndexed(rows, key = { _, row -> row.key }) { index, row ->
                         NodeRowView(
                             state = ledgerState,
                             row = row,
                             onToggle = { ledgerState.toggleExpanded(it) },
                             onOpen = onNavigateToAccount,
+                            skin = rowSkin(first = index == 0, last = index == rows.lastIndex),
+                            toggleSlot = foldable,
                         )
-                    }
-                    // Rename/move/delete is discoverable on a long press here
-                    // and from the account screen's overflow menu; a single
-                    // account still gets the hint so the gesture isn't hidden.
-                    if (rows.size == 1) {
-                        item(key = "accounts-hint") {
-                            Text(
-                                stringResource(Res.string.home_long_press_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
-                        }
                     }
                 }
 
@@ -219,12 +247,7 @@ fun HomeScreen(
                 val recentItems = recent
                 if (recentItems != null && recentItems.isEmpty()) {
                     item(key = "recent-empty") {
-                        Text(
-                            stringResource(Res.string.home_no_recent),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 12.dp),
-                        )
+                        EmptyHint(title = stringResource(Res.string.home_no_recent))
                     }
                 }
                 var lastGroup: DayGroup? = null
@@ -264,42 +287,70 @@ private fun OverflowItem(
     )
 }
 
-/** Net worth, one line per commodity: the largest one big, the rest below it. */
+/**
+ * Net worth hero: the dominant commodity reads as the headline figure, the
+ * rest ride along as pills so a multi-currency ledger never pushes the card
+ * taller than a glance.
+ */
 @Composable
-private fun NetWorthHeader(state: LedgerState) {
-    val lines = netWorthOf(state).entries.sortedByDescending { it.value }
-    Column(modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)) {
-        Text(
-            stringResource(Res.string.home_net_worth),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (lines.isEmpty()) {
-            Text(
-                if (state.loaded) "${Money.DEFAULT_COMMODITY} ${formatMinorUnits(0)}" else "—",
-                style = MaterialTheme.typography.displaySmall,
-            )
-        }
-        lines.forEachIndexed { index, (commodity, minor) ->
-            Text(
-                "$commodity ${formatMinorUnits(minor)}",
-                style = if (index == 0) {
-                    MaterialTheme.typography.displaySmall
-                } else {
-                    MaterialTheme.typography.titleMedium
-                },
-                color = if (minor < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        state.error?.let {
-            Text(
-                it,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+private fun NetWorthCard(state: LedgerState) {
+    val lines = netWorthOf(state).entries.sortedByDescending { abs(it.value) }
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(Res.string.home_net_worth),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                if (state.busy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            // Every commodity at the same size — ARS used to run big while USD
+            // rode along as a small pill underneath, which read as "USD is a
+            // footnote." A second currency now costs a line, not a demotion.
+            if (lines.isEmpty()) {
+                Text(
+                    if (state.loaded) "${Money.DEFAULT_COMMODITY} ${formatMinorUnits(0)}" else "—",
+                    style = MaterialTheme.typography.displaySmall,
+                )
+            }
+            lines.forEach { (commodity, minor) ->
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        commodity,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 5.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        formatMinorUnits(minor),
+                        style = MaterialTheme.typography.displaySmall,
+                        color = if (minor < 0) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            state.error?.let { ErrorBanner(it, modifier = Modifier.padding(top = 14.dp)) }
         }
     }
 }
@@ -317,51 +368,60 @@ private fun netWorthOf(state: LedgerState): Map<String, Long> {
     return acc
 }
 
-/** Section title with optional trailing content (totals, actions) over a divider. */
+/**
+ * Section title with optional trailing content (totals, actions). The grouped
+ * cards below carry the separation, so no divider is drawn here.
+ */
 @Composable
 internal fun SectionHeader(
     title: String,
-    trailing: @Composable () -> Unit = {},
+    trailing: @Composable RowScope.() -> Unit = {},
 ) {
-    Column(modifier = Modifier.padding(top = 16.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-        ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.weight(1f),
-            )
-            trailing()
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 24.dp, bottom = 8.dp, start = 4.dp)
+            .heightIn(min = 32.dp),
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        trailing()
     }
 }
 
-/** Centered empty state: a muted title and a single call to action. */
+/** Centered empty state on a tonal card: a muted title and a single call to action. */
 @Composable
 internal fun EmptyHint(
     title: String,
     action: String? = null,
     onAction: () -> Unit = {},
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Surface(
+        shape = RoundedCornerShape(GroupRadius),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (action != null) {
-            Spacer(Modifier.height(4.dp))
-            TextButton(onClick = onAction) { Text(action) }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            if (action != null) {
+                Spacer(Modifier.height(12.dp))
+                FilledTonalButton(onClick = onAction) { Text(action) }
+            }
         }
     }
 }

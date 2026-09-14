@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Sync-chain state for the profile screen: device list plus invite/approve
@@ -115,6 +116,7 @@ class ChainState(
                 return@launch
             }
             busy = true
+            var previousCount: Int? = null
             try {
                 val raw = scanner.scan() ?: return@launch
                 val link = ChainLink.parse(raw, AuthConfig.SLUG)
@@ -122,6 +124,7 @@ class ChainState(
                     error = notPairingRequest
                     return@launch
                 }
+                previousCount = devices.size
                 chain.approve(link.id)
                 devices = chain.list()
                 notice = approvedNotice
@@ -131,9 +134,30 @@ class ChainState(
             } finally {
                 busy = false
             }
+            // Approving only flags the request server-side; the new device's
+            // credential row is created afterwards by its own chain/join call,
+            // once it finishes its passkey ceremony. That list() above can
+            // easily be too early, so poll quietly in the background (no
+            // `busy`, buttons stay enabled) instead of leaving the list stale
+            // until the user reopens the screen.
+            previousCount?.let { pollForNewDevice(it) }
         }
     }
 
+    private suspend fun pollForNewDevice(previousCount: Int) {
+        repeat(10) { // ~20s: covers a typical biometric prompt + join round trip
+            delay(2000)
+            try {
+                val updated = chain.list()
+                devices = updated
+                if (updated.size > previousCount) return
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                // transient network hiccup — keep polling; refresh() still covers
+                // anything left once the loop ends.
+            }
+        }
+    }
 }
 
 /** Label for a device; the localized passkey fallback is supplied by the caller. */

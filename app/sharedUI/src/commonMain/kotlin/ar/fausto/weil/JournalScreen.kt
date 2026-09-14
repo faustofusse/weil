@@ -17,7 +17,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Card
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -279,8 +280,14 @@ internal fun TransactionCard(
     paths: Map<String, String>,
     onOpen: () -> Unit,
 ) {
-    Card(
+    // Same tonal surface as the account rows and empty-state cards — the
+    // plain M3 Card default (containerColor = surface, a 1dp shadow) sat on
+    // top of a background that's the same color, so it read flatter and
+    // darker than every other card in the app.
+    Surface(
         onClick = onOpen,
+        shape = RoundedCornerShape(GroupRadius),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),

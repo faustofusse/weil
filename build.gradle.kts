@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.ktor) apply false
+    alias(libs.plugins.composeHotReload) apply false
 }
 
 // The iOS app is a plain Xcode project (app/iosApp), so there is no KMP

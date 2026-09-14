@@ -5,8 +5,10 @@ package ar.fausto.weil
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,7 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
@@ -32,6 +34,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -51,22 +54,28 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.account_actions
 import weil.app.sharedui.generated.resources.account_add_title
 import weil.app.sharedui.generated.resources.account_choose_parent
 import weil.app.sharedui.generated.resources.account_collapse
 import weil.app.sharedui.generated.resources.account_delete_message
 import weil.app.sharedui.generated.resources.account_expand
+import weil.app.sharedui.generated.resources.account_includes_subaccounts
 import weil.app.sharedui.generated.resources.account_move_under
 import weil.app.sharedui.generated.resources.account_move_under_title
 import weil.app.sharedui.generated.resources.account_name_label
 import weil.app.sharedui.generated.resources.account_parent_none
 import weil.app.sharedui.generated.resources.account_parent_under
 import weil.app.sharedui.generated.resources.account_rename
+import weil.app.sharedui.generated.resources.account_subaccounts_many
+import weil.app.sharedui.generated.resources.account_subaccounts_one
 import weil.app.sharedui.generated.resources.account_type_asset
 import weil.app.sharedui.generated.resources.account_type_equity
 import weil.app.sharedui.generated.resources.account_type_expense
@@ -182,18 +191,17 @@ private fun AccountsTreeSection(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
-            items(rows, key = { it.key }) { row ->
+            itemsIndexed(rows, key = { _, row -> row.key }) { index, row ->
                 when (row) {
                     is TypeHeader -> SectionHeader(
                         title = accountTypeLabel(row.type),
                         trailing = {
-                            Text(
-                                formatTotals(typeSum(state, row.type)),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            // Unweighted: the title's own weight already
+                            // yields the space this pill needs, which is what
+                            // keeps it flush against the row's trailing edge.
+                            formatTotalsCompact(typeSum(state, row.type))?.let { total ->
+                                ValuePill(text = total)
+                            }
                         },
                     )
                     is NodeRow -> NodeRowView(
@@ -201,6 +209,15 @@ private fun AccountsTreeSection(
                         row = row,
                         onToggle = { state.toggleExpanded(it) },
                         onOpen = { id -> onNavigateToAccount(id) },
+                        // The tree is always fully expanded: indentation alone
+                        // carries the hierarchy, no fold column needed.
+                        toggleSlot = false,
+                        // Each type's run of rows reads as one card: only its
+                        // outer edges get rounded.
+                        skin = rowSkin(
+                            first = rows.getOrNull(index - 1) !is NodeRow,
+                            last = rows.getOrNull(index + 1) !is NodeRow,
+                        ),
                         flat = true,
                     )
                 }
@@ -261,11 +278,20 @@ internal fun NodeRowView(
     row: NodeRow,
     onToggle: (id: String) -> Unit,
     onOpen: (id: String) -> Unit,
+    skin: RowSkin? = null,
     flat: Boolean = false,
+    /**
+     * Reserve the fold/unfold column. The caller turns it on for the whole
+     * card when at least one row is foldable, so names stay aligned; a flat
+     * list of accounts keeps its left edge clean instead of growing a column
+     * of meaningless bullets.
+     */
+    toggleSlot: Boolean = false,
 ) {
     val node = row.node
     var actions by remember { mutableStateOf(false) }
     val expanded = node.account.id in state.expandedIds
+    val childCount = node.children.size
     val rotation by animateFloatAsState(
         targetValue = if (expanded) 0f else -90f,
         animationSpec = tween(180),
@@ -273,61 +299,124 @@ internal fun NodeRowView(
     )
     // Deep trees don't run off-screen: depth padding is capped and any deeper
     // level keeps the max indent.
-    val indent = row.depth.coerceAtMost(6) * 14
-    Row(
+    val indent = (row.depth.coerceAtMost(5) * 16).dp
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(
-                onClick = { onOpen(node.account.id) },
-                onLongClick = { actions = true },
-            )
-            .heightIn(min = 48.dp)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .then(
+                if (skin == null) {
+                    Modifier
+                } else {
+                    Modifier.clip(skin.shape).background(skin.container)
+                },
+            ),
     ) {
-        if (flat) {
-            if (row.depth > 0) {
-                Spacer(Modifier.width(((row.depth - 1).coerceAtMost(6) * 18).dp))
-                // Box-drawing corner: the nesting indicator lives in the row's
-                // baseline so it points at the child's name.
-                Text(
-                    "└",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (skin?.divider == true) {
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = { onOpen(node.account.id) },
+                    onLongClick = { actions = true },
                 )
-                Spacer(Modifier.width(6.dp))
-            }
-        } else {
-            Spacer(Modifier.width(indent.dp))
-            Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-                if (node.children.isNotEmpty()) {
-                    IconButton(onClick = { onToggle(node.account.id) }) {
-                        Icon(
-                            Icons.Filled.ExpandMore,
-                            contentDescription = stringResource(
-                                if (expanded) Res.string.account_collapse else Res.string.account_expand,
-                            ),
-                            modifier = Modifier.graphicsLayer(rotationZ = rotation),
-                        )
+                .heightIn(min = 56.dp)
+                // Same base inset both sides; only the leading edge grows
+                // with depth.
+                .padding(start = 16.dp + indent, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (toggleSlot) {
+                Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                    if (childCount > 0 && !flat) {
+                        IconButton(
+                            onClick = { onToggle(node.account.id) },
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.ExpandMore,
+                                contentDescription = stringResource(
+                                    if (expanded) Res.string.account_collapse else Res.string.account_expand,
+                                ),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .graphicsLayer(rotationZ = rotation),
+                            )
+                        }
                     }
                 }
+                Spacer(Modifier.width(6.dp))
+            } else if (row.depth > 0) {
+                // Nesting cue for the always-expanded tree: a short rule the
+                // child name hangs off of.
+                Box(
+                    modifier = Modifier
+                        .size(width = 10.dp, height = 1.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant),
+                )
+                Spacer(Modifier.width(10.dp))
             }
-        }
-        Text(
-            node.account.name,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
-            Text(
-                formatTotals(state.totals[node.account.id].orEmpty()),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    node.account.name,
+                    style = if (row.depth == 0) {
+                        MaterialTheme.typography.titleSmall
+                    } else {
+                        MaterialTheme.typography.bodyLarge
+                    },
+                    color = if (row.depth == 0) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // Folded parents advertise what they're hiding; expanded ones
+                // don't need the noise.
+                if (childCount > 0 && !expanded && !flat) {
+                    Text(
+                        subaccountsLabel(childCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
+                BalanceText(
+                    totals = state.totals[node.account.id].orEmpty(),
+                    signalNegative = node.account.type == AccountType.Asset ||
+                        node.account.type == AccountType.Expense,
+                )
+                // The number shown is a subtree rollup, not just this
+                // account's own postings — "comida ARS 2.500" would otherwise
+                // read the same whether or not "verduras" is folded inside it.
+                if (childCount > 0 && state.leafTotals[node.account.id].orEmpty() != state.totals[node.account.id].orEmpty()) {
+                    Text(
+                        stringResource(Res.string.account_includes_subaccounts),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
+            IconButton(
+                onClick = { actions = true },
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    Icons.Filled.MoreVert,
+                    contentDescription = stringResource(Res.string.account_actions),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
     if (actions) {
@@ -361,13 +450,20 @@ internal fun AccountActionsSheet(
     val undoLabel = stringResource(Res.string.action_undo)
     if (sheetOpen) {
         ModalBottomSheet(onDismissRequest = onDismiss) {
-            Column(modifier = Modifier.padding(bottom = 16.dp)) {
-                Text(
-                    account.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+            val itemColors = ListItemDefaults.colors(containerColor = Color.Transparent)
+            Column(modifier = Modifier.padding(bottom = 24.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
+                    Text(account.name, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        accountTypeLabel(account.type),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
                 ListItem(
+                    colors = itemColors,
+                    leadingContent = { Icon(Icons.Filled.Edit, contentDescription = null) },
                     headlineContent = { Text(stringResource(Res.string.account_rename)) },
                     modifier = Modifier.clickable {
                         sheetOpen = false
@@ -375,6 +471,8 @@ internal fun AccountActionsSheet(
                     },
                 )
                 ListItem(
+                    colors = itemColors,
+                    leadingContent = { Icon(Icons.Filled.AccountTree, contentDescription = null) },
                     headlineContent = { Text(stringResource(Res.string.account_move_under)) },
                     modifier = Modifier.clickable {
                         sheetOpen = false
@@ -382,6 +480,14 @@ internal fun AccountActionsSheet(
                     },
                 )
                 ListItem(
+                    colors = itemColors,
+                    leadingContent = {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    },
                     headlineContent = {
                         Text(
                             stringResource(Res.string.action_delete),
@@ -446,6 +552,13 @@ internal fun AccountActionsSheet(
             onDismiss()
         }
     }
+}
+
+@Composable
+private fun subaccountsLabel(count: Int): String = if (count == 1) {
+    stringResource(Res.string.account_subaccounts_one)
+} else {
+    stringResource(Res.string.account_subaccounts_many, count)
 }
 
 internal fun findNode(tree: List<AccountNode>, id: String?): AccountNode? {

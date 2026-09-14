@@ -22,13 +22,14 @@
     <string name="home_net_worth">Patrimonio</string>
     <string name="home_no_accounts_yet">Todavía no hay cuentas</string>
     <string name="home_add_first_account">Crear tu primera cuenta</string>
-    <string name="home_long_press_hint">Mantené presionada una cuenta para renombrarla, moverla o eliminarla</string>
     <string name="home_new_expense">Gasto</string>
     <string name="home_new_income">Ingreso</string>
     <string name="home_new_transfer">Traspaso</string>
     <string name="home_recent_title">Últimos movimientos</string>
     <string name="home_see_all">Ver todo</string>
     <string name="home_no_recent">Sin movimientos todavía. Tocá + para registrar un gasto.</string>
+    <string name="home_accounts_count_one">1 cuenta</string>
+    <string name="home_accounts_count_many">%1$d cuentas</string>
     <string name="more_options">Más opciones</string>
 
     <!-- Top bar destinations -->
@@ -59,6 +60,10 @@
     <string name="account_parent_none">Sin padre (raíz del árbol)</string>
     <string name="account_parent_under">Bajo: %1$s</string>
     <string name="account_choose_parent">Elegir padre</string>
+    <string name="account_subaccounts_one">1 subcuenta</string>
+    <string name="account_subaccounts_many">%1$d subcuentas</string>
+    <string name="account_actions">Acciones de la cuenta</string>
+    <string name="account_includes_subaccounts">subtotal</string>
 
     <!-- Transaction editor (full) -->
     <string name="editor_new_title">Nueva transacción</string>
@@ -155,6 +160,12 @@
     <string name="profile_contact_email_title">Correo de contacto</string>
     <string name="profile_contact_email_subtitle">Los correos enviados acá se ingieren en la base de datos de tu cuenta (y se reenvían a Gmail).</string>
     <string name="profile_email_not_set">Sin configurar</string>
+    <string name="profile_email_edit">Editar correo</string>
+    <string name="profile_devices_count_one">1 dispositivo</string>
+    <string name="profile_devices_count_many">%1$d dispositivos</string>
+    <string name="profile_sign_out_title">¿Cerrar sesión?</string>
+    <string name="profile_sign_out_body">Vas a necesitar tu passkey para volver a entrar en este dispositivo. Los datos siguen disponibles en el resto de la cadena.</string>
+    <string name="profile_session_title">Sesión</string>
 
     <!-- Notifications -->
     <string name="notifications_title_counts">Notificaciones (%1$d/%2$d)</string>

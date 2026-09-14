@@ -1,26 +1,41 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package ar.fausto.weil
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -32,14 +47,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.alexzhirkevich.qrose.options.QrBackground
 import io.github.alexzhirkevich.qrose.options.QrBrush
 import io.github.alexzhirkevich.qrose.options.solid
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
@@ -49,7 +65,6 @@ import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.action_cancel
-import weil.app.sharedui.generated.resources.action_edit
 import weil.app.sharedui.generated.resources.action_save
 import weil.app.sharedui.generated.resources.login_expires_in
 import weil.app.sharedui.generated.resources.passkey_name
@@ -60,6 +75,9 @@ import weil.app.sharedui.generated.resources.profile_contact_email_title
 import weil.app.sharedui.generated.resources.profile_device_approved
 import weil.app.sharedui.generated.resources.profile_device_revoked
 import weil.app.sharedui.generated.resources.profile_device_this
+import weil.app.sharedui.generated.resources.profile_devices_count_many
+import weil.app.sharedui.generated.resources.profile_devices_count_one
+import weil.app.sharedui.generated.resources.profile_email_edit
 import weil.app.sharedui.generated.resources.profile_email_not_set
 import weil.app.sharedui.generated.resources.profile_invite_expired
 import weil.app.sharedui.generated.resources.profile_new_invite
@@ -73,11 +91,19 @@ import weil.app.sharedui.generated.resources.profile_revoke_current_body
 import weil.app.sharedui.generated.resources.profile_revoke_notice
 import weil.app.sharedui.generated.resources.profile_revoke_other_body
 import weil.app.sharedui.generated.resources.profile_revoke_title
+import weil.app.sharedui.generated.resources.profile_session_title
 import weil.app.sharedui.generated.resources.profile_sign_out
+import weil.app.sharedui.generated.resources.profile_sign_out_body
+import weil.app.sharedui.generated.resources.profile_sign_out_title
 import weil.app.sharedui.generated.resources.profile_sync_chain_subtitle
 import weil.app.sharedui.generated.resources.profile_sync_chain_title
 import weil.app.sharedui.generated.resources.profile_title
 
+/**
+ * Profile: the contact email and the sync chain, each on its own tonal card,
+ * with sign-out kept at the bottom behind a confirmation so it can't be hit
+ * by accident from the top bar.
+ */
 @Composable
 fun ProfileScreen(
     chain: ChainRepository,
@@ -85,6 +111,7 @@ fun ProfileScreen(
     onNavigateBack: () -> Unit,
     onSignOut: () -> Unit,
 ) {
+    var confirmSignOut by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -92,15 +119,6 @@ fun ProfileScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onSignOut) {
-                        Icon(
-                            Icons.Filled.Logout,
-                            contentDescription = stringResource(Res.string.profile_sign_out),
-                            tint = MaterialTheme.colorScheme.error,
-                        )
                     }
                 },
             )
@@ -111,12 +129,114 @@ fun ProfileScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = 16.dp)
+                .padding(top = 8.dp, bottom = 32.dp),
         ) {
             AccountEmailSection(chain)
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
             ChainSection(chainState)
+            Spacer(Modifier.height(24.dp))
+            SignOutSection(onClick = { confirmSignOut = true })
         }
+    }
+
+    if (confirmSignOut) {
+        AlertDialog(
+            onDismissRequest = { confirmSignOut = false },
+            title = { Text(stringResource(Res.string.profile_sign_out_title)) },
+            text = { Text(stringResource(Res.string.profile_sign_out_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmSignOut = false
+                        onSignOut()
+                    },
+                ) {
+                    Text(
+                        stringResource(Res.string.profile_sign_out),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmSignOut = false }) {
+                    Text(stringResource(Res.string.action_cancel))
+                }
+            },
+        )
+    }
+}
+
+/** Tonal card with an icon-badged title, an optional explainer and a body. */
+@Composable
+private fun SectionCard(
+    title: String,
+    icon: ImageVector,
+    subtitle: String? = null,
+    trailing: @Composable () -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                trailing()
+            }
+            if (subtitle != null) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SignOutSection(onClick: () -> Unit) {
+    Text(
+        stringResource(Res.string.profile_session_title),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+    )
+    OutlinedButton(
+        onClick = onClick,
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+    ) {
+        Icon(Icons.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(stringResource(Res.string.profile_sign_out))
     }
 }
 
@@ -134,85 +254,96 @@ private fun ChainSection(state: ChainState) {
         LaunchedEffect(Unit) { state.refresh() }
     }
 
-    Text(stringResource(Res.string.profile_sync_chain_title), style = MaterialTheme.typography.titleMedium)
-    Text(
-        stringResource(Res.string.profile_sync_chain_subtitle),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
-    )
+    val active = devices.count { it.revokedAt == null }
+    SectionCard(
+        title = stringResource(Res.string.profile_sync_chain_title),
+        icon = Icons.Filled.AccountTree,
+        subtitle = stringResource(Res.string.profile_sync_chain_subtitle),
+        trailing = {
+            if (active > 0) {
+                ValuePill(
+                    if (active == 1) {
+                        stringResource(Res.string.profile_devices_count_one)
+                    } else {
+                        stringResource(Res.string.profile_devices_count_many, active)
+                    },
+                )
+            }
+        },
+    ) {
+        state.notice?.let {
+            NoticeBanner(it, modifier = Modifier.padding(bottom = 12.dp))
+        }
+        state.error?.let {
+            ErrorBanner(it, modifier = Modifier.padding(bottom = 12.dp))
+        }
 
-    state.notice?.let {
-        Text(
-            it,
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(vertical = 4.dp),
-        )
-    }
-    state.error?.let {
-        Text(
-            it,
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(vertical = 4.dp),
-        )
-    }
-
-    val invite = state.invite
-    if (invite != null) {
-        InviteQrCard(
-            invite = invite,
-            expiresAt = state.inviteExpiresAt,
-            onCancel = { state.cancelInvite() },
-            onRestart = { state.startInvite() },
-        )
-    } else {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
+        val invite = state.invite
+        if (invite != null) {
+            InviteQrCard(
+                invite = invite,
+                expiresAt = state.inviteExpiresAt,
+                onCancel = { state.cancelInvite() },
+                onRestart = { state.startInvite() },
+            )
+        } else {
+            // Full width, stacked: "Agregar dispositivo" does not fit beside
+            // "Aprobar dispositivo" on a phone — both labels ellipsized.
+            Button(
                 onClick = { state.startInvite() },
                 enabled = !busy,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
             ) {
-                Text(stringResource(Res.string.profile_add_device))
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(Res.string.profile_add_device), maxLines = 1)
             }
+            Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = { state.scanAndApprove(qrUnavailable, notPairingRequest, approvedNotice) },
                 enabled = !busy,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
             ) {
-                Text(stringResource(Res.string.profile_approve_device))
+                Icon(Icons.Filled.QrScan, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(Res.string.profile_approve_device), maxLines = 1)
             }
         }
-    }
 
-    if (devices.isEmpty() && busy) {
-        CircularProgressIndicator(
-            modifier = Modifier
-                .size(24.dp)
-                .padding(top = 16.dp),
-            strokeWidth = 2.dp,
-        )
-    }
+        if (devices.isEmpty() && busy) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 20.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+            }
+        }
 
-    if (devices.isNotEmpty()) {
-        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-        devices.forEach { device ->
-            ChainDeviceRow(
-                device = device,
-                onRevoke = { revoking = device },
+        if (devices.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            devices.forEachIndexed { index, device ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 50.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                    )
+                }
+                ChainDeviceRow(device = device, onRevoke = { revoking = device })
+            }
+        } else if (state.loaded && !busy && invite == null) {
+            Text(
+                stringResource(Res.string.profile_no_devices),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 16.dp),
             )
         }
-    } else if (state.loaded && !busy && invite == null) {
-        Text(
-            stringResource(Res.string.profile_no_devices),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 16.dp),
-        )
     }
 
     revoking?.let { device ->
@@ -240,7 +371,12 @@ private fun ChainSection(state: ChainState) {
                         revoking = null
                         state.revoke(target, revokedNotice)
                     },
-                ) { Text(stringResource(Res.string.profile_revoke)) }
+                ) {
+                    Text(
+                        stringResource(Res.string.profile_revoke),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             },
             dismissButton = {
                 TextButton(onClick = { revoking = null }) { Text(cancelLabel) }
@@ -249,7 +385,11 @@ private fun ChainSection(state: ChainState) {
     }
 }
 
-/** QR shown on this (signed-in) device for a new device to scan. */
+/**
+ * QR shown on this (signed-in) device for a new device to scan. The code sits
+ * on its own white plate (scanner contrast) and the countdown doubles as a
+ * progress track so the single-use window is visible at a glance.
+ */
 @Composable
 private fun InviteQrCard(
     invite: ChainInvite,
@@ -266,12 +406,11 @@ private fun InviteQrCard(
     }
     val remainingSeconds = ((expiresAt - now) / 1000).coerceAtLeast(0)
     val expired = remainingSeconds <= 0
+    val total = invite.expiresIn.coerceAtLeast(1)
     val cancelLabel = stringResource(Res.string.action_cancel)
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (expired) {
@@ -282,43 +421,62 @@ private fun InviteQrCard(
             )
             OutlinedButton(
                 onClick = onRestart,
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = 12.dp),
             ) {
                 Text(stringResource(Res.string.profile_new_invite))
             }
         } else {
-            Image(
-                painter = rememberQrCodePainter(invite.url) {
-                    colors {
-                        dark = QrBrush.solid(Color.Black)
-                        light = QrBrush.solid(Color.White)
-                    }
-                    background {
-                        fill = SolidColor(Color.White)
-                    }
-                },
-                contentDescription = stringResource(Res.string.profile_qr_content),
+            // White backing is deliberate: scanners need the contrast.
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 48.dp, vertical = 8.dp),
-            )
+                    .widthIn(max = 260.dp)
+                    .fillMaxWidth(0.78f)
+                    .aspectRatio(1f),
+            ) {
+                Image(
+                    painter = rememberQrCodePainter(invite.url) {
+                        colors {
+                            dark = QrBrush.solid(Color.Black)
+                            light = QrBrush.solid(Color.White)
+                        }
+                        background {
+                            fill = SolidColor(Color.White)
+                        }
+                    },
+                    contentDescription = stringResource(Res.string.profile_qr_content),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(14.dp),
+                )
+            }
+            Spacer(Modifier.height(14.dp))
             Text(
                 stringResource(Res.string.profile_qr_scan_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { (remainingSeconds.toFloat() / total.toFloat()).coerceIn(0f, 1f) },
+                modifier = Modifier
+                    .fillMaxWidth(0.6f)
+                    .height(4.dp)
+                    .clip(CircleShape),
+            )
+            Spacer(Modifier.height(8.dp))
             Text(
                 stringResource(
                     Res.string.login_expires_in,
                     "${remainingSeconds / 60}:${(remainingSeconds % 60).toString().padStart(2, '0')}",
                 ),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
             )
         }
-        TextButton(onClick = onCancel, modifier = Modifier.padding(top = 4.dp)) {
+        TextButton(onClick = onCancel, modifier = Modifier.padding(top = 6.dp)) {
             Text(cancelLabel)
         }
     }
@@ -329,42 +487,84 @@ private fun ChainDeviceRow(
     device: ChainDevice,
     onRevoke: () -> Unit,
 ) {
-    val thisDeviceSuffix = stringResource(Res.string.profile_device_this)
-    val revokedSuffix = stringResource(Res.string.profile_device_revoked)
+    val revoked = device.revokedAt != null
     val passkeyFallback = stringResource(Res.string.passkey_name, device.id.takeLast(6))
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .alpha(if (device.revokedAt != null) 0.4f else 1f),
+            .padding(vertical = 8.dp)
+            .alpha(if (revoked) 0.45f else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            val userAgent = device.userAgent
-            if (userAgent != null) {
-                Text(
-                    userAgent,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                buildString {
-                    append(chainDeviceName(device, passkeyFallback))
-                    if (device.current) append("  · $thisDeviceSuffix")
-                    if (device.revokedAt != null) append("  · $revokedSuffix")
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(
+                    if (device.current && !revoked) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHighest
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.Smartphone,
+                contentDescription = null,
+                tint = if (device.current && !revoked) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
                 },
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            // The user agent names the *device*; the credential name is the
+            // passkey provider ("Google Password Manager…"), so it reads as
+            // the detail line.
+            val credential = chainDeviceName(device, passkeyFallback)
+            val agent = device.userAgent
+            Text(
+                agent ?: credential,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        }
-        if (device.revokedAt == null) {
-            TextButton(onClick = onRevoke) {
+            if (agent != null) {
                 Text(
-                    stringResource(Res.string.profile_revoke),
-                    color = MaterialTheme.colorScheme.error,
+                    credential,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (device.current || revoked) {
+                Spacer(Modifier.height(6.dp))
+                if (revoked) {
+                    ValuePill(
+                        text = stringResource(Res.string.profile_device_revoked),
+                        container = MaterialTheme.colorScheme.errorContainer,
+                        content = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                } else {
+                    ValuePill(
+                        text = stringResource(Res.string.profile_device_this),
+                        container = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                        content = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+        if (!revoked) {
+            IconButton(onClick = onRevoke) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(Res.string.profile_revoke),
+                    tint = MaterialTheme.colorScheme.error,
                 )
             }
         }
@@ -394,37 +594,44 @@ private fun AccountEmailSection(chain: ChainRepository) {
         }
     }
 
-    Text(stringResource(Res.string.profile_contact_email_title), style = MaterialTheme.typography.titleMedium)
-    Text(
-        stringResource(Res.string.profile_contact_email_subtitle),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 2.dp, bottom = 4.dp),
-    )
-
-    when {
-        busy -> Text("…", style = MaterialTheme.typography.bodyMedium)
-        error != null -> Text(
-            error ?: "",
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        else -> {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    email ?: stringResource(Res.string.profile_email_not_set),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (email == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = {
-                    draft = email ?: ""
-                    editing = true
-                }) {
-                    Text(stringResource(Res.string.action_edit))
+    SectionCard(
+        title = stringResource(Res.string.profile_contact_email_title),
+        icon = Icons.Filled.Email,
+        subtitle = stringResource(Res.string.profile_contact_email_subtitle),
+    ) {
+        when {
+            busy -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            error != null -> ErrorBanner(error ?: "")
+            else -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        email ?: stringResource(Res.string.profile_email_not_set),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (email == null) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(
+                        onClick = {
+                            draft = email ?: ""
+                            editing = true
+                        },
+                    ) {
+                        Icon(
+                            Icons.Filled.Edit,
+                            contentDescription = stringResource(Res.string.profile_email_edit),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
         }

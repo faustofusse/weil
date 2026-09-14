@@ -34,6 +34,13 @@ class LedgerState(
      */
     var totals by mutableStateOf<Map<String, Map<String, Long>>>(emptyMap())
         private set
+    /**
+     * id → that account's own postings only, no descendants. Diffing this
+     * against [totals] is how a row knows whether the number it shows is a
+     * subtree rollup (someone should say so) or the account's own balance.
+     */
+    var leafTotals by mutableStateOf<Map<String, Map<String, Long>>>(emptyMap())
+        private set
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     var loaded = false
@@ -60,6 +67,7 @@ class LedgerState(
                 }
                 tree = accounts.tree()
                 val leafs = ledger.leafBalances()
+                leafTotals = leafs
                 totals = rollupSubtrees(tree, leafs)
                 loaded = true
             } catch (e: Throwable) {
@@ -78,7 +86,9 @@ class LedgerState(
             try {
                 action()
                 tree = accounts.tree()
-                totals = rollupSubtrees(tree, ledger.leafBalances())
+                val leafs = ledger.leafBalances()
+                leafTotals = leafs
+                totals = rollupSubtrees(tree, leafs)
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()
@@ -126,6 +136,19 @@ class LedgerState(
             return result
         }
     }
+}
+
+/**
+ * Header/pill form: the dominant commodity plus a "+n" counter. Joining every
+ * commodity overflowed the pill and ellipsized the number itself.
+ * Returns null when there is nothing to show, so callers can drop the pill.
+ */
+fun formatTotalsCompact(totals: Map<String, Long>): String? {
+    if (totals.isEmpty()) return null
+    val sorted = totals.entries.sortedByDescending { kotlin.math.abs(it.value) }
+    val head = sorted.first()
+    val extra = sorted.size - 1
+    return "${head.key} ${formatMinorUnits(head.value)}" + if (extra > 0) "  +$extra" else ""
 }
 
 /** "USD 1,234.56 · ARS -500.00"; empty map renders "0". */

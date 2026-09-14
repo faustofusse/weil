@@ -95,6 +95,36 @@ object Icons {
             "M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z",
         )
 
+        val Check: ImageVector = materialIcon(
+            "Check",
+            "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z",
+        )
+
+        val Edit: ImageVector = materialIcon(
+            "Edit",
+            "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34" +
+                "c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
+        )
+
+        val Delete: ImageVector = materialIcon(
+            "Delete",
+            "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
+        )
+
+        /** Phone body with the screen punched out by the reverse-wound subpath. */
+        val Smartphone: ImageVector = materialIcon(
+            "Smartphone",
+            "M7 1h10c1.1 0 2 .9 2 2v18c0 1.1-.9 2-2 2H7c-1.1 0-2-.9-2-2V3c0-1.1.9-2 2-2z" +
+                "M17 5H7v14h10V5z",
+        )
+
+        /** Viewfinder corners around QR-ish blocks — used for "scan to approve". */
+        val QrScan: ImageVector = materialIcon(
+            "QrScan",
+            "M3 3h7v2H5v5H3V3zm11 0h7v7h-2V5h-5V3zM3 14h2v5h5v2H3v-7zm16 0h2v7h-7v-2h5v-5z" +
+                "M7 7h3v3H7V7zm7 7h3v3h-3v-3zm-7 0h3v3H7v-3zm7-7h3v3h-3V7z",
+        )
+
         val Close: ImageVector = materialIcon(
             "Close",
             "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 12.59 6.41 14 12 13.41 17.59 19 19 17.41 13.41 12z",

@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlinJvm)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.composeHotReload)
 }
 
 dependencies {
@@ -13,6 +14,10 @@ dependencies {
     implementation(libs.kotlinx.coroutinesSwing)
 
     implementation(libs.compose.uiToolingPreview)
+
+    // Dev-only fake Database backing the desktop UI harness (Phase 1). Not
+    // used on Android/iOS — those talk to the real Turso sync engine.
+    implementation("org.xerial:sqlite-jdbc:3.47.1.0")
 }
 
 compose.desktop {

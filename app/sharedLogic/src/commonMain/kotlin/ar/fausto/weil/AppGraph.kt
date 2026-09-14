@@ -5,6 +5,10 @@ import kotlin.coroutines.CoroutineContext
 object AuthConfig {
     const val BASE_URL = "https://auth.fausto.ar"
     const val SLUG = "finance"
+
+    /** The app's WebAuthn rp_id host. Also serves the native passkey bridge
+     * page (`/desktop-pair`) used by the desktop target. */
+    const val RP_DOMAIN = "finance.fausto.ar"
 }
 
 class AppGraph(
