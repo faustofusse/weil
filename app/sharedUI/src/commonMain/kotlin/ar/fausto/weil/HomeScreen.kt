@@ -22,9 +22,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -54,19 +54,17 @@ import weil.app.sharedui.generated.resources.app_title
 import weil.app.sharedui.generated.resources.home_accounts_title
 import weil.app.sharedui.generated.resources.home_add_first_account
 import weil.app.sharedui.generated.resources.home_net_worth
-import weil.app.sharedui.generated.resources.home_new_expense
 import weil.app.sharedui.generated.resources.home_no_accounts_yet
 import weil.app.sharedui.generated.resources.home_no_recent
 import weil.app.sharedui.generated.resources.home_recent_title
 import weil.app.sharedui.generated.resources.home_see_all
 import weil.app.sharedui.generated.resources.more_options
+import weil.app.sharedui.generated.resources.new_transaction
 import weil.app.sharedui.generated.resources.open_account_tree
 import weil.app.sharedui.generated.resources.open_emails
 import weil.app.sharedui.generated.resources.open_journal
 import weil.app.sharedui.generated.resources.open_notifications
 import weil.app.sharedui.generated.resources.open_profile
-
-private const val RECENT_COUNT = 5
 
 /**
  * Home: net worth, the user's asset accounts ("Cuentas") and the latest
@@ -90,18 +88,6 @@ fun HomeScreen(
         LaunchedEffect(Unit) { ledgerState.refresh() }
     }
     var adding by remember { mutableStateOf(false) }
-    var recent by remember { mutableStateOf<List<Transaction>?>(null) }
-
-    // Every refresh (pull, sync, or a mutation via `changes`) ends with busy
-    // going false; reload the recent slice then.
-    LaunchedEffect(ledgerState.busy) {
-        if (ledgerState.busy) return@LaunchedEffect
-        try {
-            recent = ledgerState.ledger.page(limit = RECENT_COUNT)
-        } catch (e: Throwable) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -138,13 +124,16 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
+            // Plain + , not "Gasto": the quick sheet it opens can record any
+            // of the three kinds, so labelling the button with the default
+            // one was a promise the screen doesn't keep.
+            FloatingActionButton(
                 onClick = { onNewTransaction(TxnKind.Expense) },
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text(stringResource(Res.string.home_new_expense)) },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
-            )
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.new_transaction))
+            }
         },
     ) { innerPadding ->
         PullToRefreshBox(
@@ -156,7 +145,9 @@ fun HomeScreen(
         ) {
             val assets = ledgerState.tree.filter { it.account.type == AccountType.Asset }
             val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
-            val paths = remember(nodes) { nodes.associate { it.account.id to it.path } }
+            // Leaf names, not full paths: a one-line movement row has room for
+            // "Efectivo → Comida", not for "Activos:Efectivo → Gastos:Comida".
+            val names = remember(nodes) { nodes.associate { it.account.id to it.account.name } }
             val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -216,27 +207,45 @@ fun HomeScreen(
                     SectionHeader(
                         title = stringResource(Res.string.home_recent_title),
                         trailing = {
-                            TextButton(onClick = onNavigateToJournal) {
-                                Text(stringResource(Res.string.home_see_all))
+                            // Fixed 32.dp like the accounts header's + button:
+                            // a default TextButton is 40.dp tall with 24.dp of
+                            // inner padding, which made the two section titles
+                            // sit at different heights and different insets.
+                            TextButton(
+                                onClick = onNavigateToJournal,
+                                modifier = Modifier.height(32.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                            ) {
+                                Text(
+                                    stringResource(Res.string.home_see_all),
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
                             }
                         },
                     )
                 }
-                val recentItems = recent
-                if (recentItems != null && recentItems.isEmpty()) {
+                val recentItems = ledgerState.recent
+                if (recentItems.isEmpty() && ledgerState.loaded) {
                     item(key = "recent-empty") {
                         EmptyHint(title = stringResource(Res.string.home_no_recent))
                     }
                 }
-                var lastGroup: DayGroup? = null
-                for (tx in recentItems.orEmpty()) {
-                    val group = dayGroup(tx.date)
-                    if (group != lastGroup) {
-                        lastGroup = group
-                        item(key = "recent-day-${group.key}") { DayHeader(group) }
+                // One card per day, exactly like the accounts card above: the
+                // day header labels the run, the run's outer rows get the
+                // rounded corners.
+                val days = recentItems.groupBy { dayGroup(it.date) }.entries.toList()
+                days.forEachIndexed { dayIndex, (group, txs) ->
+                    item(key = "recent-day-${group.key}") {
+                        DayHeader(group, top = if (dayIndex == 0) 4.dp else 16.dp)
                     }
-                    item(key = "recent-${tx.id}") {
-                        TransactionCard(tx = tx, paths = paths, types = types, onOpen = { onNavigateToEdit(tx.id) })
+                    itemsIndexed(txs, key = { _, tx -> "recent-${tx.id}" }) { index, tx ->
+                        TransactionRow(
+                            tx = tx,
+                            names = names,
+                            types = types,
+                            onOpen = { onNavigateToEdit(tx.id) },
+                            skin = rowSkin(first = index == 0, last = index == txs.lastIndex),
+                        )
                     }
                 }
             }
@@ -357,9 +366,11 @@ internal fun SectionHeader(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        // end inset mirrors the account rows' trailing icon column, so a
+        // header action lines up with the rows underneath it.
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 24.dp, bottom = 8.dp, start = 4.dp)
+            .padding(top = 24.dp, bottom = 8.dp, start = 4.dp, end = 8.dp)
             .heightIn(min = 32.dp),
     ) {
         Text(

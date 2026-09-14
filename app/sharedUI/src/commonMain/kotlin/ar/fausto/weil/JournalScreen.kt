@@ -2,6 +2,7 @@
 
 package ar.fausto.weil
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,17 +11,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,8 +40,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringArrayResource
@@ -59,6 +67,10 @@ import weil.app.sharedui.generated.resources.weekdays_short
 import weil.app.sharedui.generated.resources.new_transaction
 import weil.app.sharedui.generated.resources.new_transaction_hint
 
+// Enough rows to cover any screen height while loading — the list is
+// lazy, so declaring more than fit on screen costs nothing.
+private const val JOURNAL_SKELETON_COUNT = 16
+
 /** Journal of transactions, newest first, grouped under day headers. */
 @Composable
 fun JournalScreen(
@@ -71,6 +83,7 @@ fun JournalScreen(
     var items by remember { mutableStateOf(emptyList<Transaction>()) }
     var cursor by remember { mutableStateOf<LedgerCursor?>(null) }
     var hasMore by remember { mutableStateOf(true) }
+    var isInitialLoading by remember { mutableStateOf(true) }
     var isSyncing by remember { mutableStateOf(false) }
     var isLoadingMore by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -99,6 +112,7 @@ fun JournalScreen(
             error = e.message ?: e.toString()
         } finally {
             isSyncing = false
+            isInitialLoading = false
         }
     }
 
@@ -175,6 +189,12 @@ fun JournalScreen(
                     vertical = 8.dp,
                 ),
             ) {
+                if (isInitialLoading) {
+                    repeat(JOURNAL_SKELETON_COUNT) { i ->
+                        item(key = "skeleton-$i") { TransactionCardSkeleton() }
+                    }
+                    return@LazyColumn
+                }
                 error?.let { err ->
                     item(key = "error") {
                         Text(
@@ -227,16 +247,9 @@ fun JournalScreen(
                 }
                 if (isLoadingMore) {
                     item(key = "loading") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.Center,
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
+                        Column {
+                            TransactionCardSkeleton()
+                            TransactionCardSkeleton()
                         }
                     }
                 }
@@ -245,14 +258,18 @@ fun JournalScreen(
     }
 }
 
-/** Localized day header: Hoy / Ayer / "lun 8 sep" (plus the year when not the current one). */
+/**
+ * Localized day header: Hoy / Ayer / "lun 8 sep" (plus the year when not the
+ * current one). [top] is the gap above it — Home stacks day headers right
+ * under a section title and needs a tighter one than the journal's own runs.
+ */
 @Composable
-internal fun DayHeader(group: DayGroup, modifier: Modifier = Modifier) {
+internal fun DayHeader(group: DayGroup, modifier: Modifier = Modifier, top: Dp = 16.dp) {
     Text(
         dayLabel(group),
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(top = 16.dp, bottom = 4.dp),
+        modifier = modifier.padding(top = top, bottom = 4.dp, start = 4.dp),
     )
 }
 
@@ -381,6 +398,145 @@ internal fun TransactionCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The two ends of a transaction as a person reads it: where the money left,
+ * where it landed, and how much of the user's own money actually moved.
+ *
+ * [direction] is the only sign a user parses at a glance: +1 money came in,
+ * -1 money went out, 0 an internal move (asset→asset, or paying off a card),
+ * where a red/green amount would be a lie.
+ */
+internal data class TxnFlow(
+    val fromId: String?,
+    val toId: String?,
+    val amountMinor: Long,
+    val commodity: String,
+    val direction: Int,
+)
+
+internal fun flowOf(tx: Transaction, types: Map<String, AccountType>): TxnFlow? {
+    if (tx.postings.isEmpty()) return null
+    // A mixed-commodity transaction (an FX trade) is summarised by its biggest
+    // leg; the editor is where the full split lives.
+    val commodity = tx.postings
+        .groupBy { it.commodity }
+        .maxByOrNull { (_, ps) -> ps.sumOf { abs(it.amountMinor) } }
+        ?.key ?: Money.DEFAULT_COMMODITY
+    val legs = tx.postings.filter { it.commodity == commodity }
+    // Only the user's own money (assets + debts) signals a direction — the
+    // category leg of an expense is bookkeeping, not a balance moving.
+    val net = legs
+        .filter { types[it.accountId] == AccountType.Asset || types[it.accountId] == AccountType.Liability }
+        .sumOf { it.amountMinor }
+    val size = legs.maxOfOrNull { abs(it.amountMinor) } ?: 0L
+    return TxnFlow(
+        fromId = legs.minByOrNull { it.amountMinor }?.accountId,
+        toId = legs.maxByOrNull { it.amountMinor }?.accountId,
+        amountMinor = if (net != 0L) net else size,
+        commodity = commodity,
+        direction = if (net > 0L) 1 else if (net < 0L) -1 else 0,
+    )
+}
+
+@Composable
+private fun flowColor(direction: Int): Color = when {
+    direction > 0 -> MaterialTheme.colorScheme.tertiary
+    direction < 0 -> MaterialTheme.colorScheme.error
+    else -> MaterialTheme.colorScheme.onSurface
+}
+
+/**
+ * One movement on a single line — description first, the accounts it moved
+ * between trailing it in a dimmer, smaller span ("Efectivo → Comida"), amount
+ * right-aligned. Same 56.dp row metrics and grouped-card [skin] as the account
+ * rows, so Home reads as two cards of the same list instead of two designs.
+ * The full posting detail is one tap away in the editor.
+ */
+@Composable
+internal fun TransactionRow(
+    tx: Transaction,
+    names: Map<String, String>,
+    types: Map<String, AccountType>,
+    onOpen: () -> Unit,
+    skin: RowSkin? = null,
+) {
+    val flow = flowOf(tx, types)
+    val from = flow?.fromId?.let { names[it] }
+    val to = flow?.toId?.let { names[it] }
+    // A split (more than the two ends shown) advertises what it's hiding.
+    val extra = tx.postings.size - 2
+    val moreLabel = if (extra > 0) stringResource(Res.string.journal_more_postings, extra) else null
+    val route = buildString {
+        when {
+            from != null && to != null && from != to -> append("$from → $to")
+            else -> append(from ?: to ?: "")
+        }
+        moreLabel?.let { if (isNotEmpty()) append("  ") ; append(it) }
+    }
+    // Well under onSurfaceVariant: at full strength the route read as a
+    // second description instead of as context hanging off the first one.
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+    val dimSize = MaterialTheme.typography.bodySmall.fontSize
+    val label = buildAnnotatedString {
+        if (tx.payee.isNotBlank()) {
+            append(tx.payee)
+            if (route.isNotEmpty()) append("  ")
+        }
+        if (route.isNotEmpty()) {
+            withStyle(SpanStyle(color = dim, fontSize = dimSize)) { append(route) }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (skin == null) Modifier else Modifier.clip(skin.shape).background(skin.container),
+            ),
+    ) {
+        if (skin?.divider == true) {
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpen)
+                .heightIn(min = 56.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                // The payee is what identifies the row, so the accounts are
+                // what gets cut when space runs out.
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (flow != null) {
+                Text(
+                    // The commodity is spelled out only when it isn't the
+                    // default one — an all-ARS ledger doesn't need "ARS" on
+                    // every row, a USD movement must never be mistaken for one.
+                    if (flow.commodity == Money.DEFAULT_COMMODITY) {
+                        formatMinorUnits(flow.amountMinor)
+                    } else {
+                        "${flow.commodity} ${formatMinorUnits(flow.amountMinor)}"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = flowColor(flow.direction),
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
             }
         }
     }

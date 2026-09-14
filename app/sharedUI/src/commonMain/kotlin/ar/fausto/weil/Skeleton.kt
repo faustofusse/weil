@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -84,6 +85,42 @@ fun EmailCardSkeleton() {
             SkeletonBox(modifier = Modifier.fillMaxWidth(0.9f).height(14.dp))
             Spacer(Modifier.height(4.dp))
             SkeletonBox(modifier = Modifier.width(110.dp).height(11.dp))
+        }
+    }
+}
+
+/** Mirrors JournalScreen's TransactionCard layout: same tonal surface, same two-posting-row shape. */
+@Composable
+fun TransactionCardSkeleton() {
+    Surface(
+        shape = RoundedCornerShape(GroupRadius),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                SkeletonBox(modifier = Modifier.width(140.dp).height(16.dp))
+                Spacer(Modifier.weight(1f))
+                SkeletonBox(modifier = Modifier.width(36.dp).height(12.dp))
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                SkeletonBox(modifier = Modifier.width(150.dp).height(14.dp))
+                Spacer(Modifier.weight(1f))
+                SkeletonBox(modifier = Modifier.width(64.dp).height(14.dp))
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                SkeletonBox(modifier = Modifier.width(100.dp).height(14.dp))
+                Spacer(Modifier.weight(1f))
+                SkeletonBox(modifier = Modifier.width(64.dp).height(14.dp))
+            }
         }
     }
 }

@@ -41,6 +41,14 @@ class LedgerState(
      */
     var leafTotals by mutableStateOf<Map<String, Map<String, Long>>>(emptyMap())
         private set
+    /**
+     * Latest [RECENT_COUNT] transactions for Home's "recent" section. Lives
+     * here, not in a screen-local `remember`, so it survives navigating away
+     * and back: Home would otherwise dispose its composition and briefly
+     * show nothing while it re-fetched.
+     */
+    var recent by mutableStateOf<List<Transaction>>(emptyList())
+        private set
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     var loaded = false
@@ -69,6 +77,7 @@ class LedgerState(
                 val leafs = ledger.leafBalances()
                 leafTotals = leafs
                 totals = rollupSubtrees(tree, leafs)
+                recent = ledger.page(limit = RECENT_COUNT)
                 loaded = true
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -115,6 +124,9 @@ class LedgerState(
     }
 
     companion object {
+        /** How many recent transactions Home shows. */
+        const val RECENT_COUNT = 5
+
         /** Leaf sums merged bottom-up; children first so each node holds its subtree. */
         fun rollupSubtrees(
             tree: List<AccountNode>,

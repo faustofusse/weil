@@ -68,29 +68,73 @@ class FakeDatabase(
         }
     }
 
+    /**
+     * Enough shapes to exercise every branch the movement rows have: a plain
+     * expense, an income, an asset→asset transfer (no direction), a split, a
+     * non-default commodity, and a second day so day grouping shows up.
+     */
     private fun seedDemoData() {
         val count = query("select count(*) from ledger_transactions", null) { rows ->
             (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L
         }
         if (count > 0) return
-        val assetId = "seed-asset-cash"
-        execute(
-            "insert or ignore into accounts(id, name, parent_id, type) values (:id, :name, null, 'asset')",
-            mapOf(":id" to assetId, ":name" to "Efectivo"),
+        val cash = "seed-asset-cash"
+        val bank = "seed-asset-bank"
+        val food = "seed-expense-food"
+        val salary = "seed-income-salary"
+        fun account(id: String, name: String, type: String) = execute(
+            "insert or ignore into accounts(id, name, parent_id, type) values (:id, :name, null, :type)",
+            mapOf(":id" to id, ":name" to name, ":type" to type),
         )
+        account(cash, "Efectivo", "asset")
+        account(bank, "Banco", "asset")
+        account(food, "Comida", "expense")
+        account(salary, "Sueldo", "income")
+
         val now = System.currentTimeMillis()
-        val txId = "seed-tx-1"
-        execute(
-            "insert into ledger_transactions(id, date, payee, note, created_at) values (:id, :date, :payee, null, :created)",
-            mapOf(":id" to txId, ":date" to now, ":payee" to "Café", ":created" to now),
+        val day = 24 * 60 * 60 * 1000L
+        fun tx(id: String, date: Long, payee: String, legs: List<Triple<String, Long, String>>) {
+            execute(
+                "insert into ledger_transactions(id, date, payee, note, created_at) values (:id, :date, :payee, null, :created)",
+                mapOf(":id" to id, ":date" to date, ":payee" to payee, ":created" to date),
+            )
+            legs.forEachIndexed { i, (account, amount, commodity) ->
+                execute(
+                    "insert into postings(id, transaction_id, account_id, amount_minor, commodity) " +
+                        "values (:id, :tx, :acct, :amount, :commodity)",
+                    mapOf(
+                        ":id" to "$id-$i",
+                        ":tx" to id,
+                        ":acct" to account,
+                        ":amount" to amount,
+                        ":commodity" to commodity,
+                    ),
+                )
+            }
+        }
+        tx(
+            "seed-tx-1", now - 3600_000, "Café",
+            listOf(Triple(cash, -50000L, "ARS"), Triple(food, 50000L, "ARS")),
         )
-        execute(
-            "insert into postings(id, transaction_id, account_id, amount_minor, commodity) values (:id, :tx, :acct, :amount, 'ARS')",
-            mapOf(":id" to "$txId-1", ":tx" to txId, ":acct" to assetId, ":amount" to -50000L),
+        tx(
+            "seed-tx-2", now - 7200_000, "Supermercado Coto de la esquina",
+            listOf(
+                Triple(bank, -1234500L, "ARS"),
+                Triple(food, 900000L, "ARS"),
+                Triple(EXTERNAL_EXPENSE_ID, 334500L, "ARS"),
+            ),
         )
-        execute(
-            "insert into postings(id, transaction_id, account_id, amount_minor, commodity) values (:id, :tx, :acct, :amount, 'ARS')",
-            mapOf(":id" to "$txId-2", ":tx" to txId, ":acct" to EXTERNAL_EXPENSE_ID, ":amount" to 50000L),
+        tx(
+            "seed-tx-3", now - day, "Sueldo enero",
+            listOf(Triple(salary, -95000000L, "ARS"), Triple(bank, 95000000L, "ARS")),
+        )
+        tx(
+            "seed-tx-4", now - day - 3600_000, "Retiro cajero",
+            listOf(Triple(bank, -2000000L, "ARS"), Triple(cash, 2000000L, "ARS")),
+        )
+        tx(
+            "seed-tx-5", now - 2 * day, "Suscripción",
+            listOf(Triple(bank, -1200L, "USD"), Triple(EXTERNAL_EXPENSE_ID, 1200L, "USD")),
         )
     }
 }

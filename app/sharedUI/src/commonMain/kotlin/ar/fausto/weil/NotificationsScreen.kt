@@ -53,6 +53,10 @@ import weil.app.sharedui.generated.resources.notifications_title_counts
 import weil.app.sharedui.generated.resources.notifications_potential_transactions
 import weil.app.sharedui.generated.resources.sync_error
 
+// Enough rows to cover any screen height while loading; harmless past the
+// fold since this placeholder Column doesn't scroll.
+private const val NOTIFICATION_SKELETON_COUNT = 16
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationsScreen(
@@ -234,7 +238,7 @@ fun NotificationsScreen(
                 Spacer(Modifier.height(16.dp))
                 if (isInitialLoading) {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        repeat(6) {
+                        repeat(NOTIFICATION_SKELETON_COUNT) {
                             NotificationCardSkeleton()
                             Spacer(Modifier.height(8.dp))
                         }

@@ -43,6 +43,10 @@ import weil.app.sharedui.generated.resources.emails_title_count
 import weil.app.sharedui.generated.resources.emails_empty
 import weil.app.sharedui.generated.resources.sync_error
 
+// Enough rows to cover any screen height while loading; harmless past the
+// fold since this placeholder Column doesn't scroll.
+private const val EMAIL_SKELETON_COUNT = 16
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmailScreen(
@@ -161,7 +165,7 @@ fun EmailScreen(
             when {
                 isInitialLoading -> {
                     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                        repeat(8) {
+                        repeat(EMAIL_SKELETON_COUNT) {
                             EmailCardSkeleton()
                             Spacer(Modifier.height(8.dp))
                         }
