@@ -8,7 +8,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -35,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -44,6 +47,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -197,11 +201,10 @@ private fun AccountsTreeSection(
                         title = accountTypeLabel(row.type),
                         trailing = {
                             // Unweighted: the title's own weight already
-                            // yields the space this pill needs, which is what
-                            // keeps it flush against the row's trailing edge.
-                            formatTotalsCompact(typeSum(state, row.type))?.let { total ->
-                                ValuePill(text = total)
-                            }
+                            // yields the space this total needs, which is
+                            // what keeps it flush against the row's trailing
+                            // edge.
+                            TypeTotals(typeSum(state, row.type))
                         },
                     )
                     is NodeRow -> NodeRowView(
@@ -325,28 +328,43 @@ internal fun NodeRowView(
                     onLongClick = { actions = true },
                 )
                 .heightIn(min = 56.dp)
-                // Same base inset both sides; only the leading edge grows
-                // with depth.
-                .padding(start = 16.dp + indent, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                // The trailing IconButton below is shrunk to 32.dp and
+                // already sits inside this whole-row clickable, so the
+                // platform's 48.dp touch-target padding around it (see the
+                // CompositionLocalProvider below) would otherwise double up
+                // with this inset — 8.dp here + that button's own 7.dp of
+                // internal centering lines back up with the 16.dp leading
+                // inset instead of dwarfing it.
+                .padding(start = 16.dp + indent, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (toggleSlot) {
                 Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
                     if (childCount > 0 && !flat) {
-                        IconButton(
-                            onClick = { onToggle(node.account.id) },
-                            modifier = Modifier.size(32.dp),
-                        ) {
-                            Icon(
-                                Icons.Filled.ExpandMore,
-                                contentDescription = stringResource(
-                                    if (expanded) Res.string.account_collapse else Res.string.account_expand,
-                                ),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .graphicsLayer(rotationZ = rotation),
-                            )
+                        // Disable the 48.dp minimum touch target: this icon
+                        // sits inside a row that's already fully clickable
+                        // (combinedClickable above), so shrinking its own hit
+                        // box to the intended 32.dp doesn't cost accessible
+                        // reach, and it stops Material from silently
+                        // re-inflating it (which otherwise pushes the account
+                        // name 8.dp further right than the mirrored trailing
+                        // icon).
+                        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                            IconButton(
+                                onClick = { onToggle(node.account.id) },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.ExpandMore,
+                                    contentDescription = stringResource(
+                                        if (expanded) Res.string.account_collapse else Res.string.account_expand,
+                                    ),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .graphicsLayer(rotationZ = rotation),
+                                )
+                            }
                         }
                     }
                 }
@@ -406,16 +424,24 @@ internal fun NodeRowView(
                     )
                 }
             }
-            IconButton(
-                onClick = { actions = true },
-                modifier = Modifier.size(32.dp),
-            ) {
-                Icon(
-                    Icons.Filled.MoreVert,
-                    contentDescription = stringResource(Res.string.account_actions),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
+            // Same rationale as the chevron above: the row itself is already
+            // the primary tap target (single click opens the account, long
+            // click opens this same sheet), so this is just a visual
+            // affordance and can honor its explicit 32.dp size instead of
+            // Material's 48.dp minimum, which was the actual cause of the
+            // lopsided right-hand gap.
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                IconButton(
+                    onClick = { actions = true },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = stringResource(Res.string.account_actions),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }
@@ -561,6 +587,33 @@ private fun subaccountsLabel(count: Int): String = if (count == 1) {
     stringResource(Res.string.account_subaccounts_many, count)
 }
 
+/**
+ * Type header's rollup, real amounts instead of a "+n" count: one entry per
+ * commodity, side by side, same number formatting as every row below it. No
+ * chip background — it's unweighted in [SectionHeader]'s row (the title
+ * soaks up whatever's left), so it reads as plain trailing text instead of a
+ * badge competing with the type name.
+ */
+@Composable
+private fun TypeTotals(totals: Map<String, Long>) {
+    if (totals.isEmpty()) return
+    val entries = totals.entries.sortedByDescending { kotlin.math.abs(it.value) }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        entries.forEach { (commodity, minor) ->
+            Text(
+                "$commodity ${formatMinorUnits(minor)}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
 internal fun findNode(tree: List<AccountNode>, id: String?): AccountNode? {
     if (id == null) return null
     for (root in tree) {
@@ -634,13 +687,27 @@ internal fun AddAccountDialog(
                     singleLine = true,
                 )
                 Spacer(Modifier.height(8.dp))
-                TextButton(onClick = { pickingParent = true }) {
-                    Text(
-                        if (parent == null) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = if (parent == null) {
                             stringResource(Res.string.account_parent_none)
                         } else {
                             stringResource(Res.string.account_parent_under, parent!!.path)
                         },
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(Res.string.account_choose_parent)) },
+                        trailingIcon = { Icon(Icons.Filled.ExpandMore, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { pickingParent = true },
                     )
                 }
                 if (fixedType == null) {

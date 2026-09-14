@@ -49,13 +49,13 @@
     <string name="account_collapse">Colapsar</string>
     <string name="account_expand">Expandir</string>
     <string name="account_rename">Renombrar</string>
-    <string name="account_move_under">Mover bajo…</string>
-    <string name="account_move_under_title">Mover bajo</string>
+    <string name="account_move_under">Mover</string>
+    <string name="account_move_under_title">Mover</string>
     <string name="account_delete_message">Cuenta “%1$s” eliminada</string>
     <string name="account_add_title">Nueva cuenta</string>
     <string name="account_name_label">Nombre</string>
     <string name="account_type_label">Tipo</string>
-    <string name="account_parent_none">Sin padre (raíz del árbol)</string>
+    <string name="account_parent_none">Sin padre</string>
     <string name="account_parent_under">Bajo: %1$s</string>
     <string name="account_choose_parent">Elegir padre</string>
     <string name="account_subaccounts_one">1 subcuenta</string>

@@ -138,19 +138,6 @@ class LedgerState(
     }
 }
 
-/**
- * Header/pill form: the dominant commodity plus a "+n" counter. Joining every
- * commodity overflowed the pill and ellipsized the number itself.
- * Returns null when there is nothing to show, so callers can drop the pill.
- */
-fun formatTotalsCompact(totals: Map<String, Long>): String? {
-    if (totals.isEmpty()) return null
-    val sorted = totals.entries.sortedByDescending { kotlin.math.abs(it.value) }
-    val head = sorted.first()
-    val extra = sorted.size - 1
-    return "${head.key} ${formatMinorUnits(head.value)}" + if (extra > 0) "  +$extra" else ""
-}
-
 /** "USD 1,234.56 · ARS -500.00"; empty map renders "0". */
 fun formatTotals(totals: Map<String, Long>): String =
     if (totals.isEmpty()) {
