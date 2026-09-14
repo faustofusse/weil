@@ -134,15 +134,15 @@
           platformData = {
             x86_64-linux = {
               url = "https://dl.google.com/android/cli/latest/linux_x86_64/android";
-              hash = "sha256-fQ9LQeZRGrbu6uxLiFRC8Cre0nDPg8t19SGsosA9WT0=";
+              hash = "sha256-X00cPbFdZkVUzRS/T1SWdx/LJWF92ZrBcZ+N5eWawiw=";
             };
             aarch64-darwin = {
               url = "https://dl.google.com/android/cli/latest/darwin_arm64/android";
-              hash = "sha256-D6ND/alDO3x05OuR06GM7GBHeinAFaAY3RiSIqPQ0CA=";
+              hash = "sha256-n51sJJ7Kw9+mWXHKY6vimYbSfo+H8VMJf0TajjaXB78=";
             };
             x86_64-darwin = {
               url = "https://dl.google.com/android/cli/latest/darwin_x86_64/android";
-              hash = "sha256-AQvn4mgHjMbGkchHvrij2iLjbTLHWIjfoTedLAD9Hag=";
+              hash = "sha256-AA/5zudkQOXr282yhcWZxYsAjZO1fWL95QxiRyxnFbQ=";
             };
           };
           info = platformData.${system} or (throw "Unsupported system: ${system}");
