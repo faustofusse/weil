@@ -39,6 +39,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
+import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.action_back
+import weil.app.sharedui.generated.resources.action_sync
+import weil.app.sharedui.generated.resources.notifications_access_denied
+import weil.app.sharedui.generated.resources.notifications_access_granted
+import weil.app.sharedui.generated.resources.notifications_app_icon_content
+import weil.app.sharedui.generated.resources.notifications_category
+import weil.app.sharedui.generated.resources.notifications_grant
+import weil.app.sharedui.generated.resources.notifications_time
+import weil.app.sharedui.generated.resources.notifications_title_counts
+import weil.app.sharedui.generated.resources.notifications_potential_transactions
+import weil.app.sharedui.generated.resources.sync_error
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -168,12 +181,12 @@ fun NotificationsScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Notifications ($shownCount/$totalCount)")
+                        Text(stringResource(Res.string.notifications_title_counts, shownCount, totalCount))
                         Spacer(Modifier.width(8.dp))
                         if (syncError != null) {
                             Icon(
                                 imageVector = Icons.Filled.Warning,
-                                contentDescription = "Sync error",
+                                contentDescription = stringResource(Res.string.sync_error),
                                 tint = colorScheme.error,
                                 modifier = Modifier.padding(start = 4.dp),
                             )
@@ -182,12 +195,12 @@ fun NotificationsScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Navigate back")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { sync() }, enabled = !isSyncing) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Sync notifications")
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.action_sync))
                     }
                 },
             )
@@ -211,7 +224,7 @@ fun NotificationsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Potential transactions", style = typography.bodyMedium)
+                    Text(stringResource(Res.string.notifications_potential_transactions), style = typography.bodyMedium)
                     Spacer(Modifier.width(8.dp))
                     Switch(
                         checked = showOnlyTransactions,
@@ -260,17 +273,16 @@ private fun NotificationAccessBanner() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = if (granted) {
-                "✓ Notification access: GRANTED"
-            } else {
-                "✗ Notification access: NOT GRANTED"
-            },
+            text = stringResource(
+                if (granted) Res.string.notifications_access_granted
+                else Res.string.notifications_access_denied,
+            ),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f),
         )
         if (!granted) {
             TextButton(onClick = { access.openSettings() }) {
-                Text("Grant")
+                Text(stringResource(Res.string.notifications_grant))
             }
         }
     }
@@ -290,7 +302,7 @@ private fun NotificationCard(notificationItem: NotificationItem) {
                 if (bitmap != null) {
                     Image(
                         bitmap = bitmap,
-                        contentDescription = "${notificationItem.appName} icon",
+                        contentDescription = stringResource(Res.string.notifications_app_icon_content, notificationItem.appName),
                         modifier = Modifier.size(20.dp),
                     )
                     Spacer(Modifier.width(8.dp))
@@ -305,10 +317,13 @@ private fun NotificationCard(notificationItem: NotificationItem) {
             Text(text = notificationItem.title, style = typography.bodyMedium)
             Text(text = notificationItem.text, style = typography.bodyMedium)
             notificationItem.category?.let {
-                Text(text = "Category: $it", style = typography.bodySmall)
+                Text(
+                    text = stringResource(Res.string.notifications_category, it),
+                    style = typography.bodySmall,
+                )
             }
             Text(
-                text = "Time: ${formatTimestamp(notificationItem.postTime)}",
+                text = stringResource(Res.string.notifications_time, formatTimestamp(notificationItem.postTime)),
                 style = typography.bodySmall,
             )
         }

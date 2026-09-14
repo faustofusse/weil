@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spanish is the base locale; translations (e.g. values-en) are added as
+     sibling folders later. -->
+<resources>
+    <!-- App / generic -->
+    <string name="app_title">Finance</string>
+    <string name="action_back">Atrás</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_ok">OK</string>
+    <string name="action_edit">Editar</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="action_add">Agregar</string>
+    <string name="action_undo">Deshacer</string>
+    <string name="action_search">Buscar</string>
+    <string name="action_sync">Sincronizar</string>
+    <string name="syncing">Sincronizando…</string>
+    <string name="sync_error">Error de sincronización</string>
+
+    <!-- Home -->
+    <string name="home_accounts_title">Cuentas</string>
+    <string name="home_net_worth">Patrimonio</string>
+    <string name="home_no_accounts_yet">Todavía no hay cuentas</string>
+    <string name="home_add_first_account">Crear tu primera cuenta</string>
+    <string name="home_long_press_hint">Mantené presionada una cuenta para renombrarla, moverla o eliminarla</string>
+    <string name="home_new_expense">Gasto</string>
+    <string name="home_new_income">Ingreso</string>
+    <string name="home_new_transfer">Traspaso</string>
+    <string name="home_recent_title">Últimos movimientos</string>
+    <string name="home_see_all">Ver todo</string>
+    <string name="home_no_recent">Sin movimientos todavía. Tocá + para registrar un gasto.</string>
+    <string name="more_options">Más opciones</string>
+
+    <!-- Top bar destinations -->
+    <string name="open_journal">Ver diario</string>
+    <string name="open_notifications">Ver notificaciones</string>
+    <string name="open_emails">Ver correos</string>
+    <string name="open_profile">Ver perfil</string>
+    <string name="open_account_tree">Ver todas las cuentas</string>
+    <string name="new_transaction">Nueva transacción</string>
+    <string name="new_transaction_hint">Tocá + para registrar una</string>
+
+    <!-- Account tree / types -->
+    <string name="tree_title">Todas las cuentas</string>
+    <string name="account_type_asset">Activos</string>
+    <string name="account_type_liability">Pasivos</string>
+    <string name="account_type_income">Ingresos</string>
+    <string name="account_type_expense">Gastos</string>
+    <string name="account_type_equity">Patrimonio</string>
+    <string name="account_collapse">Colapsar</string>
+    <string name="account_expand">Expandir</string>
+    <string name="account_rename">Renombrar</string>
+    <string name="account_move_under">Mover bajo…</string>
+    <string name="account_move_under_title">Mover bajo</string>
+    <string name="account_delete_message">Cuenta “%1$s” eliminada</string>
+    <string name="account_add_title">Nueva cuenta</string>
+    <string name="account_name_label">Nombre</string>
+    <string name="account_type_label">Tipo</string>
+    <string name="account_parent_none">Sin padre (raíz del árbol)</string>
+    <string name="account_parent_under">Bajo: %1$s</string>
+    <string name="account_choose_parent">Elegir padre</string>
+
+    <!-- Transaction editor (full) -->
+    <string name="editor_new_title">Nueva transacción</string>
+    <string name="editor_edit_title">Editar transacción</string>
+    <string name="editor_transaction_deleted">Transacción eliminada</string>
+    <string name="editor_deleted_payee_fallback">(eliminada)</string>
+    <string name="editor_payee_label">Detalle / beneficiario</string>
+    <string name="editor_date_label">Fecha (AAAA-MM-DD)</string>
+    <string name="editor_date_pick">Elegir</string>
+    <string name="editor_note_label">Nota (opcional)</string>
+    <string name="editor_add_split">+ agregar partida</string>
+    <string name="editor_record">Registrar</string>
+    <string name="editor_invalid_date">Fecha inválida: %1$s</string>
+    <string name="editor_amount_auto">Monto (auto)</string>
+    <string name="editor_amount">Monto</string>
+    <string name="editor_choose_account">Elegir cuenta %1$d</string>
+    <string name="editor_choose_account_title">Elegir cuenta</string>
+    <string name="editor_remove_posting">Quitar partida</string>
+    <string name="editor_balanced">%1$s ✓</string>
+    <string name="editor_off_by">%1$s difiere por %2$s</string>
+
+    <!-- Quick transaction -->
+    <string name="quick_expense_title">Gasto</string>
+    <string name="quick_income_title">Ingreso</string>
+    <string name="quick_transfer_title">Traspaso</string>
+    <string name="quick_amount_label">Monto</string>
+    <string name="quick_description_label">Descripción (opcional)</string>
+    <string name="quick_from_label">Cuenta</string>
+    <string name="quick_to_label">Hacia</string>
+    <string name="quick_transfer_from_label">Desde</string>
+    <string name="quick_source_label">Origen</string>
+    <string name="quick_category_label">Categoría</string>
+    <string name="quick_choose">Elegir…</string>
+    <string name="quick_record">Registrar</string>
+    <string name="quick_error_amount">Ingresá un monto mayor a cero</string>
+
+    <!-- Account picker -->
+    <string name="picker_search">Buscar</string>
+    <string name="picker_empty">Sin resultados</string>
+    <string name="picker_create">Nueva categoría</string>
+
+    <!-- Journal -->
+    <string name="journal_title">Diario</string>
+    <string name="journal_empty">Todavía no hay transacciones</string>
+    <string name="journal_more_postings">+%1$d más</string>
+
+    <!-- Account detail -->
+    <string name="detail_account_fallback">Cuenta</string>
+    <string name="detail_include_subaccounts">Incluir subcuentas</string>
+    <string name="detail_no_postings">Todavía no hay movimientos</string>
+
+    <!-- Login -->
+    <string name="login_subtitle">Tus cuentas, un solo lugar</string>
+    <string name="login_continue">Continuar con passkey</string>
+    <string name="login_pair_entry">Vincular con una cuenta existente</string>
+    <string name="login_joining">Conectando…</string>
+    <string name="login_scan_invite">Escanear QR de invitación</string>
+    <string name="login_show_request_qr">Mostrar QR al otro dispositivo</string>
+    <string name="login_back">Volver</string>
+    <string name="login_pairing_expired">La solicitud de vinculación expiró</string>
+    <string name="login_new_qr">Nuevo QR</string>
+    <string name="login_approved">Aprobado</string>
+    <string name="login_approved_creating">Aprobado — creando tu passkey…</string>
+    <string name="login_continue_after_approval">Continuar</string>
+    <string name="login_pairing_qr_content">Código QR de solicitud de vinculación</string>
+    <string name="login_approve_hint">Aprobá desde el dispositivo con sesión iniciada: Perfil → Aprobar dispositivo</string>
+    <string name="login_expires_in">Expira en %1$s</string>
+    <string name="login_qr_unavailable">El escaneo de QR no está disponible en este dispositivo</string>
+    <string name="login_qr_not_invite">Ese código QR no es una invitación de dispositivo</string>
+    <string name="login_qr_not_invite_but_request">Ese código QR es una solicitud de vinculación, no una invitación</string>
+
+    <!-- Profile -->
+    <string name="profile_title">Perfil</string>
+    <string name="profile_sign_out">Cerrar sesión</string>
+    <string name="profile_sync_chain_title">Cadena de sincronización</string>
+    <string name="profile_sync_chain_subtitle">Tus dispositivos comparten una cuenta y su base de datos. Cada dispositivo inicia sesión con su propio passkey.</string>
+    <string name="profile_add_device">Agregar dispositivo</string>
+    <string name="profile_approve_device">Aprobar dispositivo</string>
+    <string name="profile_no_devices">Todavía no hay dispositivos — usá Agregar dispositivo acá, o vinculá un dispositivo nuevo desde su pantalla de inicio de sesión.</string>
+    <string name="profile_revoke_title">¿Revocar %1$s?</string>
+    <string name="profile_revoke_current_body">Este es el dispositivo que estás usando — vas a cerrar la sesión inmediatamente.</string>
+    <string name="profile_revoke_other_body">Este dispositivo cerrará la sesión inmediatamente y perderá acceso a la base de datos. Los otros dispositivos se recuperan automáticamente.</string>
+    <string name="profile_revoke">Revocar</string>
+    <string name="profile_revoke_notice">%1$s revocado — su acceso a la base de datos fue quitado</string>
+    <string name="profile_device_approved">Dispositivo aprobado — terminá la vinculación en el otro dispositivo</string>
+    <string name="profile_device_this">este dispositivo</string>
+    <string name="profile_device_revoked">revocado</string>
+    <string name="profile_qr_unavailable">El escaneo de QR no está disponible en este dispositivo</string>
+    <string name="profile_qr_not_request">Ese código QR no es una solicitud de vinculación</string>
+    <string name="profile_qr_content">Código QR de vinculación</string>
+    <string name="profile_qr_scan_hint">Escaneá con el dispositivo nuevo — se une con su propio passkey. Un solo uso.</string>
+    <string name="profile_invite_expired">La invitación expiró</string>
+    <string name="profile_new_invite">Nueva invitación</string>
+    <string name="profile_contact_email_title">Correo de contacto</string>
+    <string name="profile_contact_email_subtitle">Los correos enviados acá se ingieren en la base de datos de tu cuenta (y se reenvían a Gmail).</string>
+    <string name="profile_email_not_set">Sin configurar</string>
+
+    <!-- Notifications -->
+    <string name="notifications_title_counts">Notificaciones (%1$d/%2$d)</string>
+    <string name="notifications_potential_transactions">Posibles transacciones</string>
+    <string name="notifications_access_granted">Acceso a notificaciones concedido</string>
+    <string name="notifications_access_denied">Sin acceso a notificaciones</string>
+    <string name="notifications_grant">Conceder</string>
+    <string name="notifications_category">Categoría: %1$s</string>
+    <string name="notifications_time">Hora: %1$s</string>
+    <string name="notifications_app_icon_content">Ícono de %1$s</string>
+
+    <!-- Emails -->
+    <string name="emails_title_count">Correos (%1$d)</string>
+    <string name="emails_empty">Todavía no hay correos</string>
+    <string name="emails_no_subject">(Sin asunto)</string>
+
+    <!-- Day labels -->
+    <string name="day_today">Hoy</string>
+    <string name="day_yesterday">Ayer</string>
+    <string name="day_date">%1$s %2$d %3$s</string>
+    <string name="day_date_year">%1$s %2$d %3$s %4$d</string>
+    <string-array name="weekdays_short">
+        <item>lun</item>
+        <item>mar</item>
+        <item>mié</item>
+        <item>jue</item>
+        <item>vie</item>
+        <item>sáb</item>
+        <item>dom</item>
+    </string-array>
+    <string-array name="months_short">
+        <item>ene</item>
+        <item>feb</item>
+        <item>mar</item>
+        <item>abr</item>
+        <item>may</item>
+        <item>jun</item>
+        <item>jul</item>
+        <item>ago</item>
+        <item>sep</item>
+        <item>oct</item>
+        <item>nov</item>
+        <item>dic</item>
+    </string-array>
+
+    <!-- Passkey fallback names -->
+    <string name="passkey_name">Passkey %1$s</string>
+</resources>

@@ -45,6 +45,38 @@ import io.github.alexzhirkevich.qrose.options.solid
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
+import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.action_back
+import weil.app.sharedui.generated.resources.action_cancel
+import weil.app.sharedui.generated.resources.action_edit
+import weil.app.sharedui.generated.resources.action_save
+import weil.app.sharedui.generated.resources.login_expires_in
+import weil.app.sharedui.generated.resources.passkey_name
+import weil.app.sharedui.generated.resources.profile_add_device
+import weil.app.sharedui.generated.resources.profile_approve_device
+import weil.app.sharedui.generated.resources.profile_contact_email_subtitle
+import weil.app.sharedui.generated.resources.profile_contact_email_title
+import weil.app.sharedui.generated.resources.profile_device_approved
+import weil.app.sharedui.generated.resources.profile_device_revoked
+import weil.app.sharedui.generated.resources.profile_device_this
+import weil.app.sharedui.generated.resources.profile_email_not_set
+import weil.app.sharedui.generated.resources.profile_invite_expired
+import weil.app.sharedui.generated.resources.profile_new_invite
+import weil.app.sharedui.generated.resources.profile_no_devices
+import weil.app.sharedui.generated.resources.profile_qr_content
+import weil.app.sharedui.generated.resources.profile_qr_not_request
+import weil.app.sharedui.generated.resources.profile_qr_scan_hint
+import weil.app.sharedui.generated.resources.profile_qr_unavailable
+import weil.app.sharedui.generated.resources.profile_revoke
+import weil.app.sharedui.generated.resources.profile_revoke_current_body
+import weil.app.sharedui.generated.resources.profile_revoke_notice
+import weil.app.sharedui.generated.resources.profile_revoke_other_body
+import weil.app.sharedui.generated.resources.profile_revoke_title
+import weil.app.sharedui.generated.resources.profile_sign_out
+import weil.app.sharedui.generated.resources.profile_sync_chain_subtitle
+import weil.app.sharedui.generated.resources.profile_sync_chain_title
+import weil.app.sharedui.generated.resources.profile_title
 
 @Composable
 fun ProfileScreen(
@@ -56,17 +88,17 @@ fun ProfileScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Profile") },
+                title = { Text(stringResource(Res.string.profile_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Navigate back")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = onSignOut) {
                         Icon(
                             Icons.Filled.Logout,
-                            contentDescription = "Sign out",
+                            contentDescription = stringResource(Res.string.profile_sign_out),
                             tint = MaterialTheme.colorScheme.error,
                         )
                     }
@@ -93,14 +125,18 @@ private fun ChainSection(state: ChainState) {
     var revoking by remember { mutableStateOf<ChainDevice?>(null) }
     val devices = state.devices
     val busy = state.busy
+    val qrUnavailable = stringResource(Res.string.profile_qr_unavailable)
+    val notPairingRequest = stringResource(Res.string.profile_qr_not_request)
+    val approvedNotice = stringResource(Res.string.profile_device_approved)
+    val cancelLabel = stringResource(Res.string.action_cancel)
 
     if (!state.loaded) {
         LaunchedEffect(Unit) { state.refresh() }
     }
 
-    Text("Sync chain", style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(Res.string.profile_sync_chain_title), style = MaterialTheme.typography.titleMedium)
     Text(
-        "Your devices share one account and its database. Every device signs in with its own passkey.",
+        stringResource(Res.string.profile_sync_chain_subtitle),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
@@ -141,14 +177,14 @@ private fun ChainSection(state: ChainState) {
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("Add device")
+                Text(stringResource(Res.string.profile_add_device))
             }
             OutlinedButton(
-                onClick = { state.scanAndApprove() },
+                onClick = { state.scanAndApprove(qrUnavailable, notPairingRequest, approvedNotice) },
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("Approve device")
+                Text(stringResource(Res.string.profile_approve_device))
             }
         }
     }
@@ -172,7 +208,7 @@ private fun ChainSection(state: ChainState) {
         }
     } else if (state.loaded && !busy && invite == null) {
         Text(
-            "No devices yet — use Add device here, or pair a new device from its sign-in screen.",
+            stringResource(Res.string.profile_no_devices),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 16.dp),
@@ -180,16 +216,20 @@ private fun ChainSection(state: ChainState) {
     }
 
     revoking?.let { device ->
+        val deviceName = chainDeviceName(
+            device,
+            stringResource(Res.string.passkey_name, device.id.takeLast(6)),
+        )
+        val revokedNotice = stringResource(Res.string.profile_revoke_notice, deviceName)
         AlertDialog(
             onDismissRequest = { revoking = null },
-            title = { Text("Revoke ${chainDeviceName(device)}?") },
+            title = { Text(stringResource(Res.string.profile_revoke_title, deviceName)) },
             text = {
                 Text(
                     if (device.current) {
-                        "This is the device you are using — you will be signed out immediately."
+                        stringResource(Res.string.profile_revoke_current_body)
                     } else {
-                        "This device will be signed out immediately and lose database access. " +
-                            "Other devices recover automatically."
+                        stringResource(Res.string.profile_revoke_other_body)
                     }
                 )
             },
@@ -198,12 +238,12 @@ private fun ChainSection(state: ChainState) {
                     onClick = {
                         val target = device
                         revoking = null
-                        state.revoke(target)
+                        state.revoke(target, revokedNotice)
                     },
-                ) { Text("Revoke") }
+                ) { Text(stringResource(Res.string.profile_revoke)) }
             },
             dismissButton = {
-                TextButton(onClick = { revoking = null }) { Text("Cancel") }
+                TextButton(onClick = { revoking = null }) { Text(cancelLabel) }
             },
         )
     }
@@ -226,6 +266,7 @@ private fun InviteQrCard(
     }
     val remainingSeconds = ((expiresAt - now) / 1000).coerceAtLeast(0)
     val expired = remainingSeconds <= 0
+    val cancelLabel = stringResource(Res.string.action_cancel)
 
     Column(
         modifier = Modifier
@@ -235,7 +276,7 @@ private fun InviteQrCard(
     ) {
         if (expired) {
             Text(
-                "Invite expired",
+                stringResource(Res.string.profile_invite_expired),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -243,7 +284,7 @@ private fun InviteQrCard(
                 onClick = onRestart,
                 modifier = Modifier.padding(top = 8.dp),
             ) {
-                Text("New invite")
+                Text(stringResource(Res.string.profile_new_invite))
             }
         } else {
             Image(
@@ -256,26 +297,29 @@ private fun InviteQrCard(
                         fill = SolidColor(Color.White)
                     }
                 },
-                contentDescription = "Pairing QR code",
+                contentDescription = stringResource(Res.string.profile_qr_content),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 48.dp, vertical = 8.dp),
             )
             Text(
-                "Scan with the new device — it joins with its own passkey. Single use.",
+                stringResource(Res.string.profile_qr_scan_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
             Text(
-                "Expires in ${remainingSeconds / 60}:${(remainingSeconds % 60).toString().padStart(2, '0')}",
+                stringResource(
+                    Res.string.login_expires_in,
+                    "${remainingSeconds / 60}:${(remainingSeconds % 60).toString().padStart(2, '0')}",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
         TextButton(onClick = onCancel, modifier = Modifier.padding(top = 4.dp)) {
-            Text("Cancel")
+            Text(cancelLabel)
         }
     }
 }
@@ -285,6 +329,9 @@ private fun ChainDeviceRow(
     device: ChainDevice,
     onRevoke: () -> Unit,
 ) {
+    val thisDeviceSuffix = stringResource(Res.string.profile_device_this)
+    val revokedSuffix = stringResource(Res.string.profile_device_revoked)
+    val passkeyFallback = stringResource(Res.string.passkey_name, device.id.takeLast(6))
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -304,9 +351,9 @@ private fun ChainDeviceRow(
             }
             Text(
                 buildString {
-                    append(chainDeviceName(device))
-                    if (device.current) append("  · this device")
-                    if (device.revokedAt != null) append("  · revoked")
+                    append(chainDeviceName(device, passkeyFallback))
+                    if (device.current) append("  · $thisDeviceSuffix")
+                    if (device.revokedAt != null) append("  · $revokedSuffix")
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
@@ -316,7 +363,7 @@ private fun ChainDeviceRow(
         if (device.revokedAt == null) {
             TextButton(onClick = onRevoke) {
                 Text(
-                    "Revoke",
+                    stringResource(Res.string.profile_revoke),
                     color = MaterialTheme.colorScheme.error,
                 )
             }
@@ -347,9 +394,9 @@ private fun AccountEmailSection(chain: ChainRepository) {
         }
     }
 
-    Text("Contact email", style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(Res.string.profile_contact_email_title), style = MaterialTheme.typography.titleMedium)
     Text(
-        "Emails sent here are ingested into your account's database (and forwarded to Gmail).",
+        stringResource(Res.string.profile_contact_email_subtitle),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 2.dp, bottom = 4.dp),
@@ -368,7 +415,7 @@ private fun AccountEmailSection(chain: ChainRepository) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    email ?: "Not set",
+                    email ?: stringResource(Res.string.profile_email_not_set),
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (email == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
@@ -377,7 +424,7 @@ private fun AccountEmailSection(chain: ChainRepository) {
                     draft = email ?: ""
                     editing = true
                 }) {
-                    Text("Edit")
+                    Text(stringResource(Res.string.action_edit))
                 }
             }
         }
@@ -386,7 +433,7 @@ private fun AccountEmailSection(chain: ChainRepository) {
     if (editing) {
         AlertDialog(
             onDismissRequest = { editing = false },
-            title = { Text("Contact email") },
+            title = { Text(stringResource(Res.string.profile_contact_email_title)) },
             text = {
                 OutlinedTextField(
                     value = draft,
@@ -414,10 +461,10 @@ private fun AccountEmailSection(chain: ChainRepository) {
                             }
                         }
                     },
-                ) { Text("Save") }
+                ) { Text(stringResource(Res.string.action_save)) }
             },
             dismissButton = {
-                TextButton(onClick = { editing = false }) { Text("Cancel") }
+                TextButton(onClick = { editing = false }) { Text(stringResource(Res.string.action_cancel)) }
             },
         )
     }

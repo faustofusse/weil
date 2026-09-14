@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -26,11 +28,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.jetbrains.compose.resources.stringResource
+import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.action_search
+import weil.app.sharedui.generated.resources.picker_empty
 
 /**
  * Searchable account chooser as a bottom sheet, used for posting accounts and
  * for re-parenting (with an [exclude] list for self + descendants). Unfiltered
  * rows keep the tree indentation; filtered rows fall back to the full path.
+ * When [onCreate] is set, a leading action row labeled [createLabel] offers
+ * inline account creation (e.g. expense categories).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +46,8 @@ fun AccountPickerSheet(
     tree: List<AccountNode>,
     title: String,
     exclude: Set<String> = emptySet(),
+    createLabel: String? = null,
+    onCreate: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onPick: (AccountNode) -> Unit,
 ) {
@@ -53,7 +63,8 @@ fun AccountPickerSheet(
             OutlinedTextField(
                 value = filter,
                 onValueChange = { filter = it },
-                label = { Text("Search") },
+                placeholder = { Text(stringResource(Res.string.action_search)) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -66,12 +77,48 @@ fun AccountPickerSheet(
                     .fillMaxWidth()
                     .heightIn(max = 440.dp),
             ) {
+                if (onCreate != null && createLabel != null) {
+                    item(key = "create") {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onCreate() }
+                                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.Add,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    createLabel,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                        }
+                    }
+                }
                 if (filtering) {
                     // Flat path list while searching: depth becomes someone
                     // else's name fragment, not a visual rail.
                     val flat = tree.flatMap { it.selfAndDescendants }
                         .filter { it.account.id !in exclude }
                         .filter { it.path.lowercase().contains(filter.trim().lowercase()) }
+                    if (flat.isEmpty()) {
+                        item(key = "no-results") {
+                            Text(
+                                stringResource(Res.string.picker_empty),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 16.dp),
+                            )
+                        }
+                    }
                     items(flat, key = { it.account.id }) { node ->
                         Text(
                             node.path,

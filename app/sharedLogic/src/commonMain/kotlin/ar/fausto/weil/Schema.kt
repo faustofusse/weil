@@ -67,4 +67,27 @@ fun Database.migrateSchema() {
     if ("type" !in columns) {
         execute("alter table accounts add column type text not null default 'asset'")
     }
+    seedDefaultAccounts()
+}
+
+/** Fixed ids for the seeded default accounts; synced PKs dedupe fresh devices. */
+const val EXTERNAL_EXPENSE_ID = "seed-external-expense"
+const val EXTERNAL_INCOME_ID = "seed-external-income"
+const val EXTERNAL_ACCOUNT_NAME = "External"
+
+/**
+ * Seeds the default "External" accounts on a fresh database (only when the
+ * accounts table is empty, so user deletions are never resurrected). Fixed
+ * ids make two concurrently-seeded devices converge on the same rows.
+ */
+private fun Database.seedDefaultAccounts() {
+    val count = query("select count(*) from accounts", null) { rows ->
+        (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L
+    }
+    if (count > 0) return
+    execute(
+        "insert or ignore into accounts(id, name, parent_id, type) values" +
+            "('$EXTERNAL_EXPENSE_ID', '$EXTERNAL_ACCOUNT_NAME', null, 'expense')," +
+            "('$EXTERNAL_INCOME_ID', '$EXTERNAL_ACCOUNT_NAME', null, 'income')",
+    )
 }

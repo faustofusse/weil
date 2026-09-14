@@ -21,7 +21,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +42,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
+import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.action_back
+import weil.app.sharedui.generated.resources.day_date
+import weil.app.sharedui.generated.resources.day_date_year
+import weil.app.sharedui.generated.resources.day_today
+import weil.app.sharedui.generated.resources.day_yesterday
+import weil.app.sharedui.generated.resources.journal_empty
+import weil.app.sharedui.generated.resources.journal_more_postings
+import weil.app.sharedui.generated.resources.journal_title
+import weil.app.sharedui.generated.resources.months_short
+import weil.app.sharedui.generated.resources.weekdays_short
+import weil.app.sharedui.generated.resources.new_transaction
+import weil.app.sharedui.generated.resources.new_transaction_hint
 
 /** Journal of transactions, newest first, grouped under day headers. */
 @Composable
@@ -125,10 +139,10 @@ fun JournalScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Journal") },
+                title = { Text(stringResource(Res.string.journal_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                     }
                 },
             )
@@ -139,7 +153,7 @@ fun JournalScreen(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "New transaction")
+                Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.new_transaction))
             }
         },
     ) { innerPadding ->
@@ -177,31 +191,26 @@ fun JournalScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
-                                "No transactions yet",
+                                stringResource(Res.string.journal_empty),
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "Tap + to record one",
+                                stringResource(Res.string.new_transaction_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                 }
-                var lastDay: String? = null
+                var lastGroup: DayGroup? = null
                 for (tx in items) {
-                    val day = dayGroupLabel(tx.date)
-                    if (day != lastDay) {
-                        lastDay = day
-                        item(key = "day-$day") {
-                            Text(
-                                day,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                            )
+                    val group = dayGroup(tx.date)
+                    if (group != lastGroup) {
+                        lastGroup = group
+                        item(key = "day-${group.key}") {
+                            DayHeader(group)
                         }
                     }
                     item(key = tx.id) {
@@ -232,6 +241,32 @@ fun JournalScreen(
     }
 }
 
+/** Localized day header: Hoy / Ayer / "lun 8 sep" (plus the year when not the current one). */
+@Composable
+internal fun DayHeader(group: DayGroup, modifier: Modifier = Modifier) {
+    Text(
+        dayLabel(group),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier.padding(top = 16.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+internal fun dayLabel(group: DayGroup): String = when (group) {
+    DayToday -> stringResource(Res.string.day_today)
+    DayYesterday -> stringResource(Res.string.day_yesterday)
+    is DayDate -> {
+        val weekday = stringArrayResource(Res.array.weekdays_short).getOrElse(group.weekday) { "" }
+        val month = stringArrayResource(Res.array.months_short).getOrElse(group.month - 1) { "" }
+        if (group.year == null) {
+            stringResource(Res.string.day_date, weekday, group.day, month)
+        } else {
+            stringResource(Res.string.day_date_year, weekday, group.day, month, group.year)
+        }
+    }
+}
+
 /** id → colon-joined full path for picker and journal rendering. */
 suspend fun accountPaths(accounts: AccountsRepository): Map<String, String> =
     accounts.tree()
@@ -239,7 +274,7 @@ suspend fun accountPaths(accounts: AccountsRepository): Map<String, String> =
         .associate { it.account.id to it.path }
 
 @Composable
-private fun TransactionCard(
+internal fun TransactionCard(
     tx: Transaction,
     paths: Map<String, String>,
     onOpen: () -> Unit,
@@ -305,7 +340,7 @@ private fun TransactionCard(
             val hidden = tx.postings.size - shown.size
             if (hidden > 0) {
                 Text(
-                    "+$hidden more",
+                    stringResource(Res.string.journal_more_postings, hidden),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp),
@@ -332,7 +367,4 @@ private fun TransactionCard(
             }
         }
     }
-    // Thin rule between consecutive day blocks is the day header; nothing
-    // extra needed between cards — the Card shape separates them.
-    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
 }

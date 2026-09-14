@@ -53,6 +53,28 @@ import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
+import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.action_cancel
+import weil.app.sharedui.generated.resources.app_title
+import weil.app.sharedui.generated.resources.login_approved
+import weil.app.sharedui.generated.resources.login_approved_creating
+import weil.app.sharedui.generated.resources.login_approve_hint
+import weil.app.sharedui.generated.resources.login_back
+import weil.app.sharedui.generated.resources.login_continue
+import weil.app.sharedui.generated.resources.login_continue_after_approval
+import weil.app.sharedui.generated.resources.login_expires_in
+import weil.app.sharedui.generated.resources.login_joining
+import weil.app.sharedui.generated.resources.login_new_qr
+import weil.app.sharedui.generated.resources.login_pair_entry
+import weil.app.sharedui.generated.resources.login_pairing_expired
+import weil.app.sharedui.generated.resources.login_pairing_qr_content
+import weil.app.sharedui.generated.resources.login_qr_not_invite
+import weil.app.sharedui.generated.resources.login_qr_not_invite_but_request
+import weil.app.sharedui.generated.resources.login_qr_unavailable
+import weil.app.sharedui.generated.resources.login_scan_invite
+import weil.app.sharedui.generated.resources.login_show_request_qr
+import weil.app.sharedui.generated.resources.login_subtitle
 
 /** Transition specs copied from the old finance app's NavDisplay setup. */
 private val slideIn = { full: Int -> (full * 0.4f).toInt() }
@@ -125,12 +147,30 @@ fun RootScreen(graph: AppGraph) {
                                 entry<HomeRoute> {
                                     HomeScreen(
                                         ledgerState = ledgerState,
-                                        onNavigateToNew = { navigate(TransactionNewRoute(null)) },
+                                        onNavigateToTree = { navigate(AccountsTreeRoute) },
+                                        onNewTransaction = { kind -> navigate(TransactionQuickRoute(kind)) },
                                         onNavigateToProfile = { navigate(ProfileRoute) },
                                         onNavigateToNotifications = { navigate(NotificationsRoute) },
                                         onNavigateToEmails = { navigate(EmailsRoute) },
                                         onNavigateToJournal = { navigate(JournalRoute) },
                                         onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
+                                        onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
+                                    )
+                                }
+                                entry<AccountsTreeRoute> {
+                                    AccountsTreeScreen(
+                                        ledgerState = ledgerState,
+                                        onNavigateBack = { pop() },
+                                        onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
+                                    )
+                                }
+                                entry<TransactionQuickRoute> { route ->
+                                    TransactionQuickScreen(
+                                        ledger = graph.ledger,
+                                        accounts = graph.accounts,
+                                        kind = route.kind,
+                                        onSaved = { pop() },
+                                        onNavigateBack = { pop() },
                                     )
                                 }
                                 entry<JournalRoute> {
@@ -280,14 +320,14 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                "Finance",
+                stringResource(Res.string.app_title),
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.graphicsLayer(alpha = titleFade),
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Your accounts, one place",
+                stringResource(Res.string.login_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
                 modifier = Modifier.graphicsLayer(alpha = titleFade),
@@ -307,7 +347,7 @@ fun LoginScreen(
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 } else {
-                    Text("Continue with passkey")
+                    Text(stringResource(Res.string.login_continue))
                 }
             }
             Spacer(Modifier.height(20.dp))
@@ -346,6 +386,10 @@ private fun PairingSection(
     var joinAttempt by remember { mutableStateOf(0) }
     var now by remember { mutableStateOf(epochMillis()) }
     val scope = rememberCoroutineScope()
+    val qrUnavailable = stringResource(Res.string.login_qr_unavailable)
+    val notAnInvite = stringResource(Res.string.login_qr_not_invite)
+    val isARequest = stringResource(Res.string.login_qr_not_invite_but_request)
+    val cancelLabel = stringResource(Res.string.action_cancel)
 
     fun showRequestQr() {
         scope.launch {
@@ -367,16 +411,16 @@ private fun PairingSection(
             localError = null
             val qr = scanner()
             if (qr == null) {
-                localError = "QR scanning is not available on this device"
+                localError = qrUnavailable
                 return@launch
             }
             try {
                 val raw = qr.scan() ?: return@launch
                 val link = ChainLink.parse(raw, AuthConfig.SLUG)
                 when {
-                    link == null -> localError = "That QR code is not a device invite"
+                    link == null -> localError = notAnInvite
                     link.action != ChainLink.Action.Join ->
-                        localError = "That QR code is a pairing request, not an invite"
+                        localError = isARequest
                     else -> {
                         joining = true
                         try {
@@ -466,54 +510,58 @@ private fun PairingSection(
         when {
             current == null && !optionsOpen -> {
                 TextButton(onClick = { optionsOpen = true }) {
-                    Text("Pair with an existing account")
+                    Text(stringResource(Res.string.login_pair_entry))
                 }
             }
             current == null -> {
                 if (scanner() != null) {
                     TextButton(onClick = { scanInvite() }, enabled = !joining) {
-                        Text(if (joining) "Joining…" else "Scan invite QR")
+                        Text(
+                            if (joining) stringResource(Res.string.login_joining)
+                            else stringResource(Res.string.login_scan_invite),
+                        )
                     }
                 }
                 TextButton(onClick = { showRequestQr() }, enabled = !joining) {
-                    Text("Show QR to the other device")
+                    Text(stringResource(Res.string.login_show_request_qr))
                 }
                 TextButton(onClick = {
                     optionsOpen = false
                     localError = null
                 }) {
-                    Text("Back")
+                    Text(stringResource(Res.string.login_back))
                 }
             }
             status == "expired" -> {
                 Text(
-                    "Pairing request expired",
+                    stringResource(Res.string.login_pairing_expired),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 )
                 TextButton(onClick = { showRequestQr() }) {
-                    Text("New QR")
+                    Text(stringResource(Res.string.login_new_qr))
                 }
                 TextButton(onClick = { reset() }) {
-                    Text("Cancel")
+                    Text(cancelLabel)
                 }
             }
             else -> {
                 if (status == "approved") {
                     Text(
-                        if (joining) "Approved — creating your passkey…" else "Approved",
+                        if (joining) stringResource(Res.string.login_approved_creating)
+                        else stringResource(Res.string.login_approved),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     )
                     if (!joining) {
                         TextButton(onClick = { joinAttempt++ }) {
-                            Text("Continue")
+                            Text(stringResource(Res.string.login_continue_after_approval))
                         }
                     }
                 } else {
                     Image(
                         painter = rememberQrCodePainter(current.url),
-                        contentDescription = "Pairing request QR code",
+                        contentDescription = stringResource(Res.string.login_pairing_qr_content),
                         // White backing is theme-independent: scanners need max contrast.
                         modifier = Modifier
                             .padding(horizontal = 48.dp, vertical = 8.dp)
@@ -521,21 +569,24 @@ private fun PairingSection(
                             .padding(10.dp),
                     )
                     Text(
-                        "Approve from the signed-in device: Profile → Approve device",
+                        stringResource(Res.string.login_approve_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
                         textAlign = TextAlign.Center,
                     )
                     val remaining = ((expiresAt - now) / 1000).coerceAtLeast(0)
                     Text(
-                        "Expires in ${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}",
+                        stringResource(
+                            Res.string.login_expires_in,
+                            "${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}",
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
                 TextButton(onClick = { reset() }) {
-                    Text("Cancel")
+                    Text(cancelLabel)
                 }
             }
         }

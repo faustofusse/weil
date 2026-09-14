@@ -38,17 +38,19 @@ class AccountsRepository(private val db: DatabaseProvider) {
         (nodes.firstOrNull { it.account.id == accountId }?.selfAndDescendants
             ?: listOf()).map { it.account.id }
 
+    /** Returns the id of the created account (children inherit the type). */
     suspend fun add(
         name: String,
         type: AccountType,
         parentId: String? = null,
-    ) = db.use { d ->
+    ): String = db.use { d ->
+        val id = Uuid.random().toString()
         val trimmed = name.trim()
         require(trimmed.isNotEmpty()) { "account name cannot be empty" }
         if (parentId == null) {
             d.execute(
                 "insert into accounts(id, name, parent_id, type) values(:id, :name, null, :type)",
-                mapOf(":id" to Uuid.random().toString(), ":name" to trimmed, ":type" to type.db),
+                mapOf(":id" to id, ":name" to trimmed, ":type" to type.db),
             )
         } else {
             val parent = fetch(d, parentId) ?: throw IllegalArgumentException("parent account not found")
@@ -58,7 +60,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
             d.execute(
                 "insert into accounts(id, name, parent_id, type) values(:id, :name, :parent, :type)",
                 mapOf(
-                    ":id" to Uuid.random().toString(),
+                    ":id" to id,
                     ":name" to trimmed,
                     ":parent" to parentId,
                     ":type" to type.db,
@@ -66,6 +68,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
             )
         }
         d.sync()
+        id
     }
 
     suspend fun rename(id: String, name: String) = db.use { d ->

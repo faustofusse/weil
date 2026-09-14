@@ -77,7 +77,8 @@ class ChainState(
         inviteExpiresAt = 0L
     }
 
-    fun revoke(device: ChainDevice) {
+    /** [revokedNotice] comes pre-formatted from the composable layer (i18n). */
+    fun revoke(device: ChainDevice, revokedNotice: String) {
         scope.launch {
             busy = true
             error = null
@@ -87,7 +88,7 @@ class ChainState(
                 // server-side; the auth state flip swaps the UI to login.
                 if (!device.current) {
                     devices = chain.list()
-                    notice = "${chainDeviceName(device)} revoked — its database access is gone"
+                    notice = revokedNotice
                 }
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -98,14 +99,19 @@ class ChainState(
         }
     }
 
-    /** Opens the platform scanner and approves a pairing request QR. */
-    fun scanAndApprove() {
+    /** Opens the platform scanner and approves a pairing request QR. The
+     * message strings come pre-formatted from the composable layer (i18n). */
+    fun scanAndApprove(
+        qrUnavailable: String,
+        notPairingRequest: String,
+        approvedNotice: String,
+    ) {
         scope.launch {
             error = null
             notice = null
             val scanner = scanner()
             if (scanner == null) {
-                error = "QR scanning is not available on this device"
+                error = qrUnavailable
                 return@launch
             }
             busy = true
@@ -113,12 +119,12 @@ class ChainState(
                 val raw = scanner.scan() ?: return@launch
                 val link = ChainLink.parse(raw, AuthConfig.SLUG)
                 if (link == null || link.action != ChainLink.Action.Approve) {
-                    error = "That QR code is not a pairing request"
+                    error = notPairingRequest
                     return@launch
                 }
                 chain.approve(link.id)
                 devices = chain.list()
-                notice = "Device approved — finish pairing on the other device"
+                notice = approvedNotice
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()
@@ -130,5 +136,6 @@ class ChainState(
 
 }
 
-internal fun chainDeviceName(device: ChainDevice): String =
-    device.displayName ?: device.label ?: "Passkey ${device.id.takeLast(6)}"
+/** Label for a device; the localized passkey fallback is supplied by the caller. */
+internal fun chainDeviceName(device: ChainDevice, passkeyFallback: String): String =
+    device.displayName ?: device.label ?: passkeyFallback

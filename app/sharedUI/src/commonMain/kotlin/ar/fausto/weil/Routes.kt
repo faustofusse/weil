@@ -14,6 +14,15 @@ object ProfileRoute
 
 object JournalRoute
 
+/** The full account tree, reachable from the Home top bar. */
+object AccountsTreeRoute
+
+/** Simplified transaction kinds shown on the Home FAB menu. */
+enum class TxnKind { Expense, Income, Transfer }
+
+/** [TxnKind]-driven simplified transaction entry screen. */
+data class TransactionQuickRoute(val kind: TxnKind)
+
 /** [accountId] pre-seeds the first posting when adding from an account screen. */
 data class TransactionNewRoute(val accountId: String? = null)
 

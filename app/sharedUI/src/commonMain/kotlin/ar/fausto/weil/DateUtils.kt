@@ -29,21 +29,41 @@ fun timeShort(timestamp: Long): String {
     return dt.hour.toString().padStart(2, '0') + ":" + dt.minute.toString().padStart(2, '0')
 }
 
-/** "Today" / "Yesterday" / "Mon 8 Sep" for journal and register day headers. */
-fun dayGroupLabel(timestamp: Long): String {
+/**
+ * Journal day header as a value object so localized "Today"/"Yesterday" can
+ * be resolved at the composable call site. [DayGroup.key] is the list key.
+ */
+sealed interface DayGroup {
+    val key: String
+}
+
+data object DayToday : DayGroup {
+    override val key: String get() = "today"
+}
+
+data object DayYesterday : DayGroup {
+    override val key: String get() = "yesterday"
+}
+
+/** An absolute day; [year] is null within the current year. Names are localized at the call site. */
+data class DayDate(val weekday: Int, val day: Int, val month: Int, val year: Int?) : DayGroup {
+    override val key: String get() = "$year-$month-$day"
+}
+
+/** "Today" / "Yesterday" / an absolute [DayDate] for day headers. */
+fun dayGroup(timestamp: Long): DayGroup {
     val tz = TimeZone.currentSystemDefault()
     val date = Instant.fromEpochMilliseconds(timestamp).toLocalDateTime(tz).date
     val today = Instant.fromEpochMilliseconds(epochMillis()).toLocalDateTime(tz).date
     return when {
-        date == today -> "Today"
-        today.toEpochDays() == date.toEpochDays() - 1 -> "Yesterday"
-        else -> {
-            val week = date.dayOfWeek.name.lowercase().take(3)
-                .replaceFirstChar { it.uppercase() }
-            val month = date.month.name.lowercase().take(3)
-                .replaceFirstChar { it.uppercase() }
-            "$week ${date.dayOfMonth} $month"
-        }
+        date == today -> DayToday
+        today.toEpochDays() == date.toEpochDays() + 1 -> DayYesterday
+        else -> DayDate(
+            weekday = date.dayOfWeek.ordinal,
+            day = date.dayOfMonth,
+            month = date.monthNumber,
+            year = date.year.takeIf { it != today.year },
+        )
     }
 }
 

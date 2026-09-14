@@ -34,6 +34,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
+import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.action_back
+import weil.app.sharedui.generated.resources.action_sync
+import weil.app.sharedui.generated.resources.emails_no_subject
+import weil.app.sharedui.generated.resources.emails_title_count
+import weil.app.sharedui.generated.resources.emails_empty
+import weil.app.sharedui.generated.resources.sync_error
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,11 +127,11 @@ fun EmailScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Emails ($totalCount)")
+                        Text(stringResource(Res.string.emails_title_count, totalCount))
                         if (syncError != null) {
                             Icon(
                                 imageVector = Icons.Filled.Warning,
-                                contentDescription = "Sync error",
+                                contentDescription = stringResource(Res.string.sync_error),
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(start = 4.dp),
                             )
@@ -132,12 +140,12 @@ fun EmailScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Navigate back")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { sync() }, enabled = !isSyncing) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Sync emails")
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.action_sync))
                     }
                 },
             )
@@ -161,7 +169,7 @@ fun EmailScreen(
                 }
                 items.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No emails yet :(", style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(Res.string.emails_empty), style = MaterialTheme.typography.bodyLarge)
                     }
                 }
                 else -> {
@@ -209,7 +217,7 @@ private fun EmailCard(email: Email) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = email.subject ?: "(No subject)",
+                text = email.subject ?: stringResource(Res.string.emails_no_subject),
                 style = typography.bodyLarge,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

@@ -48,6 +48,17 @@ function sha256Hex(input: string): Promise<string> {
 }
 
 export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === 'POST' && url.pathname === '/mp/webhook') {
+      const signature = request.headers.get('x-signature');
+      const body = await request.text();
+      console.log('MP webhook received', { signature, body });
+      return new Response('ok', { status: 200 });
+    }
+    return new Response('not found', { status: 404 });
+  },
+
   async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
     try {
       const to = message.to.trim().toLowerCase();

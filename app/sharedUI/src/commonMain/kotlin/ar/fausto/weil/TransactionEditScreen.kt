@@ -2,8 +2,11 @@
 
 package ar.fausto.weil
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +50,32 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
+import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.action_back
+import weil.app.sharedui.generated.resources.action_cancel
+import weil.app.sharedui.generated.resources.action_delete
+import weil.app.sharedui.generated.resources.action_ok
+import weil.app.sharedui.generated.resources.action_save
+import weil.app.sharedui.generated.resources.action_undo
+import weil.app.sharedui.generated.resources.editor_add_split
+import weil.app.sharedui.generated.resources.editor_amount
+import weil.app.sharedui.generated.resources.editor_amount_auto
+import weil.app.sharedui.generated.resources.editor_balanced
+import weil.app.sharedui.generated.resources.editor_choose_account
+import weil.app.sharedui.generated.resources.editor_choose_account_title
+import weil.app.sharedui.generated.resources.editor_date_label
+import weil.app.sharedui.generated.resources.editor_date_pick
+import weil.app.sharedui.generated.resources.editor_deleted_payee_fallback
+import weil.app.sharedui.generated.resources.editor_edit_title
+import weil.app.sharedui.generated.resources.editor_invalid_date
+import weil.app.sharedui.generated.resources.editor_new_title
+import weil.app.sharedui.generated.resources.editor_note_label
+import weil.app.sharedui.generated.resources.editor_off_by
+import weil.app.sharedui.generated.resources.editor_payee_label
+import weil.app.sharedui.generated.resources.editor_record
+import weil.app.sharedui.generated.resources.editor_remove_posting
+import weil.app.sharedui.generated.resources.editor_transaction_deleted
 
 /**
  * Create/edit a balanced transaction. Ledger-style: one posting may leave its
@@ -75,6 +104,10 @@ fun TransactionEditScreen(
     var paths by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var accountTree by remember { mutableStateOf<List<AccountNode>>(emptyList()) }
     val scope = rememberCoroutineScope()
+    val undoLabel = stringResource(Res.string.action_undo)
+    val deletedMessage = stringResource(Res.string.editor_transaction_deleted)
+    val deletedPayee = stringResource(Res.string.editor_deleted_payee_fallback)
+    val invalidDateMessage = stringResource(Res.string.editor_invalid_date, dateText)
 
     LaunchedEffect(Unit) {
         paths = accountPaths(accounts)
@@ -102,10 +135,16 @@ fun TransactionEditScreen(
         modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
-                title = { Text(if (editId == null) "New transaction" else "Edit transaction") },
+                title = {
+                    Text(
+                        stringResource(
+                            if (editId == null) Res.string.editor_new_title else Res.string.editor_edit_title,
+                        ),
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                     }
                 },
                 actions = {
@@ -125,10 +164,10 @@ fun TransactionEditScreen(
                                         }.orEmpty()
                                         ledger.delete(editId)
                                         onSaved()
-                                        Feedback.undoable("Transaction deleted") {
+                                        Feedback.undoable(deletedMessage, undoLabel) {
                                             ledger.add(
                                                 stored?.date ?: epochMillis(),
-                                                stored?.payee.orEmpty().ifBlank { "(deleted)" },
+                                                stored?.payee.orEmpty().ifBlank { deletedPayee },
                                                 stored?.note,
                                                 draftsBackup,
                                             )
@@ -140,7 +179,7 @@ fun TransactionEditScreen(
                                     }
                                 }
                             },
-                        ) { Text("Delete") }
+                        ) { Text(stringResource(Res.string.action_delete)) }
                     }
                 },
             )
@@ -166,9 +205,13 @@ fun TransactionEditScreen(
                             residuals.forEach { (commodity, residual) ->
                                 Text(
                                     if (residual == 0L) {
-                                        "$commodity ✓"
+                                        stringResource(Res.string.editor_balanced, commodity)
                                     } else {
-                                        "$commodity off by ${formatMinorUnits(residual)}"
+                                        stringResource(
+                                            Res.string.editor_off_by,
+                                            commodity,
+                                            formatMinorUnits(residual),
+                                        )
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = if (residual == 0L) {
@@ -193,7 +236,7 @@ fun TransactionEditScreen(
                         onClick = {
                             val date = parseDateInput(dateText)
                             if (date == null) {
-                                error = "Invalid date: $dateText"
+                                error = invalidDateMessage
                                 return@Button
                             }
                             busy = true
@@ -216,7 +259,11 @@ fun TransactionEditScreen(
                         enabled = !busy && payee.isNotBlank() && isValidTransaction(drafts),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(if (editId == null) "Record" else "Save")
+                        Text(
+                            stringResource(
+                                if (editId == null) Res.string.editor_record else Res.string.action_save,
+                            ),
+                        )
                     }
                 }
             }
@@ -233,24 +280,26 @@ fun TransactionEditScreen(
             OutlinedTextField(
                 value = payee,
                 onValueChange = { payee = it },
-                label = { Text("Payee / description") },
+                label = { Text(stringResource(Res.string.editor_payee_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = dateText,
                 onValueChange = { dateText = it },
-                label = { Text("Date (YYYY-MM-DD)") },
+                label = { Text(stringResource(Res.string.editor_date_label)) },
                 singleLine = true,
                 trailingIcon = {
-                    TextButton(onClick = { pickingDate = true }) { Text("Pick") }
+                    TextButton(onClick = { pickingDate = true }) {
+                        Text(stringResource(Res.string.editor_date_pick))
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
-                label = { Text("Note (optional)") },
+                label = { Text(stringResource(Res.string.editor_note_label)) },
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -270,7 +319,7 @@ fun TransactionEditScreen(
             }
 
             TextButton(onClick = { drafts = drafts + DraftPosting(null, "") }) {
-                Text("+ add split")
+                Text(stringResource(Res.string.editor_add_split))
             }
         }
     }
@@ -287,10 +336,10 @@ fun TransactionEditScreen(
                         pickerState.selectedDateMillis?.let { dateText = dateInputOf(it) }
                         pickingDate = false
                     },
-                ) { Text("OK") }
+                ) { Text(stringResource(Res.string.action_ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { pickingDate = false }) { Text("Cancel") }
+                TextButton(onClick = { pickingDate = false }) { Text(stringResource(Res.string.action_cancel)) }
             },
         ) {
             DatePicker(state = pickerState)
@@ -300,7 +349,7 @@ fun TransactionEditScreen(
     pickingFor?.let { index ->
         AccountPickerSheet(
             tree = accountTree,
-            title = "Choose account",
+            title = stringResource(Res.string.editor_choose_account_title),
             exclude = emptySet(),
             onDismiss = { pickingFor = null },
         ) { picked ->
@@ -333,24 +382,40 @@ private fun PostingRow(
         // Row A: the account selector takes the whole line — colon paths
         // finally fit.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(
-                onClick = onAccount,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(
-                    paths[draft.accountId] ?: "Choose account ${index + 1}",
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = if (draft.accountId != null) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+            Box(modifier = Modifier.weight(1f)) {
+                OutlinedTextField(
+                    value = paths[draft.accountId] ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = {
+                        Text(stringResource(Res.string.editor_choose_account, index + 1))
                     },
+                    placeholder = {
+                        Text(
+                            paths[draft.accountId]
+                                ?: stringResource(Res.string.editor_choose_account_title),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { onAccount() },
                 )
             }
             if (canRemove) {
                 IconButton(onClick = onRemove) {
-                    Icon(Icons.Filled.Close, contentDescription = "Remove posting")
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = stringResource(Res.string.editor_remove_posting),
+                    )
                 }
             }
         }
@@ -362,7 +427,17 @@ private fun PostingRow(
             OutlinedTextField(
                 value = draft.amountText,
                 onValueChange = onAmount,
-                label = { Text(if (draft.amountText.isBlank()) "Amount (auto)" else "Amount") },
+                label = {
+                    Text(
+                        stringResource(
+                            if (draft.amountText.isBlank()) {
+                                Res.string.editor_amount_auto
+                            } else {
+                                Res.string.editor_amount
+                            },
+                        ),
+                    )
+                },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.weight(1f),
