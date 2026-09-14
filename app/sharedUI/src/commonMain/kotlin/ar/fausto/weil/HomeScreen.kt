@@ -51,8 +51,6 @@ import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.account_add_title
 import weil.app.sharedui.generated.resources.app_title
-import weil.app.sharedui.generated.resources.home_accounts_count_many
-import weil.app.sharedui.generated.resources.home_accounts_count_one
 import weil.app.sharedui.generated.resources.home_accounts_title
 import weil.app.sharedui.generated.resources.home_add_first_account
 import weil.app.sharedui.generated.resources.home_net_worth
@@ -157,9 +155,9 @@ fun HomeScreen(
                 .padding(innerPadding),
         ) {
             val assets = ledgerState.tree.filter { it.account.type == AccountType.Asset }
-            val paths = remember(ledgerState.tree) {
-                ledgerState.tree.flatMap { it.selfAndDescendants }.associate { it.account.id to it.path }
-            }
+            val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
+            val paths = remember(nodes) { nodes.associate { it.account.id to it.path } }
+            val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 // Bottom room so the FAB never covers the last row.
@@ -168,29 +166,9 @@ fun HomeScreen(
                 item(key = "net-worth") { NetWorthCard(ledgerState) }
 
                 item(key = "accounts-header") {
-                    // A count, not a total: the net worth card above already
-                    // shows the sum, so repeating it here was the same number
-                    // twice on one screen. How many accounts you have is the
-                    // one thing that card doesn't say.
-                    val accountCount = assets.sumOf { it.selfAndDescendants.size }
                     SectionHeader(
                         title = stringResource(Res.string.home_accounts_title),
                         trailing = {
-                            if (accountCount > 0) {
-                                // No weight here: the title already carries the
-                                // Row's only weight and expands to fill
-                                // whatever this pill doesn't use, which is what
-                                // pins the pill to the trailing edge. Giving the
-                                // pill a weight too just split the row in half.
-                                ValuePill(
-                                    text = if (accountCount == 1) {
-                                        stringResource(Res.string.home_accounts_count_one)
-                                    } else {
-                                        stringResource(Res.string.home_accounts_count_many, accountCount)
-                                    },
-                                )
-                                Spacer(Modifier.width(8.dp))
-                            }
                             FilledTonalIconButton(
                                 onClick = { adding = true },
                                 modifier = Modifier.size(32.dp),
@@ -258,7 +236,7 @@ fun HomeScreen(
                         item(key = "recent-day-${group.key}") { DayHeader(group) }
                     }
                     item(key = "recent-${tx.id}") {
-                        TransactionCard(tx = tx, paths = paths, onOpen = { onNavigateToEdit(tx.id) })
+                        TransactionCard(tx = tx, paths = paths, types = types, onOpen = { onNavigateToEdit(tx.id) })
                     }
                 }
             }

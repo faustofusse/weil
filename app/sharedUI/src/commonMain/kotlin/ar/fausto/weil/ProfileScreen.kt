@@ -562,7 +562,7 @@ private fun ChainDeviceRow(
         if (!revoked) {
             IconButton(onClick = onRevoke) {
                 Icon(
-                    Icons.Filled.Close,
+                    Icons.Filled.Delete,
                     contentDescription = stringResource(Res.string.profile_revoke),
                     tint = MaterialTheme.colorScheme.error,
                 )

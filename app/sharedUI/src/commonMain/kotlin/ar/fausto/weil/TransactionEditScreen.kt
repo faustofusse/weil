@@ -413,7 +413,7 @@ private fun PostingRow(
             if (canRemove) {
                 IconButton(onClick = onRemove) {
                     Icon(
-                        Icons.Filled.Close,
+                        Icons.Filled.Delete,
                         contentDescription = stringResource(Res.string.editor_remove_posting),
                     )
                 }

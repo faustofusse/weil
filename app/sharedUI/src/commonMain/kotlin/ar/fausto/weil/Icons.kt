@@ -125,11 +125,6 @@ object Icons {
                 "M7 7h3v3H7V7zm7 7h3v3h-3v-3zm-7 0h3v3H7v-3zm7-7h3v3h-3V7z",
         )
 
-        val Close: ImageVector = materialIcon(
-            "Close",
-            "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 12.59 6.41 14 12 13.41 17.59 19 19 17.41 13.41 12z",
-        )
-
         val AccountTree: ImageVector = materialIcon(
             "AccountTree",
             "M17,11h3c1.11,0,2-0.9,2-2V5c0-1.11-0.9-2-2-2h-3c-1.11,0-2,0.9-2,2v1H9.01V5c0-1.11-0.9-2-2-2H4C2.9,3,2,3.9,2,5v4 " +

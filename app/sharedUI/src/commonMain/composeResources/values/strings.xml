@@ -28,8 +28,6 @@
     <string name="home_recent_title">Últimos movimientos</string>
     <string name="home_see_all">Ver todo</string>
     <string name="home_no_recent">Sin movimientos todavía. Tocá + para registrar un gasto.</string>
-    <string name="home_accounts_count_one">1 cuenta</string>
-    <string name="home_accounts_count_many">%1$d cuentas</string>
     <string name="more_options">Más opciones</string>
 
     <!-- Top bar destinations -->

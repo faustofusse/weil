@@ -75,6 +75,7 @@ fun JournalScreen(
     var isLoadingMore by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var paths by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var types by remember { mutableStateOf<Map<String, AccountType>>(emptyMap()) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -83,6 +84,7 @@ fun JournalScreen(
         cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
         hasMore = page.size == LIST_PAGE_SIZE
         paths = accountPaths(accounts)
+        types = accountTypes(accounts)
         items = page
     }
 
@@ -218,6 +220,7 @@ fun JournalScreen(
                         TransactionCard(
                             tx = tx,
                             paths = paths,
+                            types = types,
                             onOpen = { onNavigateToEdit(tx.id) },
                         )
                     }
@@ -274,10 +277,17 @@ suspend fun accountPaths(accounts: AccountsRepository): Map<String, String> =
         .flatMap { it.selfAndDescendants }
         .associate { it.account.id to it.path }
 
+/** id → account type, so journal/home rows can color a posting by what it did to an asset account. */
+suspend fun accountTypes(accounts: AccountsRepository): Map<String, AccountType> =
+    accounts.tree()
+        .flatMap { it.selfAndDescendants }
+        .associate { it.account.id to it.account.type }
+
 @Composable
 internal fun TransactionCard(
     tx: Transaction,
     paths: Map<String, String>,
+    types: Map<String, AccountType> = emptyMap(),
     onOpen: () -> Unit,
 ) {
     // Same tonal surface as the account rows and empty-state cards — the
@@ -339,7 +349,7 @@ internal fun TransactionCard(
                     Text(
                         formatMinorUnits(posting.amountMinor),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = amountColor(posting.amountMinor),
+                        color = postingColor(types[posting.accountId], posting.amountMinor),
                         modifier = Modifier.padding(start = 12.dp),
                     )
                 }

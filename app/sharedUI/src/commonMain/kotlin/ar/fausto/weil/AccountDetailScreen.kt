@@ -233,6 +233,7 @@ fun AccountDetailScreen(
                 item(key = entry.posting.id) {
                     RegisterRowView(
                         entry = entry,
+                        accountType = node?.account?.type,
                         onOpen = { id -> onNavigateToEdit(id) },
                     )
                 }
@@ -265,6 +266,7 @@ fun AccountDetailScreen(
 @Composable
 private fun RegisterRowView(
     entry: RegisterEntry,
+    accountType: AccountType?,
     onOpen: (id: String) -> Unit,
 ) {
     Row(
@@ -292,7 +294,7 @@ private fun RegisterRowView(
             Text(
                 formatMinorUnits(entry.posting.amountMinor),
                 style = MaterialTheme.typography.bodyLarge,
-                color = amountColor(entry.posting.amountMinor),
+                color = postingColor(accountType, entry.posting.amountMinor),
             )
             Text(
                 entry.balanceAfter.commodity + " " + entry.balanceAfter.format(),

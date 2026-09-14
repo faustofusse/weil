@@ -64,6 +64,21 @@ object Feedback {
 fun amountColor(minor: Long): Color =
     if (minor >= 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
 
+/**
+ * Transaction-row color for one posting: green when it adds to an asset
+ * account, red only when it takes from one — that's the only sign flip a
+ * user actually parses at a glance ("did my money grow or shrink"). Every
+ * other posting (categories, liabilities, equity) is bookkeeping detail, not
+ * a balance moving, so it stays neutral instead of inheriting the raw
+ * debit/credit sign.
+ */
+@Composable
+fun postingColor(accountType: AccountType?, minor: Long): Color = when {
+    accountType != AccountType.Asset -> MaterialTheme.colorScheme.onSurface
+    minor >= 0 -> MaterialTheme.colorScheme.tertiary
+    else -> MaterialTheme.colorScheme.error
+}
+
 /** Corner radius of the grouped list cards (accounts, devices, sections). */
 internal val GroupRadius = 18.dp
 

@@ -27,10 +27,15 @@ enum class AppTheme(val displayName: String, val colorScheme: ColorScheme) {
             onSecondary = Color(0xFF332D41),
             secondaryContainer = Color(0xFF4A4458),
             onSecondaryContainer = Color(0xFFE8DEF8),
-            tertiary = Color(0xFFEFB8C8),
-            onTertiary = Color(0xFF492532),
-            tertiaryContainer = Color(0xFF633B48),
-            onTertiaryContainer = Color(0xFFFFD8E4),
+            // Repurposed as the app's only green: `tertiary` sat unused (no
+            // component here pulls it as a default), which made it the one
+            // role free to carry a hue the rest of the warm pink/coral/purple
+            // palette doesn't have — money arriving in an asset account reads
+            // green against that backdrop instead of borrowing red's family.
+            tertiary = Color(0xFF8FD6A2),
+            onTertiary = Color(0xFF0F3D1E),
+            tertiaryContainer = Color(0xFF2E5C3C),
+            onTertiaryContainer = Color(0xFFC2EACB),
             // A saturated, darker coral-red: same warm family as primary but
             // unmistakably not it — primary is a pale brand pink, error reads
             // as an alarm next to it.
