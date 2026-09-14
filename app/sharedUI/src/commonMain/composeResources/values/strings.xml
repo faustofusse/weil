@@ -77,6 +77,7 @@
     <string name="editor_invalid_date">Fecha inválida: %1$s</string>
     <string name="editor_amount_auto">Monto (auto)</string>
     <string name="editor_amount">Monto</string>
+    <string name="editor_commodity_label">Moneda</string>
     <string name="editor_choose_account">Elegir cuenta %1$d</string>
     <string name="editor_choose_account_title">Elegir cuenta</string>
     <string name="editor_remove_posting">Quitar partida</string>
@@ -104,7 +105,7 @@
     <string name="picker_create">Nueva categoría</string>
 
     <!-- Journal -->
-    <string name="journal_title">Diario</string>
+    <string name="journal_title">Transacciones</string>
     <string name="journal_empty">Todavía no hay transacciones</string>
     <string name="journal_more_postings">+%1$d más</string>
 

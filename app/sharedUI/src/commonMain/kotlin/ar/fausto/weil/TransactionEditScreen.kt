@@ -24,8 +24,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -64,6 +66,7 @@ import weil.app.sharedui.generated.resources.editor_amount_auto
 import weil.app.sharedui.generated.resources.editor_balanced
 import weil.app.sharedui.generated.resources.editor_choose_account
 import weil.app.sharedui.generated.resources.editor_choose_account_title
+import weil.app.sharedui.generated.resources.editor_commodity_label
 import weil.app.sharedui.generated.resources.editor_date_label
 import weil.app.sharedui.generated.resources.editor_date_pick
 import weil.app.sharedui.generated.resources.editor_deleted_payee_fallback
@@ -419,7 +422,7 @@ private fun PostingRow(
                 }
             }
         }
-        // Row B: amount + commodity chips, numeric keyboard for the amount.
+        // Row B: amount + commodity dropdown, numeric keyboard for the amount.
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(top = 4.dp),
@@ -442,13 +445,39 @@ private fun PostingRow(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.weight(1f),
             )
-            QUICK_COMMODITIES.forEach { chip ->
-                FilterChip(
-                    selected = draft.commodity.uppercase() == chip,
-                    onClick = { onCommodity(chip) },
-                    label = { Text(chip) },
-                    modifier = Modifier.padding(start = 6.dp),
+            var commodityExpanded by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = commodityExpanded,
+                onExpandedChange = { commodityExpanded = it },
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .width(110.dp),
+            ) {
+                OutlinedTextField(
+                    value = draft.commodity.uppercase(),
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text(stringResource(Res.string.editor_commodity_label)) },
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = commodityExpanded)
+                    },
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
                 )
+                ExposedDropdownMenu(
+                    expanded = commodityExpanded,
+                    onDismissRequest = { commodityExpanded = false },
+                ) {
+                    QUICK_COMMODITIES.forEach { chip ->
+                        DropdownMenuItem(
+                            text = { Text(chip) },
+                            onClick = {
+                                onCommodity(chip)
+                                commodityExpanded = false
+                            },
+                        )
+                    }
+                }
             }
         }
     }
