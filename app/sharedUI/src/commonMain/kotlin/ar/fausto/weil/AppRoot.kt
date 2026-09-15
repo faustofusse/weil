@@ -154,7 +154,7 @@ fun RootScreen(graph: AppGraph) {
                                         onNavigateToEmails = { navigate(EmailsRoute) },
                                         onNavigateToJournal = { navigate(JournalRoute) },
                                         onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
-                                        onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                     )
                                 }
                                 entry<AccountsTreeRoute> {
@@ -179,7 +179,7 @@ fun RootScreen(graph: AppGraph) {
                                         accounts = graph.accounts,
                                         onNavigateBack = { pop() },
                                         onNavigateToNew = { navigate(TransactionNewRoute()) },
-                                        onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                     )
                                 }
                                 entry<TransactionNewRoute> { route ->
@@ -190,6 +190,16 @@ fun RootScreen(graph: AppGraph) {
                                         prefillAccountId = route.accountId,
                                         onSaved = { pop() },
                                         onNavigateBack = { pop() },
+                                    )
+                                }
+                                entry<TransactionDetailRoute> { route ->
+                                    TransactionDetailScreen(
+                                        ledger = graph.ledger,
+                                        accounts = graph.accounts,
+                                        id = route.id,
+                                        onNavigateBack = { pop() },
+                                        onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
+                                        onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
                                     )
                                 }
                                 entry<TransactionEditRoute> { route ->
@@ -206,7 +216,7 @@ fun RootScreen(graph: AppGraph) {
                                         ledgerState = ledgerState,
                                         accountId = route.id,
                                         onNavigateBack = { pop() },
-                                        onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                         onNavigateToNew = { navigate(TransactionNewRoute(route.id)) },
                                     )
                                 }

@@ -82,7 +82,7 @@ fun HomeScreen(
     onNavigateToTree: () -> Unit,
     onNewTransaction: (TxnKind) -> Unit,
     onNavigateToAccount: (id: String) -> Unit,
-    onNavigateToEdit: (id: String) -> Unit,
+    onOpenTransaction: (id: String) -> Unit,
 ) {
     if (!ledgerState.loaded) {
         LaunchedEffect(Unit) { ledgerState.refresh() }
@@ -234,7 +234,7 @@ fun HomeScreen(
                             tx = tx,
                             names = names,
                             types = types,
-                            onOpen = { onNavigateToEdit(tx.id) },
+                            onOpen = { onOpenTransaction(tx.id) },
                             skin = rowSkin(first = index == 0, last = index == txs.lastIndex),
                         )
                     }

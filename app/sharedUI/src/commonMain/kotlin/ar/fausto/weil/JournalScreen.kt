@@ -78,7 +78,7 @@ fun JournalScreen(
     accounts: AccountsRepository,
     onNavigateBack: () -> Unit,
     onNavigateToNew: () -> Unit,
-    onNavigateToEdit: (id: String) -> Unit,
+    onOpenTransaction: (id: String) -> Unit,
 ) {
     var items by remember { mutableStateOf(emptyList<Transaction>()) }
     var cursor by remember { mutableStateOf<LedgerCursor?>(null) }
@@ -241,7 +241,7 @@ fun JournalScreen(
                             tx = tx,
                             paths = paths,
                             types = types,
-                            onOpen = { onNavigateToEdit(tx.id) },
+                            onOpen = { onOpenTransaction(tx.id) },
                         )
                     }
                 }
@@ -444,7 +444,7 @@ internal fun flowOf(tx: Transaction, types: Map<String, AccountType>): TxnFlow? 
 }
 
 @Composable
-private fun flowColor(direction: Int): Color = when {
+internal fun flowColor(direction: Int): Color = when {
     direction > 0 -> MaterialTheme.colorScheme.tertiary
     direction < 0 -> MaterialTheme.colorScheme.error
     else -> MaterialTheme.colorScheme.onSurface

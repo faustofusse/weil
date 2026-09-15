@@ -62,7 +62,7 @@ fun AccountDetailScreen(
     ledgerState: LedgerState,
     accountId: String,
     onNavigateBack: () -> Unit,
-    onNavigateToEdit: (id: String) -> Unit,
+    onOpenTransaction: (id: String) -> Unit,
     onNavigateToNew: () -> Unit,
 ) {
     val ledger = ledgerState.ledger
@@ -234,7 +234,7 @@ fun AccountDetailScreen(
                     RegisterRowView(
                         entry = entry,
                         accountType = node?.account?.type,
-                        onOpen = { id -> onNavigateToEdit(id) },
+                        onOpen = { id -> onOpenTransaction(id) },
                     )
                 }
             }

@@ -26,6 +26,9 @@ data class TransactionQuickRoute(val kind: TxnKind)
 /** [accountId] pre-seeds the first posting when adding from an account screen. */
 data class TransactionNewRoute(val accountId: String? = null)
 
+/** Vista de solo lectura de una transacción; el editor está a un tap. */
+data class TransactionDetailRoute(val id: String)
+
 data class TransactionEditRoute(val id: String)
 
 data class AccountDetailRoute(val id: String)
