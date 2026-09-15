@@ -77,6 +77,13 @@ data class ImportCandidate(
     /** Suggested expense/income account, when the model matched an existing one. */
     val categoryAccountId: String?,
     val categoryPath: String?,
+    /**
+     * The user's own asset/liability account the money moved through, when the
+     * document names a payment method the model could match (a Mercado Pago
+     * receipt, a card slip, a statement header).
+     */
+    val accountId: String? = null,
+    val accountPath: String? = null,
 )
 
 /** [docId] is the R2 content hash, stored as the transactions' provenance. */
@@ -101,6 +108,8 @@ private data class WireCandidate(
     val direction: String,
     @SerialName("categoryAccountId") val categoryAccountId: String? = null,
     @SerialName("categoryPath") val categoryPath: String? = null,
+    @SerialName("accountId") val accountId: String? = null,
+    @SerialName("accountPath") val accountPath: String? = null,
 )
 
 /**
@@ -169,6 +178,8 @@ class ImportRepository(
                     direction = ImportDirection.fromWire(it.direction),
                     categoryAccountId = it.categoryAccountId,
                     categoryPath = it.categoryPath,
+                    accountId = it.accountId,
+                    accountPath = it.accountPath,
                 )
             },
         )

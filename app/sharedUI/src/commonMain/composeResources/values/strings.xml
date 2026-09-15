@@ -222,6 +222,8 @@
     <string name="import_found">%1$d transacciones encontradas</string>
     <string name="import_found_one">1 transacción encontrada</string>
     <string name="import_account_label">Cuenta</string>
+    <string name="import_account_default_label">Cuenta por defecto</string>
+    <string name="import_category_label">Categoría</string>
     <string name="import_account_pick">Elegir cuenta</string>
     <string name="import_category_pick">Elegir categoría</string>
     <string name="import_payee_label">Descripción</string>

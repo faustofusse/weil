@@ -57,11 +57,13 @@ import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.action_undo
+import weil.app.sharedui.generated.resources.import_account_default_label
 import weil.app.sharedui.generated.resources.import_account_label
 import weil.app.sharedui.generated.resources.import_account_pick
 import weil.app.sharedui.generated.resources.import_amount_label
 import weil.app.sharedui.generated.resources.import_analyzing
 import weil.app.sharedui.generated.resources.import_analyzing_hint
+import weil.app.sharedui.generated.resources.import_category_label
 import weil.app.sharedui.generated.resources.import_category_pick
 import weil.app.sharedui.generated.resources.import_create
 import weil.app.sharedui.generated.resources.import_created
@@ -89,10 +91,19 @@ private class CandidateDraft(candidate: ImportCandidate) {
     var payee by mutableStateOf(candidate.payee)
     var amountText by mutableStateOf(formatMinorUnits(candidate.amountMinor))
     var categoryId by mutableStateOf(candidate.categoryAccountId)
+
+    /**
+     * Own account for this row when the document named one ("Forma de Pago:
+     * Dinero disponible en Mercado Pago"); null falls back to the screen-wide
+     * pick in the bottom bar.
+     */
+    var accountId by mutableStateOf(candidate.accountId)
     val note = candidate.note
 
     val amount: Money? get() = Money.parse(amountText, commodity)
     val valid: Boolean get() = payee.isNotBlank() && (amount?.minorUnits ?: 0L) != 0L && categoryId != null
+
+    fun assetOr(fallback: String?): String? = accountId ?: fallback
 }
 
 /**
@@ -131,9 +142,18 @@ fun ImportReviewScreen(
             tree = accounts.tree()
             paths = tree.flatMap { it.selfAndDescendants }.associate { it.account.id to it.path }
             val assets = tree.filter { it.account.type == AccountType.Asset }
-            if (assetId == null) assetId = assets.singleOrNull()?.account?.id ?: assets.firstOrNull()?.account?.id
             val result = imports.analyze(document)
             analysis = result
+            // The default in the bottom bar only covers rows the document
+            // didn't attribute to one of the user's own accounts, so seed it
+            // from whatever the analysis detected most — not an arbitrary
+            // first account — and fall back the way the quick-entry screen does.
+            if (assetId == null) {
+                assetId = result.candidates.mapNotNull { it.accountId }
+                    .groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+                    ?: assets.singleOrNull()?.account?.id
+                    ?: assets.firstOrNull()?.account?.id
+            }
             drafts = result.candidates.map { candidate ->
                 CandidateDraft(candidate).also { draft ->
                     if (draft.categoryId == null) {
@@ -144,6 +164,9 @@ fun ImportReviewScreen(
                             ImportDirection.Income -> EXTERNAL_INCOME_ID
                         }
                     }
+                    // A single candidate has nothing to scan through — open it
+                    // straight away instead of making the user tap to see it.
+                    if (result.candidates.size == 1) draft.expanded = true
                 }
             }.toMutableStateList()
         } catch (e: Throwable) {
@@ -153,19 +176,20 @@ fun ImportReviewScreen(
     }
 
     val rows = drafts
-    val included = rows?.count { it.include && it.valid } ?: 0
+    val included = rows?.count { it.include && it.valid && it.assetOr(assetId) != null } ?: 0
 
     fun create() {
         val current = rows ?: return
-        val asset = assetId ?: return
+        val fallbackAsset = assetId
         val docId = analysis?.docId
         busy = true
         error = null
         scope.launch {
             try {
-                val entries = current.filter { it.include && it.valid }.map { draft ->
+                val entries = current.filter { it.include && it.valid }.mapNotNull { draft ->
                     val amount = draft.amount!!.minorUnits
                     val category = draft.categoryId!!
+                    val asset = draft.assetOr(fallbackAsset) ?: return@mapNotNull null
                     // Expense: asset −X / category +X. Income: category −X / asset +X.
                     val postings = when (draft.direction) {
                         ImportDirection.Expense -> listOf(
@@ -185,6 +209,7 @@ fun ImportReviewScreen(
                         sourceDocumentId = docId,
                     )
                 }
+                if (entries.isEmpty()) return@launch
                 val ids = ledger.addAll(entries)
                 ledger.syncNow()
                 val message = if (ids.size == 1) {
@@ -208,6 +233,7 @@ fun ImportReviewScreen(
     }
 
     Scaffold(
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(Res.string.import_title)) },
@@ -237,8 +263,10 @@ fun ImportReviewScreen(
                             .windowInsetsPadding(WindowInsets.navigationBars)
                             .padding(16.dp),
                     ) {
+                        // Fallback for rows the document didn't attribute to
+                        // one of the user's own accounts.
                         AccountField(
-                            label = stringResource(Res.string.import_account_label),
+                            label = stringResource(Res.string.import_account_default_label),
                             value = assetId?.let { paths[it] },
                             placeholder = stringResource(Res.string.import_account_pick),
                             onClick = { picking = PickerTarget.Asset },
@@ -267,8 +295,7 @@ fun ImportReviewScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .imePadding(),
+                .padding(padding),
         ) {
             when {
                 error != null && rows == null -> ImportError(error!!) { attempt++ }
@@ -294,7 +321,10 @@ fun ImportReviewScreen(
                         CandidateCard(
                             draft = draft,
                             categoryPath = draft.categoryId?.let { paths[it] },
+                            accountPath = draft.accountId?.let { paths[it] },
+                            fallbackAccountPath = assetId?.let { paths[it] },
                             onPickCategory = { picking = PickerTarget.Category(draft) },
+                            onPickAccount = { picking = PickerTarget.RowAsset(draft) },
                             onToggleExpanded = { draft.expanded = !draft.expanded },
                         )
                     }
@@ -323,6 +353,17 @@ fun ImportReviewScreen(
                 picking = null
             },
         )
+        is PickerTarget.RowAsset -> AccountPickerSheet(
+            tree = tree.filter {
+                it.account.type == AccountType.Asset || it.account.type == AccountType.Liability
+            },
+            title = stringResource(Res.string.import_account_pick),
+            onDismiss = { picking = null },
+            onPick = {
+                target.draft.accountId = it.account.id
+                picking = null
+            },
+        )
         is PickerTarget.Category -> {
             val type = when (target.draft.direction) {
                 ImportDirection.Expense -> AccountType.Expense
@@ -342,7 +383,9 @@ fun ImportReviewScreen(
 }
 
 private sealed interface PickerTarget {
+    /** The screen-wide fallback account in the bottom bar. */
     data object Asset : PickerTarget
+    data class RowAsset(val draft: CandidateDraft) : PickerTarget
     data class Category(val draft: CandidateDraft) : PickerTarget
 }
 
@@ -350,7 +393,10 @@ private sealed interface PickerTarget {
 private fun CandidateCard(
     draft: CandidateDraft,
     categoryPath: String?,
+    accountPath: String?,
+    fallbackAccountPath: String?,
     onPickCategory: () -> Unit,
+    onPickAccount: () -> Unit,
     onToggleExpanded: () -> Unit,
 ) {
     val dim = if (draft.include) 1f else 0.4f
@@ -384,7 +430,7 @@ private fun CandidateCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        listOfNotNull(dayLabel(dayGroup(draft.date)), categoryPath)
+                        listOfNotNull(dayLabel(dayGroup(draft.date)), accountPath, categoryPath)
                             .joinToString(" · "),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = dim),
@@ -437,10 +483,17 @@ private fun CandidateCard(
                     )
                     Spacer(Modifier.height(8.dp))
                     AccountField(
-                        label = null,
+                        label = stringResource(Res.string.import_category_label),
                         value = categoryPath,
                         placeholder = stringResource(Res.string.import_category_pick),
                         onClick = onPickCategory,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    AccountField(
+                        label = stringResource(Res.string.import_account_label),
+                        value = accountPath ?: fallbackAccountPath,
+                        placeholder = stringResource(Res.string.import_account_pick),
+                        onClick = onPickAccount,
                     )
                 }
             }

@@ -70,20 +70,30 @@ export async function authenticate(request: Request, env: ImportEnv): Promise<Au
   return { id: row.user_id, turso_db_name: row.turso_db_name, turso_db_hostname: row.turso_db_hostname };
 }
 
-interface CategoryAccount {
+type PostableType = 'expense' | 'income' | 'asset' | 'liability';
+
+interface PostableAccount {
   id: string;
   name: string;
   path: string;
-  type: 'expense' | 'income';
+  type: PostableType;
 }
 
-/** Expense/income leaves of the user's account tree, with colon-joined paths. */
-async function loadCategories(
+/**
+ * The user's postable accounts with colon-joined paths. Expense/income are the
+ * categories; asset/liability are the payment methods ("Forma de Pago: Dinero
+ * en Mercado Pago" should land on the user's own Mercado Pago account, not on
+ * whatever the review screen defaults to).
+ *
+ * Parents are included: the tree is organizational, postings may reference any
+ * account, and excluding them hid real categories ("Comida" the moment it grew
+ * a "Comida:Verduras" child).
+ */
+async function loadAccounts(
   queryUserDb: (sql: string) => Promise<Array<Record<string, unknown>>>
-): Promise<CategoryAccount[]> {
+): Promise<PostableAccount[]> {
   const rows = await queryUserDb('select id, name, parent_id, type from accounts');
   const byId = new Map<string, { id: string; name: string; parent_id: string | null; type: string }>();
-  const hasChildren = new Set<string>();
   for (const r of rows) {
     const id = String(r.id);
     byId.set(id, {
@@ -92,18 +102,17 @@ async function loadCategories(
       parent_id: r.parent_id == null ? null : String(r.parent_id),
       type: String(r.type),
     });
-    if (r.parent_id != null) hasChildren.add(String(r.parent_id));
   }
   const pathOf = (id: string): string => {
     const acc = byId.get(id);
     if (!acc) return '';
     return acc.parent_id ? `${pathOf(acc.parent_id)}:${acc.name}` : acc.name;
   };
-  const out: CategoryAccount[] = [];
+  const postable: PostableType[] = ['expense', 'income', 'asset', 'liability'];
+  const out: PostableAccount[] = [];
   for (const acc of byId.values()) {
-    if (acc.type !== 'expense' && acc.type !== 'income') continue;
-    if (hasChildren.has(acc.id)) continue; // postings live on leaves
-    out.push({ id: acc.id, name: acc.name, path: pathOf(acc.id), type: acc.type });
+    if (!postable.includes(acc.type as PostableType)) continue;
+    out.push({ id: acc.id, name: acc.name, path: pathOf(acc.id), type: acc.type as PostableType });
   }
   return out;
 }
@@ -124,6 +133,12 @@ const RESPONSE_SCHEMA = {
           commodity: { type: 'STRING', description: "Currency code. 'ARS' unless the document explicitly shows another currency (e.g. USD)" },
           direction: { type: 'STRING', enum: ['expense', 'income'], description: 'expense = money leaves the user, income = money comes in' },
           category: { type: 'STRING', nullable: true, description: 'Best-matching category path from the provided list, verbatim, or null' },
+          account: {
+            type: 'STRING',
+            nullable: true,
+            description:
+              "The user's own account the money moved through (payment method, wallet, bank or card), verbatim from the provided list, or null when the document does not say",
+          },
         },
         required: ['date', 'payee', 'amount', 'commodity', 'direction'],
       },
@@ -132,9 +147,10 @@ const RESPONSE_SCHEMA = {
   required: ['transactions'],
 } as const;
 
-function prompt(categories: CategoryAccount[]): string {
-  const expense = categories.filter((c) => c.type === 'expense').map((c) => c.path);
-  const income = categories.filter((c) => c.type === 'income').map((c) => c.path);
+function prompt(accounts: PostableAccount[]): string {
+  const expense = accounts.filter((c) => c.type === 'expense').map((c) => c.path);
+  const income = accounts.filter((c) => c.type === 'income').map((c) => c.path);
+  const own = accounts.filter((c) => c.type === 'asset' || c.type === 'liability').map((c) => c.path);
   return [
     'You extract financial transactions from a document (receipt, invoice, or bank/card statement, possibly multi-page).',
     'Return every distinct transaction you can see. For bank or card statements, emit one entry per statement row;',
@@ -148,6 +164,15 @@ function prompt(categories: CategoryAccount[]): string {
       : '',
     income.length > 0
       ? `For "income" entries, pick the best matching category from this list (verbatim path) or null: ${income.join(' | ')}`
+      : '',
+    own.length > 0
+      ? [
+          `"account" is the user's own account the money moved through. Pick it (verbatim path) from: ${own.join(' | ')}`,
+          'Use the payment method, wallet, bank, or card the document names — e.g. a Mercado Pago receipt paid with',
+          '"Dinero disponible en Mercado Pago" belongs to the user\'s Mercado Pago account, a statement header names the',
+          'account for every row on it, and a card slip names the card. Match on the brand or bank name even when the',
+          'wording differs. Use null only when the document gives no usable hint.',
+        ].join(' ')
       : '',
     'If the document contains no transactions, return an empty list.',
   ]
@@ -163,6 +188,7 @@ interface GeminiCandidateTx {
   commodity: string;
   direction: 'expense' | 'income';
   category?: string | null;
+  account?: string | null;
 }
 
 /**
@@ -286,23 +312,27 @@ export async function handleAnalyze(
   const docId = await sha256HexOf(bytes);
   const key = `${user.id}/${docId}`;
 
-  const [categories] = await Promise.all([
-    loadCategories(queryUserDb).catch((e) => {
-      console.error('loadCategories failed (continuing without):', e);
-      return [] as CategoryAccount[];
+  const [accounts] = await Promise.all([
+    loadAccounts(queryUserDb).catch((e) => {
+      console.error('loadAccounts failed (continuing without):', e);
+      return [] as PostableAccount[];
     }),
     env.DOCS.put(key, bytes, { httpMetadata: { contentType: mimeType } }),
   ]);
 
-  const raw = await callGemini(env, mimeType, base64Of(bytes), prompt(categories));
+  const raw = await callGemini(env, mimeType, base64Of(bytes), prompt(accounts));
 
-  const byPath = new Map(categories.map((c) => [c.path.toLowerCase(), c]));
+  const byPath = new Map(accounts.map((c) => [c.path.toLowerCase(), c]));
   const transactions = raw.flatMap((t) => {
     const amountMinor = toMinor(t.amount);
     const date = toEpochMs(t.date);
     if (amountMinor == null || amountMinor === 0 || date == null || !t.payee?.trim()) return [];
     const match = t.category ? byPath.get(t.category.trim().toLowerCase()) : undefined;
     const category = match && match.type === t.direction ? match : undefined;
+    // The model may hand back a category path here; only the user's own
+    // asset/liability accounts are valid payment methods.
+    const ownMatch = t.account ? byPath.get(t.account.trim().toLowerCase()) : undefined;
+    const own = ownMatch && (ownMatch.type === 'asset' || ownMatch.type === 'liability') ? ownMatch : undefined;
     return [
       {
         date,
@@ -313,6 +343,8 @@ export async function handleAnalyze(
         direction: t.direction,
         categoryAccountId: category?.id ?? null,
         categoryPath: category?.path ?? null,
+        accountId: own?.id ?? null,
+        accountPath: own?.path ?? null,
       },
     ];
   });

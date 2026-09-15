@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
@@ -55,7 +56,14 @@ object Feedback {
         val state = host ?: return
         scope.launch {
             try {
-                val shown = state.showSnackbar(message, actionLabel, withDismissAction = false)
+                // Explicit Short: the default duration is Indefinite whenever
+                // an actionLabel is passed, which left these hanging on screen.
+                val shown = state.showSnackbar(
+                    message,
+                    actionLabel,
+                    withDismissAction = false,
+                    duration = SnackbarDuration.Short,
+                )
                 if (shown == SnackbarResult.ActionPerformed) {
                     try {
                         onAction()
