@@ -66,7 +66,7 @@ class NotificationsRepository(private val db: DatabaseProvider) {
     }
 
     /** Total rows, optionally restricted to potential-transaction notifications. */
-    suspend fun count(onlyTransactions: Boolean): Long = db.use { d ->
+    suspend fun count(onlyTransactions: Boolean): Long = db.useForRead { d ->
         val where = if (onlyTransactions) " where $TRANSACTION_FILTER" else ""
         d.query("select count(*) from notifications$where", null) { rows ->
             (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L
@@ -85,7 +85,7 @@ class NotificationsRepository(private val db: DatabaseProvider) {
         limit: Int = LIST_PAGE_SIZE,
         before: NotificationCursor? = null,
         onlyTransactions: Boolean = false,
-    ): NotificationsPage = db.use { d ->
+    ): NotificationsPage = db.useForRead { d ->
         val apps = loadApps(d)
         val where = buildList {
             if (onlyTransactions) add(TRANSACTION_FILTER)

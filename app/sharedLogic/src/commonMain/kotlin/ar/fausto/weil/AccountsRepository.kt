@@ -13,7 +13,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
 
 
     /** One flat query turned into a node tree with colon-joined paths. */
-    suspend fun tree(): List<AccountNode> = db.use { d ->
+    suspend fun tree(): List<AccountNode> = db.useForRead { d ->
         val all = d.query(
             "select id, name, parent_id, type from accounts order by lower(name), id",
             null,

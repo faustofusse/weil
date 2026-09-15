@@ -25,14 +25,14 @@ class EmailsRepository(private val db: DatabaseProvider) {
         db.use { it.sync() }
     }
 
-    suspend fun count(): Long = db.use { d ->
+    suspend fun count(): Long = db.useForRead { d ->
         d.query("select count(*) from emails", null) { rows ->
             (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L
         }
     }
 
     /** Keyset-paginated page of emails, newest first. Does not sync — see NotificationsRepository.page. */
-    suspend fun page(limit: Int = LIST_PAGE_SIZE, before: EmailCursor? = null): EmailsPage = db.use { d ->
+    suspend fun page(limit: Int = LIST_PAGE_SIZE, before: EmailCursor? = null): EmailsPage = db.useForRead { d ->
         val where = if (before == null) {
             ""
         } else {

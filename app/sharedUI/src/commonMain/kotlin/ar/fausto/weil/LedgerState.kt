@@ -67,18 +67,18 @@ class LedgerState(
             busy = true
             error = null
             try {
-                // Pull server state first; a failed sync must not hide the local view.
+                // Local-first: the replica already has the last known state, so
+                // paint it immediately instead of waiting on a sync round trip.
+                loadLocal()
+                loaded = true
+                // Then reconcile with the server in the background and repaint
+                // if anything changed; a failed sync must not hide the local view.
                 try {
                     ledger.syncNow()
+                    loadLocal()
                 } catch (e: Throwable) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
                 }
-                tree = accounts.tree()
-                val leafs = ledger.leafBalances()
-                leafTotals = leafs
-                totals = rollupSubtrees(tree, leafs)
-                recent = ledger.page(limit = RECENT_COUNT)
-                loaded = true
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()
@@ -86,6 +86,15 @@ class LedgerState(
                 busy = false
             }
         }
+    }
+
+    private suspend fun loadLocal() {
+        val newTree = accounts.tree()
+        val leafs = ledger.leafBalances()
+        tree = newTree
+        leafTotals = leafs
+        totals = rollupSubtrees(newTree, leafs)
+        recent = ledger.page(limit = RECENT_COUNT)
     }
 
     fun mutate(action: suspend () -> Unit) {

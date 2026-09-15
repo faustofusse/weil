@@ -10,17 +10,28 @@ class DatabaseProvider(
     private val auth: AuthRepository,
     private val dbContext: CoroutineContext,
     private val dbFactory: (userId: String, url: String, token: String) -> Database,
+    // Both contexts must resolve to the *same* single thread as [dbContext]:
+    // AndroidDatabase exposes one native connection and only one thread may
+    // ever touch it. This is purely a queue-priority knob (see WeilApplication's
+    // dbDispatcher/dbReadDispatcher) so cheap reads don't wait behind a queued
+    // (not yet started) background sync; it changes ordering, not concurrency.
+    private val readContext: CoroutineContext = dbContext,
 ) {
     private val mutex = Mutex()
     private var database: Database? = null
     private var openedUserId: String? = null
 
-    suspend fun <T> use(block: (Database) -> T): T {
+    suspend fun <T> use(block: (Database) -> T): T = run(dbContext, block)
+
+    /** For pure reads only — never for mutations or `sync()`. See [readContext]. */
+    suspend fun <T> useForRead(block: (Database) -> T): T = run(readContext, block)
+
+    private suspend fun <T> run(context: CoroutineContext, block: (Database) -> T): T {
         var attempt = 0
         while (true) {
             val db = currentDb()
             try {
-                return withContext(dbContext) { block(db) }
+                return withContext(context) { block(db) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {

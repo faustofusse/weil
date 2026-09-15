@@ -103,7 +103,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
 
     /** Page of the journal, newest first; postings grouped in memory. */
     suspend fun page(limit: Int = LIST_PAGE_SIZE, before: LedgerCursor? = null): List<Transaction> =
-        db.use { d ->
+        db.useForRead { d ->
             val txs = d.query(
                 "select t.id, t.date, t.payee, t.note, t.created_at from ledger_transactions t" +
                     (if (before == null) "" else " where $TX_CURSOR_FILTER") +
@@ -152,7 +152,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         }
 
     /** One transaction with its postings, or null when unknown. */
-    suspend fun get(id: String): Transaction? = db.use { d ->
+    suspend fun get(id: String): Transaction? = db.useForRead { d ->
         val safe = quoteList(listOf(id))
         val tx = d.query(
             "select id, date, payee, note, created_at from ledger_transactions where id in ($safe)",
@@ -168,7 +168,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                     postings = emptyList(),
                 )
             }.firstOrNull()
-        } ?: return@use null
+        } ?: return@useForRead null
         tx.copy(
             postings = d.query(
                 "select id, transaction_id, account_id, amount_minor, commodity from postings" +
@@ -199,7 +199,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     ): List<RegisterEntry> {
         if (subtreeIds.isEmpty()) return emptyList()
         val idList = quoteList(subtreeIds)
-        return db.use { d ->
+        return db.useForRead { d ->
             val opening = d.query(
                 "select sum(p.amount_minor) from postings p" +
                     " join ledger_transactions t on p.transaction_id = t.id" +
@@ -243,7 +243,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     }
 
     /** Leaf-level totals per commodity, straight from postings. */
-    suspend fun leafBalances(): Map<String, Map<String, Long>> = db.use { d ->
+    suspend fun leafBalances(): Map<String, Map<String, Long>> = db.useForRead { d ->
         d.query(
             "select account_id, commodity, sum(amount_minor) from postings" +
                 " group by account_id, commodity",

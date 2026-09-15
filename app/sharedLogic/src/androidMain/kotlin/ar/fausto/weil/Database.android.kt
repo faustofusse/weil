@@ -97,9 +97,9 @@ class AndroidDatabase(
             connection = conn
             opened.set(true)
 
-            // Idempotent schema setup; no-op against an already-bootstrapped schema.
-            executeBatch(SCHEMA_SQL)
-            migrateSchema()
+            // Idempotent schema setup; skipped outright when user_version
+            // already matches (see applySchemaIfNeeded).
+            applySchemaIfNeeded()
         } catch (t: Throwable) {
             connection?.let { existing -> runCatching { native.turso_connection_close(existing, err) } }
             runCatching { native.turso_sync_database_deinit(syncDb) }
@@ -406,13 +406,6 @@ class AndroidDatabase(
             )
         }
         return row
-    }
-
-    private fun executeBatch(sql: String) {
-        for (statement in sql.split(';')) {
-            val trimmed = statement.trim()
-            if (trimmed.isNotEmpty()) executeImpl(trimmed, null)
-        }
     }
 
     // ---- Database interface -------------------------------------------------------------

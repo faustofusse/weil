@@ -53,6 +53,32 @@ const val SCHEMA_SQL =
     "update emails set received_at = received_at * 1000 where received_at < 1000000000000;"
 
 /**
+ * Bumped whenever [SCHEMA_SQL] or [migrateSchema] changes shape. Stamped into
+ * `pragma user_version` after a successful apply so subsequent opens of an
+ * already-migrated database can skip straight past the DDL/pragma replay
+ * (the Rust parser round trip for ~13 statements is real cost on every cold
+ * start otherwise).
+ */
+private const val SCHEMA_VERSION = 1L
+
+/**
+ * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
+ * database's `user_version` already matches [SCHEMA_VERSION].
+ */
+fun Database.applySchemaIfNeeded() {
+    val current = query("pragma user_version", null) { rows ->
+        (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L
+    }
+    if (current == SCHEMA_VERSION) return
+    for (statement in SCHEMA_SQL.split(';')) {
+        val trimmed = statement.trim()
+        if (trimmed.isNotEmpty()) execute(trimmed, null)
+    }
+    migrateSchema()
+    execute("pragma user_version = $SCHEMA_VERSION")
+}
+
+/**
  * Column migration for the account tree: parent_id + type on pre-existing
  * accounts tables. `alter table` is not idempotent in SQLite, so the columns
  * are checked via pragma before altering; runs after [SCHEMA_SQL] on open.

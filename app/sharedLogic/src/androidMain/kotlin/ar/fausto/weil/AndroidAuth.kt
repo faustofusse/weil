@@ -44,7 +44,13 @@ actual fun storedCookieHeader(cookieName: String, store: SecureStore): String? =
 actual fun epochMillis(): Long = System.currentTimeMillis()
 
 class AndroidSecureStore(context: Context) : SecureStore {
-    private val prefs = try {
+    // Deferred past construction: MasterKey/Keystore setup is real work
+    // (AES key gen/lookup) and restore() calls read() right away, so this
+    // buys nothing by itself yet — kept lazy so a future async AppGraph
+    // bootstrap (see WeilApplication) can construct the store without
+    // paying for it before it's actually needed.
+    private val prefs by lazy {
+     try {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
@@ -57,6 +63,7 @@ class AndroidSecureStore(context: Context) : SecureStore {
         )
     } catch (t: Throwable) {
         context.getSharedPreferences("finance_auth_fallback", Context.MODE_PRIVATE)
+    }
     }
 
     override fun read(key: String): String? = prefs.getString(key, null)
