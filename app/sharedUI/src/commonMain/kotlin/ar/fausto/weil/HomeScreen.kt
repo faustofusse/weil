@@ -25,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -32,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -160,20 +160,11 @@ fun HomeScreen(
                     SectionHeader(
                         title = stringResource(Res.string.home_accounts_title),
                         trailing = {
-                            FilledTonalIconButton(
+                            SectionHeaderButton(
+                                icon = Icons.Filled.Add,
+                                contentDescription = stringResource(Res.string.account_add_title),
                                 onClick = { adding = true },
-                                modifier = Modifier.size(32.dp),
-                                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    contentColor = MaterialTheme.colorScheme.onSurface,
-                                ),
-                            ) {
-                                Icon(
-                                    Icons.Filled.Add,
-                                    contentDescription = stringResource(Res.string.account_add_title),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
+                            )
                         },
                     )
                 }
@@ -204,23 +195,23 @@ fun HomeScreen(
                 }
 
                 item(key = "recent-header") {
+                    // divider = true: this section follows the accounts
+                    // card directly, so the boundary needs a line, not just
+                    // whitespace, to read as a new section rather than more
+                    // of the same one.
                     SectionHeader(
                         title = stringResource(Res.string.home_recent_title),
+                        divider = true,
                         trailing = {
-                            // Fixed 32.dp like the accounts header's + button:
-                            // a default TextButton is 40.dp tall with 24.dp of
-                            // inner padding, which made the two section titles
-                            // sit at different heights and different insets.
-                            TextButton(
+                            // Same button as the accounts header above: same
+                            // shape, size and colors, only the icon changes
+                            // (add vs. go-to-journal) so the two headers read
+                            // as siblings instead of two different widgets.
+                            SectionHeaderButton(
+                                icon = Icons.Filled.ChevronRight,
+                                contentDescription = stringResource(Res.string.home_see_all),
                                 onClick = onNavigateToJournal,
-                                modifier = Modifier.height(32.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp),
-                            ) {
-                                Text(
-                                    stringResource(Res.string.home_see_all),
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            }
+                            )
                         },
                     )
                 }
@@ -356,30 +347,71 @@ private fun netWorthOf(state: LedgerState): Map<String, Long> {
 }
 
 /**
- * Section title with optional trailing content (totals, actions). The grouped
- * cards below carry the separation, so no divider is drawn here.
+ * Section title with optional trailing content (totals, actions). Every
+ * caller shares this one title style and trailing-button shape so sibling
+ * sections read as the same kind of thing; [divider] draws the boundary
+ * above a section that follows another one directly (the grouped cards
+ * still carry the separation *within* a section, so the first header on a
+ * screen — right after a hero card — leaves it off).
  */
 @Composable
 internal fun SectionHeader(
     title: String,
+    divider: Boolean = false,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        // end inset mirrors the account rows' trailing icon column, so a
-        // header action lines up with the rows underneath it.
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 24.dp, bottom = 8.dp, start = 4.dp, end = 8.dp)
-            .heightIn(min = 32.dp),
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (divider) {
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                modifier = Modifier.padding(top = 20.dp),
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            // end inset mirrors the account rows' trailing icon column, so a
+            // header action lines up with the rows underneath it.
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    top = if (divider) 16.dp else 24.dp,
+                    bottom = 8.dp,
+                    start = 4.dp,
+                    end = 8.dp,
+                )
+                .heightIn(min = 32.dp),
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            trailing()
+        }
+    }
+}
+
+/**
+ * The one trailing control every [SectionHeader] uses: a 32.dp tonal circle.
+ * Accounts gets a "+", Recent gets a chevron — same button, same size, same
+ * colors, different verb.
+ */
+@Composable
+private fun SectionHeaderButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    FilledTonalIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(32.dp),
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
     ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        trailing()
+        Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(18.dp))
     }
 }
 
