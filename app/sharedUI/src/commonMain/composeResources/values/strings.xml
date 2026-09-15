@@ -211,6 +211,30 @@
         <item>dic</item>
     </string-array>
 
+    <!-- Document import -->
+    <string name="import_menu">Importar documento</string>
+    <string name="import_title">Importar</string>
+    <string name="import_analyzing">Analizando el documento…</string>
+    <string name="import_analyzing_hint">La IA está buscando transacciones. Puede tardar unos segundos.</string>
+    <string name="import_failed">No se pudo analizar el documento</string>
+    <string name="import_retry">Reintentar</string>
+    <string name="import_empty">No se encontraron transacciones en este documento</string>
+    <string name="import_found">%1$d transacciones encontradas</string>
+    <string name="import_found_one">1 transacción encontrada</string>
+    <string name="import_account_label">Cuenta</string>
+    <string name="import_account_pick">Elegir cuenta</string>
+    <string name="import_category_pick">Elegir categoría</string>
+    <string name="import_payee_label">Descripción</string>
+    <string name="import_amount_label">Monto</string>
+    <string name="import_create">Crear %1$d</string>
+    <string name="import_created">%1$d transacciones creadas</string>
+    <string name="import_created_one">Transacción creada</string>
+    <string name="import_no_picker">No se puede abrir el selector de archivos en este dispositivo</string>
+    <string name="import_unsupported">Tipo de archivo no soportado</string>
+    <string name="import_include">Incluir esta transacción</string>
+    <string name="import_source_image">Imagen</string>
+    <string name="import_source_pdf">PDF</string>
+
     <!-- Passkey fallback names -->
     <string name="passkey_name">Passkey %1$s</string>
 </resources>

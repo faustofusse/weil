@@ -40,6 +40,7 @@ tasks.register<JavaExec>("shot") {
         (project.findProperty("shot.out") as String?)
             ?: layout.buildDirectory.file("shots/home.png").get().asFile.path,
         (project.findProperty("shot.seconds") as String?) ?: "5",
+        (project.findProperty("shot.route") as String?) ?: "",
     )
 }
 

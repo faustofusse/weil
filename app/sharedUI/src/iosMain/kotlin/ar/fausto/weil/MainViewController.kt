@@ -9,6 +9,7 @@ fun MainViewController() = ComposeUIViewController {
             store = requireNotNull(IosBridges.secureStore) { "SecureStore bridge not installed by Swift host" },
             passkeys = { bridgedPasskeys() },
             qrScanner = { IosBridges.qrScanner },
+            documentPicker = { IosBridges.documentPicker },
             dbContext = DbDispatcher,
             dbFactory = { userId, url, token ->
                 IOSDatabase(path = defaultDatabasePath(userId), url = url, authToken = token)

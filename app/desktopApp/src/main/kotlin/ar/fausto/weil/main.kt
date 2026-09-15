@@ -30,6 +30,7 @@ fun main() {
         // "scanner unavailable", and desktop can still show its own invite /
         // pairing-request QR for a phone to scan.
         qrScanner = { null },
+        documentPicker = { JvmDocumentPicker() },
         dbContext = jvmDbDispatcher,
         dbFactory = { _, url, token ->
             if (fakeMode) FakeDatabase() else HttpDatabase(url, token)

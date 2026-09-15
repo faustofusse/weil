@@ -1,0 +1,212 @@
+package ar.fausto.weil
+
+import io.ktor.client.call.body
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.UserAgent
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.contentType
+import io.ktor.http.isSuccess
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+/** A document the user picked or shared into the app, held in memory. */
+data class PickedDocument(
+    val bytes: ByteArray,
+    val mimeType: String,
+    val name: String?,
+) {
+    val isPdf: Boolean get() = mimeType == "application/pdf"
+
+    // ByteArray uses identity equality; the content-based override keeps
+    // recomposition keyed on the actual document.
+    override fun equals(other: Any?): Boolean =
+        this === other ||
+            (other is PickedDocument &&
+                mimeType == other.mimeType &&
+                name == other.name &&
+                bytes.contentEquals(other.bytes))
+
+    override fun hashCode(): Int =
+        (bytes.contentHashCode() * 31 + mimeType.hashCode()) * 31 + (name?.hashCode() ?: 0)
+}
+
+/** Opens the platform file/photo picker; null when the user cancelled. */
+interface DocumentPicker {
+    suspend fun pick(): PickedDocument?
+}
+
+/** Content types the worker accepts (mirrors `ALLOWED_TYPES` there). */
+val IMPORTABLE_MIME_TYPES = listOf(
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+)
+
+/** Money moves out of (Expense) or into (Income) the user's accounts. */
+enum class ImportDirection {
+    Expense,
+    Income;
+
+    companion object {
+        fun fromWire(value: String): ImportDirection =
+            if (value.equals("income", ignoreCase = true)) Income else Expense
+    }
+}
+
+/** One transaction the model found in the document, before user review. */
+data class ImportCandidate(
+    val date: Long,
+    val payee: String,
+    val note: String?,
+    val amountMinor: Long,
+    val commodity: String,
+    val direction: ImportDirection,
+    /** Suggested expense/income account, when the model matched an existing one. */
+    val categoryAccountId: String?,
+    val categoryPath: String?,
+)
+
+/** [docId] is the R2 content hash, stored as the transactions' provenance. */
+data class ImportAnalysis(
+    val docId: String,
+    val candidates: List<ImportCandidate>,
+)
+
+@Serializable
+private data class AnalyzeResponse(
+    val docId: String,
+    val transactions: List<WireCandidate> = emptyList(),
+)
+
+@Serializable
+private data class WireCandidate(
+    val date: Long,
+    val payee: String,
+    val note: String? = null,
+    val amountMinor: Long,
+    val commodity: String,
+    val direction: String,
+    @SerialName("categoryAccountId") val categoryAccountId: String? = null,
+    @SerialName("categoryPath") val categoryPath: String? = null,
+)
+
+/**
+ * What the review screen needs from the import backend. The real
+ * implementation is [ImportRepository]; the desktop harness substitutes a
+ * fake so the screen can be rendered without a session or network.
+ */
+interface DocumentAnalyzer {
+    suspend fun analyze(document: PickedDocument): ImportAnalysis
+}
+
+/**
+ * Sends a shared/picked image or PDF to the finance worker, which runs it
+ * through Gemini and returns candidate transactions. The worker authenticates
+ * with the same `auth_finance` session cookie as the auth worker and stores
+ * the original document in R2; nothing is written to the ledger here.
+ */
+class ImportRepository(
+    private val store: SecureStore,
+    private val baseUrl: String = AuthConfig.API_BASE_URL,
+) : DocumentAnalyzer {
+    private val json = Json { ignoreUnknownKeys = true }
+    private val client = platformHttpClient {
+        install(ContentNegotiation) { json(json) }
+        // A multi-page statement keeps the model busy well past any default
+        // socket timeout (the round trip is tens of seconds, not hundreds of
+        // milliseconds), so this call gets its own generous budget.
+        install(HttpTimeout) {
+            requestTimeoutMillis = ANALYZE_TIMEOUT_MS
+            socketTimeoutMillis = ANALYZE_TIMEOUT_MS
+            connectTimeoutMillis = 30_000
+        }
+        platformUserAgent()?.let { ua -> install(UserAgent) { agent = ua } }
+    }
+    private val cookieName = "auth_${AuthConfig.SLUG}"
+
+    override suspend fun analyze(document: PickedDocument): ImportAnalysis {
+        require(document.mimeType in IMPORTABLE_MIME_TYPES) {
+            "unsupported document type: ${document.mimeType}"
+        }
+        val resp = client.post("$baseUrl/import/analyze") {
+            contentType(ContentType.parse(document.mimeType))
+            storedCookieHeader(cookieName, store)?.let { header(HttpHeaders.Cookie, it) }
+            setBody(document.bytes)
+        }
+        if (resp.status.value == 401) throw SessionExpired()
+        if (!resp.status.isSuccess()) {
+            val text = resp.bodyAsText()
+            val message = try {
+                json.decodeFromString<JsonObject>(text)["error"]?.jsonPrimitive?.content ?: text
+            } catch (_: Exception) {
+                text
+            }
+            throw ApiException(resp.status.value, message)
+        }
+        val body = resp.body<AnalyzeResponse>()
+        return ImportAnalysis(
+            docId = body.docId,
+            candidates = body.transactions.map {
+                ImportCandidate(
+                    date = it.date,
+                    payee = it.payee,
+                    note = it.note,
+                    amountMinor = it.amountMinor,
+                    commodity = it.commodity,
+                    direction = ImportDirection.fromWire(it.direction),
+                    categoryAccountId = it.categoryAccountId,
+                    categoryPath = it.categoryPath,
+                )
+            },
+        )
+    }
+
+    /** URL of the stored original; the session cookie authorizes the read. */
+    fun documentUrl(docId: String): String = "$baseUrl/import/document/$docId"
+
+    private companion object {
+        const val ANALYZE_TIMEOUT_MS = 180_000L
+    }
+}
+
+/**
+ * Hand-off slot for documents shared into the app from outside (Android's
+ * ACTION_SEND): the platform entry point drops the document here and the UI
+ * picks it up once it is composed and the user is signed in.
+ */
+object SharedImportInbox {
+    private var pending: PickedDocument? = null
+    private var listener: ((PickedDocument) -> Unit)? = null
+
+    /** Called by platform code when a document arrives from outside the app. */
+    fun offer(document: PickedDocument) {
+        val current = listener
+        if (current != null) current(document) else pending = document
+    }
+
+    /** The UI subscribes once; any document that arrived earlier is replayed. */
+    fun observe(onDocument: (PickedDocument) -> Unit) {
+        listener = onDocument
+        pending?.let {
+            pending = null
+            onDocument(it)
+        }
+    }
+
+    fun stopObserving() {
+        listener = null
+    }
+}

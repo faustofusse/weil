@@ -59,7 +59,7 @@ const val SCHEMA_SQL =
  * (the Rust parser round trip for ~13 statements is real cost on every cold
  * start otherwise).
  */
-private const val SCHEMA_VERSION = 1L
+private const val SCHEMA_VERSION = 2L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -92,6 +92,14 @@ fun Database.migrateSchema() {
     }
     if ("type" !in columns) {
         execute("alter table accounts add column type text not null default 'asset'")
+    }
+    val txColumns = query("pragma table_info(ledger_transactions)", null) { rows ->
+        rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
+    }
+    if ("source_document_id" !in txColumns) {
+        // Provenance of AI-imported transactions: the R2 content hash of the
+        // analyzed document (see the worker's /import/analyze).
+        execute("alter table ledger_transactions add column source_document_id text")
     }
     seedDefaultAccounts()
 }

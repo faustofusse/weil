@@ -98,6 +98,10 @@ class WeilApplication : Application() {
                 // The Google code scanner also needs a foreground activity;
                 // scanning only ever starts from profile/login screens.
                 qrScanner = { AndroidQrScanner(requireNotNull(currentActivity) { "no foreground activity" }) },
+                // SAF picker: also activity-scoped, only opened from Home.
+                documentPicker = {
+                    AndroidDocumentPicker(requireNotNull(currentActivity) { "no foreground activity" })
+                },
                 dbContext = dbDispatcher,
                 dbReadContext = dbReadDispatcher,
                 dbFactory = { userId, url, token ->

@@ -126,6 +126,21 @@ fun RootScreen(graph: AppGraph) {
                         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
                     }
 
+                    // Documents shared into the app from outside (Android
+                    // ACTION_SEND) land here; anything that arrived before the
+                    // UI existed is replayed on subscribe. Only while signed
+                    // in — the review screen needs an authenticated session.
+                    if (loggedIn) {
+                        androidx.compose.runtime.DisposableEffect(Unit) {
+                            SharedImportInbox.observe { document ->
+                                if (backStack.lastOrNull() !is ImportReviewRoute) {
+                                    backStack.add(ImportReviewRoute(document))
+                                }
+                            }
+                            onDispose { SharedImportInbox.stopObserving() }
+                        }
+                    }
+
                     Feedback.host = snackbarHostState
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -147,6 +162,8 @@ fun RootScreen(graph: AppGraph) {
                                 entry<HomeRoute> {
                                     HomeScreen(
                                         ledgerState = ledgerState,
+                                        documents = { graph.documents },
+                                        onImportDocument = { navigate(ImportReviewRoute(it)) },
                                         onNavigateToTree = { navigate(AccountsTreeRoute) },
                                         onNewTransaction = { kind -> navigate(TransactionQuickRoute(kind)) },
                                         onNavigateToProfile = { navigate(ProfileRoute) },
@@ -218,6 +235,16 @@ fun RootScreen(graph: AppGraph) {
                                         onNavigateBack = { pop() },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                         onNavigateToNew = { navigate(TransactionNewRoute(route.id)) },
+                                    )
+                                }
+                                entry<ImportReviewRoute> { route ->
+                                    ImportReviewScreen(
+                                        document = route.document,
+                                        imports = graph.imports,
+                                        ledger = graph.ledger,
+                                        accounts = graph.accounts,
+                                        onDone = { pop() },
+                                        onNavigateBack = { pop() },
                                     )
                                 }
                                 entry<EmailsRoute> {

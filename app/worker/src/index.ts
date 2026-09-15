@@ -4,13 +4,19 @@
  * user's Turso database, then keeps the Gmail copy flowing via forward().
  */
 import { createClient, type Client } from '@libsql/client';
+import { authenticate, handleAnalyze, handleDocument, json } from './import';
 
 interface Env {
   AUTH_DB: D1Database;
+  DOCS: R2Bucket;
   TURSO_ORG: string;
   APP_SLUG: string;
   FORWARD_TO: string;
   TURSO_API_TOKEN: string;
+  ACCOUNT_ID: string;
+  AI_GATEWAY: string;
+  GEMINI_MODELS: string;
+  GEMINI_API_KEY: string;
 }
 
 const BODY_LIMIT = 10_000;
@@ -50,6 +56,38 @@ function sha256Hex(input: string): Promise<string> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    // ---- document import (cookie-authed, same session as the auth worker) ----
+    if (url.pathname.startsWith('/import/')) {
+      const user = await authenticate(request, env);
+      if (user instanceof Response) return user;
+
+      if (request.method === 'POST' && url.pathname === '/import/analyze') {
+        const queryUserDb = async (sql: string) => {
+          const db = await platformClient(env, user.turso_db_name, user.turso_db_hostname);
+          try {
+            const rs = await db.execute(sql);
+            return rs.rows as unknown as Array<Record<string, unknown>>;
+          } finally {
+            db.close();
+          }
+        };
+        try {
+          return await handleAnalyze(request, env, user, queryUserDb);
+        } catch (e) {
+          console.error('import analyze failed:', e);
+          return json({ error: e instanceof Error ? e.message : 'analyze failed' }, 502);
+        }
+      }
+
+      const doc = /^\/import\/document\/([0-9a-f]+)$/.exec(url.pathname);
+      if (request.method === 'GET' && doc?.[1]) {
+        return handleDocument(env, user, doc[1]);
+      }
+
+      return json({ error: 'not found' }, 404);
+    }
+
     if (request.method === 'POST' && url.pathname === '/mp/webhook') {
       const signature = request.headers.get('x-signature');
       const body = await request.text();

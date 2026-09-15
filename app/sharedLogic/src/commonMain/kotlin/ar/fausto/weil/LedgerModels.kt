@@ -128,6 +128,15 @@ data class RegisterEntry(
     val balanceAfter: Money,
 )
 
+/** One transaction to create, used by batch writes (see `addAll`). */
+data class NewTransaction(
+    val date: Long,
+    val payee: String,
+    val note: String?,
+    val drafts: List<DraftPosting>,
+    val sourceDocumentId: String? = null,
+)
+
 /** Editor-facing posting draft: blank amount = ledger-style elided posting. */
 data class DraftPosting(
     val accountId: String?,

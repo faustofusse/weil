@@ -17,6 +17,7 @@ import org.jetbrains.skia.Image
  *
  *   ./gradlew :app:desktopApp:shot
  *   ./gradlew :app:desktopApp:shot -Pshot.out=/tmp/home.png -Pshot.seconds=6
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=import   (AI import review)
  *
  * Session and database are sandboxed under the temp dir: the harness must
  * never touch `~/.weil` (a real desktop session lives there) and always starts
@@ -30,6 +31,7 @@ fun main(args: Array<String>) {
     System.setProperty("java.awt.headless", "true")
     val out = File(args.getOrNull(0) ?: "build/shots/home.png")
     val seconds = args.getOrNull(1)?.toDoubleOrNull() ?: 5.0
+    val route = args.getOrNull(2).orEmpty()
     out.parentFile?.mkdirs()
 
     val sandbox = File(System.getProperty("java.io.tmpdir"), "weil-shot").apply { mkdirs() }
@@ -39,9 +41,18 @@ fun main(args: Array<String>) {
         store = JvmSecureStore(storeFile, seedDevSession = true),
         passkeys = { JvmDevPasskeys() },
         qrScanner = { null },
+        importAnalyzer = FakeImportAnalyzer(),
         dbContext = jvmDbDispatcher,
         dbFactory = { _, _, _ -> FakeDatabase(dbFile) },
     )
+
+    // Same path a real Android share takes: drop a document in the inbox and
+    // RootScreen navigates to the review screen once it subscribes.
+    if (route == "import") {
+        SharedImportInbox.offer(
+            PickedDocument(bytes = ByteArray(1), mimeType = "application/pdf", name = "resumen.pdf"),
+        )
+    }
 
     // Everything Compose and every app coroutine (Dispatchers.Main = Swing)
     // runs on the EDT, so composition stays single-threaded; only the DB runs

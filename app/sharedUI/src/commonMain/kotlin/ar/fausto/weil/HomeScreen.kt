@@ -40,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.account_add_title
@@ -58,6 +60,9 @@ import weil.app.sharedui.generated.resources.home_no_accounts_yet
 import weil.app.sharedui.generated.resources.home_no_recent
 import weil.app.sharedui.generated.resources.home_recent_title
 import weil.app.sharedui.generated.resources.home_see_all
+import weil.app.sharedui.generated.resources.import_menu
+import weil.app.sharedui.generated.resources.import_no_picker
+import weil.app.sharedui.generated.resources.import_unsupported
 import weil.app.sharedui.generated.resources.more_options
 import weil.app.sharedui.generated.resources.new_transaction
 import weil.app.sharedui.generated.resources.open_account_tree
@@ -75,6 +80,8 @@ import weil.app.sharedui.generated.resources.open_profile
 @Composable
 fun HomeScreen(
     ledgerState: LedgerState,
+    documents: () -> DocumentPicker?,
+    onImportDocument: (PickedDocument) -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToEmails: () -> Unit,
@@ -88,6 +95,33 @@ fun HomeScreen(
         LaunchedEffect(Unit) { ledgerState.refresh() }
     }
     var adding by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val noPickerMessage = stringResource(Res.string.import_no_picker)
+    val unsupportedMessage = stringResource(Res.string.import_unsupported)
+
+    // Manual counterpart of the Android share target: pick a receipt/statement
+    // from storage and hand it to the same review screen.
+    fun importDocument() {
+        scope.launch {
+            val picker = documents()
+            if (picker == null) {
+                Feedback.show(noPickerMessage)
+                return@launch
+            }
+            val document = try {
+                picker.pick()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Feedback.show(e.message ?: e.toString())
+                null
+            } ?: return@launch
+            if (document.mimeType !in IMPORTABLE_MIME_TYPES) {
+                Feedback.show(unsupportedMessage)
+                return@launch
+            }
+            onImportDocument(document)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -117,6 +151,10 @@ fun HomeScreen(
                             OverflowItem(Icons.Filled.Email, stringResource(Res.string.open_emails)) {
                                 menuOpen = false
                                 onNavigateToEmails()
+                            }
+                            OverflowItem(Icons.Filled.DocumentScanner, stringResource(Res.string.import_menu)) {
+                                menuOpen = false
+                                importDocument()
                             }
                         }
                     }

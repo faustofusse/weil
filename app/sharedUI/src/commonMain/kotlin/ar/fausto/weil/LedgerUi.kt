@@ -39,6 +39,18 @@ object Feedback {
     var host: SnackbarHostState? = null
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
 
+    /** Plain snackbar, no action (errors and one-off confirmations). */
+    fun show(message: String) {
+        val state = host ?: return
+        scope.launch {
+            try {
+                state.showSnackbar(message)
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+            }
+        }
+    }
+
     fun undoable(message: String, actionLabel: String = "Undo", onAction: suspend () -> Unit) {
         val state = host ?: return
         scope.launch {

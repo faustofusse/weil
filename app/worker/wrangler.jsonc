@@ -5,6 +5,15 @@
   "compatibility_date": "2025-12-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "routes": [
+    { "pattern": "api.finance.fausto.ar", "custom_domain": true }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "DOCS",
+      "bucket_name": "finance-docs"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "AUTH_DB",
@@ -15,6 +24,9 @@
   "vars": {
     "TURSO_ORG": "faustofusse",
     "APP_SLUG": "finance",
-    "FORWARD_TO": "faustofusse@gmail.com"
+    "FORWARD_TO": "faustofusse@gmail.com",
+    "ACCOUNT_ID": "f12da7851e4dd1d107a80417a1d4cbbd",
+    "AI_GATEWAY": "finance",
+    "GEMINI_MODELS": "gemini-3.5-flash,gemini-3.6-flash,gemini-3.5-flash-lite"
   }
 }

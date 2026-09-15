@@ -7,6 +7,7 @@ struct iOSApp: App {
         IosBridges.shared.secureStore = KeychainStore()
         IosBridges.shared.passkeyCeremony = PasskeyManager()
         IosBridges.shared.qrScanner = QrScannerManager()
+        IosBridges.shared.documentPicker = DocumentPickerManager()
     }
 
     var body: some Scene {

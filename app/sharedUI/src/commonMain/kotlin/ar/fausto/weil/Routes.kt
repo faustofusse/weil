@@ -32,3 +32,10 @@ data class TransactionDetailRoute(val id: String)
 data class TransactionEditRoute(val id: String)
 
 data class AccountDetailRoute(val id: String)
+
+/**
+ * Review of an image/PDF the user picked or shared into the app. The document
+ * itself rides in the route: the back stack is in-memory, and holding the
+ * bytes here keeps them alive across the analyze round trip.
+ */
+data class ImportReviewRoute(val document: PickedDocument)

@@ -26,40 +26,38 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         payee: String,
         note: String?,
         drafts: List<DraftPosting>,
+        sourceDocumentId: String? = null,
     ): String {
         val txId = Uuid.random().toString()
         val postings = resolvePostings(drafts).map { it.copy(transactionId = txId) }
         writeAtomically {
-            // Unbound named placeholders silently bind nothing — two SQL shapes
-            // instead of an optional :note.
-            if (note.isNullOrBlank()) {
-                execute(
-                    "insert into ledger_transactions(id, date, payee, created_at)" +
-                        " values(:id, :date, :payee, :created_at)",
-                    mapOf(
-                        ":id" to txId,
-                        ":date" to date,
-                        ":payee" to payee.trim(),
-                        ":created_at" to epochMillis(),
-                    ),
-                )
-            } else {
-                execute(
-                    "insert into ledger_transactions(id, date, payee, note, created_at)" +
-                        " values(:id, :date, :payee, :note, :created_at)",
-                    mapOf(
-                        ":id" to txId,
-                        ":date" to date,
-                        ":payee" to payee.trim(),
-                        ":note" to note.trim(),
-                        ":created_at" to epochMillis(),
-                    ),
-                )
-            }
+            insertTransaction(txId, date, payee, note, sourceDocumentId)
             insertPostings(postings)
         }
         emitChange()
         return txId
+    }
+
+    /**
+     * Batch insert of reviewed import candidates: one SQL transaction for the
+     * whole set, so a failure halfway leaves the ledger untouched. Returns the
+     * new transaction ids in input order.
+     */
+    suspend fun addAll(entries: List<NewTransaction>): List<String> {
+        if (entries.isEmpty()) return emptyList()
+        val prepared = entries.map { entry ->
+            val txId = Uuid.random().toString()
+            txId to (entry to resolvePostings(entry.drafts).map { it.copy(transactionId = txId) })
+        }
+        writeAtomically {
+            for ((txId, pair) in prepared) {
+                val (entry, postings) = pair
+                insertTransaction(txId, entry.date, entry.payee, entry.note, entry.sourceDocumentId)
+                insertPostings(postings)
+            }
+        }
+        emitChange()
+        return prepared.map { it.first }
     }
 
     suspend fun update(
@@ -279,6 +277,42 @@ class TransactionsRepository(private val db: DatabaseProvider) {
 
     private suspend fun emitChange() {
         changes.tryEmit(Unit)
+    }
+
+    /**
+     * Unbound named placeholders silently bind nothing, so the optional
+     * columns are composed into the statement instead of always listed.
+     */
+    private fun Database.insertTransaction(
+        txId: String,
+        date: Long,
+        payee: String,
+        note: String?,
+        sourceDocumentId: String?,
+    ) {
+        val columns = mutableListOf("id", "date", "payee", "created_at")
+        val values = mutableListOf(":id", ":date", ":payee", ":created_at")
+        val params = mutableMapOf<String, Any>(
+            ":id" to txId,
+            ":date" to date,
+            ":payee" to payee.trim(),
+            ":created_at" to epochMillis(),
+        )
+        if (!note.isNullOrBlank()) {
+            columns += "note"
+            values += ":note"
+            params[":note"] = note.trim()
+        }
+        if (!sourceDocumentId.isNullOrBlank()) {
+            columns += "source_document_id"
+            values += ":source_document"
+            params[":source_document"] = sourceDocumentId
+        }
+        execute(
+            "insert into ledger_transactions(${columns.joinToString(", ")})" +
+                " values(${values.joinToString(", ")})",
+            params,
+        )
     }
 
     private fun Database.insertPostings(postings: List<Posting>) {
