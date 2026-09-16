@@ -18,7 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -32,6 +31,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +75,28 @@ fun JournalScreen(
     onOpenTransaction: (id: String) -> Unit,
 ) {
     val listState = rememberLazyListState()
+
+    // Consecutive same-day runs, computed once per page rather than inside
+    // the LazyListScope builder (which isn't @Composable, so a plain
+    // grouping there would redo the work — and worse, lose its identity —
+    // on every recomposition). Items arrive newest-first from the server, so
+    // a day only ever starts one run: no need to merge non-adjacent slices.
+    val dayRuns = remember(state.items) {
+        buildList {
+            var current: DayGroup? = null
+            var bucket = mutableListOf<Transaction>()
+            for (tx in state.items) {
+                val group = dayGroup(tx.date)
+                if (group != current) {
+                    current?.let { add(it to bucket) }
+                    current = group
+                    bucket = mutableListOf()
+                }
+                bucket.add(tx)
+            }
+            current?.let { add(it to bucket) }
+        }
+    }
 
     // No-ops after the first real page has been fetched, so returning from a
     // transaction (this composable re-entering composition) never re-fetches
@@ -169,21 +191,22 @@ fun JournalScreen(
                         }
                     }
                 }
-                var lastGroup: DayGroup? = null
-                for (tx in state.items) {
-                    val group = dayGroup(tx.date)
-                    if (group != lastGroup) {
-                        lastGroup = group
-                        item(key = "day-${group.key}") {
-                            DayHeader(group)
-                        }
+                dayRuns.forEach { (group, txs) ->
+                    item(key = "day-${group.key}") {
+                        DayHeader(group)
                     }
-                    item(key = tx.id) {
-                        TransactionCard(
+                    // Same compact row and grouped-card skin as Home's
+                    // preview — the two read as one list design. Unlike Home,
+                    // the day header stays a run's own heading here: with
+                    // dozens of rows a day it can't be mistaken for a caption
+                    // on the first one, the ambiguity that made Home drop it.
+                    itemsIndexed(txs, key = { _, tx -> tx.id }) { index, tx ->
+                        TransactionRow(
                             tx = tx,
-                            paths = state.paths,
+                            names = state.names,
                             types = state.types,
                             onOpen = { onOpenTransaction(tx.id) },
+                            skin = rowSkin(first = index == 0, last = index == txs.lastIndex),
                         )
                     }
                 }
@@ -245,99 +268,28 @@ suspend fun accountTypes(accounts: AccountsRepository): Map<String, AccountType>
         .flatMap { it.selfAndDescendants }
         .associate { it.account.id to it.account.type }
 
-@Composable
-internal fun TransactionCard(
-    tx: Transaction,
-    paths: Map<String, String>,
-    types: Map<String, AccountType> = emptyMap(),
-    onOpen: () -> Unit,
-) {
-    // Same tonal surface as the account rows and empty-state cards — the
-    // plain M3 Card default (containerColor = surface, a 1dp shadow) sat on
-    // top of a background that's the same color, so it read flatter and
-    // darker than every other card in the app.
-    Surface(
-        onClick = onOpen,
-        shape = RoundedCornerShape(GroupRadius),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        tx.payee,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Text(
-                    timeShort(tx.date),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-            // Two lines of posting detail, "+n more" below — a psychic
-            // 5-split stays one glance-tall card.
-            val shown = tx.postings.take(2)
-            for (posting in shown) {
-                Row(modifier = Modifier.padding(top = 2.dp)) {
-                    Text(
-                        paths[posting.accountId] ?: posting.accountId,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        formatMinorUnits(posting.amountMinor),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = postingColor(types[posting.accountId], posting.amountMinor),
-                        modifier = Modifier.padding(start = 12.dp),
-                    )
-                }
-            }
-            val hidden = tx.postings.size - shown.size
-            if (hidden > 0) {
-                Text(
-                    stringResource(Res.string.journal_more_postings, hidden),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            // per-commodity totals row when a transaction mixes commodities
-            val totals = tx.postings.groupBy({ it.commodity }, { it.amountMinor })
-                .mapValues { (_, amounts) -> amounts.sum() }
-            if (totals.size > 1) {
-                Row(
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    totals.forEach { (commodity, amount) ->
-                        Text(
-                            "$commodity ${formatMinorUnits(amount)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
-    }
+/** id → leaf name, for the one-line [TransactionRow] used by both Home and the journal. */
+suspend fun accountNames(accounts: AccountsRepository): Map<String, String> =
+    accounts.tree()
+        .flatMap { it.selfAndDescendants }
+        .associate { it.account.id to it.account.name }
+
+/** [paths], [types] and [names] from a single [AccountsRepository.tree] call. */
+internal class AccountIndex(
+    val paths: Map<String, String>,
+    val types: Map<String, AccountType>,
+    val names: Map<String, String>,
+)
+
+internal suspend fun accountIndex(accounts: AccountsRepository): AccountIndex {
+    val nodes = accounts.tree().flatMap { it.selfAndDescendants }
+    return AccountIndex(
+        paths = nodes.associate { it.account.id to it.path },
+        types = nodes.associate { it.account.id to it.account.type },
+        names = nodes.associate { it.account.id to it.account.name },
+    )
 }
+
 
 /**
  * The two ends of a transaction as a person reads it: where the money left,
