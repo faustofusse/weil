@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -301,20 +302,25 @@ internal fun PickerField(
 /**
  * Inline "create an account" dialog: a name field and Save, nothing else —
  * used wherever a picker offers to create the thing it doesn't have yet
- * (an expense category from the quick screen or the import review). Type is
- * fixed by the caller, so the same dialog serves an expense category, an
- * income source, or (in principle) any other type without knowing which.
+ * (an expense category from the quick screen or the import review, or any
+ * account from the full editor's unrestricted picker).
+ *
+ * [type] fixed by the caller skips the type picker entirely (an expense
+ * category from the quick screen has only one sensible type); passing null
+ * shows a [TypeDropdown] so the full editor — whose account picker isn't
+ * scoped to one type — can create an asset, a liability, anything.
  */
 @Composable
 internal fun CreateAccountDialog(
     title: String,
-    type: AccountType,
+    type: AccountType?,
     accounts: AccountsRepository,
     onDismiss: () -> Unit,
     onError: (String) -> Unit,
     onCreated: suspend (id: String) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
+    var pickedType by remember { mutableStateOf(type ?: AccountType.Expense) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val nameFocus = remember { FocusRequester() }
@@ -326,7 +332,7 @@ internal fun CreateAccountDialog(
         busy = true
         scope.launch {
             try {
-                val id = accounts.add(trimmed, type)
+                val id = accounts.add(trimmed, type ?: pickedType)
                 onCreated(id)
                 onDismiss()
             } catch (e: Throwable) {
@@ -342,15 +348,21 @@ internal fun CreateAccountDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text(stringResource(Res.string.account_name_label)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { create() }),
-                modifier = Modifier.focusRequester(nameFocus),
-            )
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(Res.string.account_name_label)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { create() }),
+                    modifier = Modifier.focusRequester(nameFocus),
+                )
+                if (type == null) {
+                    Spacer(Modifier.height(12.dp))
+                    TypeDropdown(initial = pickedType, onPick = { pickedType = it })
+                }
+            }
         },
         confirmButton = {
             TextButton(onClick = { create() }, enabled = name.isNotBlank() && !busy) {

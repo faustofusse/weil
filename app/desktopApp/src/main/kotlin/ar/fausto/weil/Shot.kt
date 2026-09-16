@@ -72,6 +72,7 @@ fun main(args: Array<String>) {
                     "quick" -> TransactionQuickRoute(TxnKind.Expense)
                     "account-add" -> AccountAddRoute(AccountType.Asset)
                     "journal" -> JournalRoute
+                    "tx-new" -> TransactionNewRoute()
                     else -> null
                 },
             )

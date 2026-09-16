@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.account_add_title
 import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.action_delete
@@ -101,6 +102,7 @@ fun TransactionEditScreen(
         mutableStateOf(listOf(DraftPosting(null, ""), DraftPosting(prefillAccountId, "")))
     }
     var pickingFor by remember { mutableStateOf<Int?>(null) }
+    var creatingAccountFor by remember { mutableStateOf<Int?>(null) }
     var pickingDate by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -112,10 +114,12 @@ fun TransactionEditScreen(
     val deletedPayee = stringResource(Res.string.editor_deleted_payee_fallback)
     val invalidDateMessage = stringResource(Res.string.editor_invalid_date, dateText)
 
-    LaunchedEffect(Unit) {
+    suspend fun reloadTree() {
         paths = accountPaths(accounts)
         accountTree = accounts.tree()
     }
+
+    LaunchedEffect(Unit) { reloadTree() }
 
     LaunchedEffect(editId) {
         if (editId != null) {
@@ -354,11 +358,33 @@ fun TransactionEditScreen(
             tree = accountTree,
             title = stringResource(Res.string.editor_choose_account_title),
             exclude = emptySet(),
+            createLabel = stringResource(Res.string.account_add_title),
+            onCreate = {
+                pickingFor = null
+                creatingAccountFor = index
+            },
             onDismiss = { pickingFor = null },
         ) { picked ->
             drafts = drafts.copyAt(index) { copy(accountId = picked.account.id) }
             pickingFor = null
         }
+    }
+
+    creatingAccountFor?.let { index ->
+        CreateAccountDialog(
+            title = stringResource(Res.string.account_add_title),
+            // The editor's picker isn't scoped to one type — any posting can
+            // reference any account — so the dialog shows its own type picker
+            // instead of assuming one.
+            type = null,
+            accounts = accounts,
+            onDismiss = { creatingAccountFor = null },
+            onError = { error = it },
+            onCreated = { id ->
+                drafts = drafts.copyAt(index) { copy(accountId = id) }
+                reloadTree()
+            },
+        )
     }
 }
 
