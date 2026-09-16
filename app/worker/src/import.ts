@@ -234,6 +234,34 @@ function prompt(accounts: PostableAccount[]): string {
     'this period\'s installment: date them at the statement\'s closing date instead, so they land in the month they are',
     'actually being paid, and keep the installment marker in "note".',
     '',
+    // Vocabulary, not policy: these rows are opaque enough that the model
+    // guesses without help, but WHERE each one belongs still comes from the
+    // user's own account list below. Rates and thresholds are deliberately
+    // absent — they change every few months and the document already carries
+    // the computed amount.
+    'ARGENTINE BANK/CARD VOCABULARY (what a row IS; where it goes is still decided by the account lists below):',
+    'Taxes: "impuesto ley 25.413" / "imp. al cheque" (debit-credit tax), "impuesto de sellos", "IIBB" or',
+    '"ingresos brutos" (often as "percep-caba", "percep-iibb"), "IVA" ("iva rg 4240", "iva 21% reg de transfisc",',
+    '"ley 27743"). An IVA or tax row attached to a fee is still a tax row of its own.',
+    'Fees and interest (a bank charge, not a tax): "comision", "mantenimiento de cuenta", "cargo por renovacion",',
+    '"interes por descubierto", "punitorios", "gastos administrativos", "seguro de vida sobre saldo deudor".',
+    'Withholdings and prepaid taxes are not ordinary spending: the user may recover them later. A row is one of these',
+    'whenever it says "percepcion", "percep", "retencion", or cites a withholding regime — "Db.rg 5617", "Cr.rg 5617",',
+    '"iva rg 4240", "iibb percep-caba", "rg 3819". ALL of them, including the IIBB and IVA ones, belong together.',
+    'If the account list has an account naming percepciones, retenciones or AFIP, put every such row there; otherwise',
+    'use the closest tax account.',
+    'A "Cr.rg ..." / "credito percepcion" / "devolucion percepcion" row REVERSES an earlier "Db.rg ..." percepcion.',
+    'It is the same kind of thing with the opposite sign, so give it the SAME account as the percepcion rows (the',
+    'direction already carries the sign) instead of treating it as ordinary income.',
+    'A row labelled "Total", "Saldo anterior" or "Total a pagar" is never a transaction, in any section. In particular',
+    'skip the whole "Pago anterior y devoluciones" block: its payment rows repeat the account\'s own rows and its',
+    'amounts sit in a separate column block that is easy to misread — never emit a row from it.',
+    'Other common wordings: "snp debito directo" / "deb. automatico" = a direct-debit bill payment (categorize by the',
+    'named service, e.g. Metrogas = gas, Edenor = electricity); "tarj nro. NNNN" / "terminada en NNNN" identifies the',
+    'card, not the merchant; "tc1520,000" is the exchange rate applied, not an amount; "CVU"/"CBU"/"alias" identify',
+    'the counterparty account; "Merpago/<merchant>" is a purchase from <merchant> settled through Mercado Pago, so',
+    'the payee is the merchant.',
+    '',
     expense.length > 0
       ? `For "expense" splits, pick the best matching category from this list (verbatim path) or null: ${expense.join(' | ')}`
       : '',
