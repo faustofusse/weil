@@ -70,6 +70,7 @@ import weil.app.sharedui.generated.resources.import_chain_progress
 import weil.app.sharedui.generated.resources.import_chain_start
 import weil.app.sharedui.generated.resources.import_create
 import weil.app.sharedui.generated.resources.import_created
+import weil.app.sharedui.generated.resources.import_counter_amount_label
 import weil.app.sharedui.generated.resources.import_created_one
 import weil.app.sharedui.generated.resources.import_destination_label
 import weil.app.sharedui.generated.resources.import_destination_pick
@@ -122,6 +123,18 @@ private class CandidateDraft(candidate: ImportCandidate) {
     val note = candidate.note
 
     /**
+     * Currency exchange: the destination leg is another currency, so it
+     * carries its own amount (pesos out, dollars in). Editable because the
+     * rate is read off the row's prose and worth a second look.
+     */
+    val counterCommodity = candidate.counterCommodity
+    var counterAmountText by mutableStateOf(
+        candidate.counterAmountMinor?.let { formatMinorUnits(it) } ?: "",
+    )
+    val counterAmount: Money?
+        get() = counterCommodity?.let { Money.parse(counterAmountText, it) }
+
+    /**
      * Almost always one line; more only when the document itself itemized
      * the payment (a receipt's line items). A mutable list so the user can
      * add, remove or merge lines by hand.
@@ -132,7 +145,8 @@ private class CandidateDraft(candidate: ImportCandidate) {
 
     val totalMinor: Long get() = splits.sumOf { it.amount?.minorUnits ?: 0L }
     val valid: Boolean get() =
-        payee.isNotBlank() && splits.isNotEmpty() && splits.all { it.valid } && totalMinor != 0L
+        payee.isNotBlank() && splits.isNotEmpty() && splits.all { it.valid } && totalMinor != 0L &&
+            (counterCommodity == null || (counterAmount?.minorUnits ?: 0L) != 0L)
 
     fun assetOr(fallback: String?): String? = accountId ?: fallback
 }
@@ -155,6 +169,10 @@ fun ImportReviewScreen(
     var drafts by remember { mutableStateOf<SnapshotStateList<CandidateDraft>?>(null) }
     var tree by remember { mutableStateOf<List<AccountNode>>(emptyList()) }
     var paths by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // Leaf names for the collapsed rows: "Verduras", not "Comida:Verduras".
+    // The full path stays in the expanded fields, where the extra words are
+    // what tells two same-named leaves apart.
+    var names by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var assetId by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -180,7 +198,9 @@ fun ImportReviewScreen(
 
     suspend fun reloadTree() {
         tree = accounts.tree()
-        paths = tree.flatMap { it.selfAndDescendants }.associate { it.account.id to it.path }
+        val nodes = tree.flatMap { it.selfAndDescendants }
+        paths = nodes.associate { it.account.id to it.path }
+        names = nodes.associate { it.account.id to it.account.name }
     }
 
     LaunchedEffect(document, attempt) {
@@ -282,7 +302,19 @@ fun ImportReviewScreen(
                             DraftPosting(asset, formatMinorUnits(-draft.totalMinor), draft.commodity)
                         ImportDirection.Income -> DraftPosting(asset, formatMinorUnits(draft.totalMinor), draft.commodity)
                     }
-                    val splitLegs = draft.splits.map { split ->
+                    // Currency exchange: the far leg is denominated in the
+                    // other currency, so the transaction is intentionally
+                    // unbalanced per commodity — that is what an exchange is.
+                    val counter = draft.counterAmount
+                    val splitLegs = if (counter != null && draft.counterCommodity != null) {
+                        listOf(
+                            DraftPosting(
+                                draft.splits.first().categoryId!!,
+                                formatMinorUnits(counter.minorUnits),
+                                draft.counterCommodity,
+                            ),
+                        )
+                    } else draft.splits.map { split ->
                         val minor = split.amount!!.minorUnits
                         val category = split.categoryId!!
                         when (draft.direction) {
@@ -300,6 +332,17 @@ fun ImportReviewScreen(
                     )
                 }
                 if (entries.isEmpty()) return@launch
+                // addAll validates inside one SQL transaction, so a single bad
+                // row would roll back the other forty with a message naming
+                // none of them. Check row by row first and say which one.
+                entries.forEach { entry ->
+                    try {
+                        resolvePostings(entry.drafts)
+                    } catch (e: LedgerValidationException) {
+                        error = "${entry.payee}: ${e.message}"
+                        return@launch
+                    }
+                }
                 val ids = ledger.addAll(entries)
                 ledger.syncNow()
                 val message = if (ids.size == 1) {
@@ -353,6 +396,18 @@ fun ImportReviewScreen(
                             .windowInsetsPadding(WindowInsets.navigationBars)
                             .padding(16.dp),
                     ) {
+                        // Next to the button that triggered it: the failure
+                        // used to render at the bottom of the candidate list,
+                        // which on a statement meant scrolling past forty rows
+                        // to find out why nothing happened.
+                        error?.let { message ->
+                            Text(
+                                message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
                         // Fallback for rows the document didn't attribute to
                         // one of the user's own accounts.
                         AccountField(
@@ -429,7 +484,9 @@ fun ImportReviewScreen(
                         CandidateCard(
                             draft = draft,
                             paths = paths,
+                            names = names,
                             fallbackAccountPath = assetId?.let { paths[it] },
+                            fallbackAccountName = assetId?.let { names[it] },
                             onPickCategory = { index ->
                                 categoryType = null
                                 picking = PickerTarget.Category(draft, index)
@@ -437,15 +494,6 @@ fun ImportReviewScreen(
                             onPickAccount = { picking = PickerTarget.RowAsset(draft) },
                             onToggleExpanded = { draft.expanded = !draft.expanded },
                         )
-                    }
-                    error?.let { message ->
-                        item {
-                            Text(
-                                message,
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
                     }
                 }
             }
@@ -605,17 +653,20 @@ private sealed interface PickerTarget {
 private fun CandidateCard(
     draft: CandidateDraft,
     paths: Map<String, String>,
+    names: Map<String, String>,
     fallbackAccountPath: String?,
+    fallbackAccountName: String?,
     onPickCategory: (splitIndex: Int) -> Unit,
     onPickAccount: () -> Unit,
     onToggleExpanded: () -> Unit,
 ) {
     val accountPath = draft.accountId?.let { paths[it] }
+    val accountName = draft.accountId?.let { names[it] } ?: fallbackAccountName
     // One split names its own category; several collapse to a count —
     // "3 ítems" is what identifies the row when there's no single category
     // to show, the same way a folded account shows a subaccount count.
     val categoryOrCount = if (draft.splits.size == 1) {
-        draft.splits.first().categoryId?.let { paths[it] }
+        draft.splits.first().categoryId?.let { names[it] }
     } else {
         stringResource(Res.string.import_items, draft.splits.size)
     }
@@ -653,7 +704,7 @@ private fun CandidateCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        listOfNotNull(dayLabel(dayGroup(draft.date)), accountPath, categoryOrCount)
+                        listOfNotNull(dayLabel(dayGroup(draft.date)), accountName, categoryOrCount)
                             .joinToString(" · "),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = dim),
@@ -670,7 +721,15 @@ private fun CandidateCard(
                     )
                     // Only a commodity the document stated explicitly shows
                     // up here; everything else is the default (ARS).
-                    if (draft.commodity != Money.DEFAULT_COMMODITY) {
+                    if (draft.counterCommodity != null) {
+                        // An exchange: the other side is a different amount in
+                        // a different currency, and that is the whole point.
+                        Text(
+                            "→ ${draft.counterAmountText} ${draft.counterCommodity}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    } else if (draft.commodity != Money.DEFAULT_COMMODITY) {
                         Text(
                             draft.commodity,
                             style = MaterialTheme.typography.labelSmall,
@@ -708,6 +767,25 @@ private fun CandidateCard(
                         onClick = onPickAccount,
                     )
                     Spacer(Modifier.height(12.dp))
+                    if (draft.counterCommodity != null) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = draft.counterAmountText,
+                            onValueChange = { draft.counterAmountText = it },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        Res.string.import_counter_amount_label,
+                                        draft.counterCommodity,
+                                    ),
+                                )
+                            },
+                            singleLine = true,
+                            isError = draft.counterAmount == null,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     draft.splits.forEachIndexed { index, split ->
                         if (index > 0) Spacer(Modifier.height(8.dp))
                         SplitRow(

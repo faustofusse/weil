@@ -51,6 +51,18 @@ class FakeImportAnalyzer : DocumentAnalyzer {
                 ),
                 ImportCandidate(
                     date = now - 3 * day,
+                    payee = "Compra de dolares",
+                    note = "Compraste u\$s 730,00 a \$ 1.520,00",
+                    commodity = "ARS",
+                    direction = ImportDirection.Transfer,
+                    counterAmountMinor = 730_00,
+                    counterCommodity = "USD",
+                    splits = listOf(
+                        ImportSplit(amountMinor = 1_109_600_00, categoryAccountId = null, categoryPath = null),
+                    ),
+                ),
+                ImportCandidate(
+                    date = now - 3 * day,
                     payee = "Pago tarjeta de credito visa",
                     note = "Deb. automatico",
                     commodity = "ARS",

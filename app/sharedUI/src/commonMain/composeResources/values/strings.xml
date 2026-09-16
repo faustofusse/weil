@@ -240,6 +240,7 @@
     <string name="import_destination_label">Destino</string>
     <string name="import_destination_pick">Elegir cuenta destino</string>
     <string name="import_origin_label">Origen</string>
+    <string name="import_counter_amount_label">Monto recibido (%1$s)</string>
     <string name="import_payee_label">Descripción</string>
     <string name="import_amount_label">Monto</string>
     <string name="import_create">Crear %1$d</string>

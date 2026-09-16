@@ -146,4 +146,34 @@ class LedgerModelsTest {
         assertIs<Posting>(postings[0])
         assertEquals(9999L, postings[0].amountMinor)
     }
+    @Test
+    fun currencyExchangeIsAllowedUnbalanced() {
+        // Buying dollars: pesos leave, dollars arrive, no rate posting.
+        val postings = resolved(
+            listOf(
+                DraftPosting("pesos", "-1109600", "ARS"),
+                DraftPosting("dolares", "730", "USD"),
+            ),
+        )
+        assertEquals(2, postings.size)
+        // The exemption is narrow: a third posting means it is a typo again.
+        assertFailsWith<LedgerValidationException> {
+            resolvePostings(
+                listOf(
+                    DraftPosting("pesos", "-1109600", "ARS"),
+                    DraftPosting("dolares", "730", "USD"),
+                    DraftPosting("otra", "500", "USD"),
+                ),
+            )
+        }
+        // Same commodity on both legs still has to balance.
+        assertFailsWith<LedgerValidationException> {
+            resolvePostings(
+                listOf(
+                    DraftPosting("pesos", "-1109600", "ARS"),
+                    DraftPosting("otra", "1000", "ARS"),
+                ),
+            )
+        }
+    }
 }

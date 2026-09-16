@@ -149,6 +149,17 @@ const RESPONSE_SCHEMA = {
             description:
               "The user's own account the money moved through (payment method, wallet, bank or card), verbatim from the provided list, or null when the document does not say. For a transfer this is the account the money LEFT",
           },
+          counterAmount: {
+            type: 'STRING',
+            nullable: true,
+            description:
+              "Only for a transfer whose two sides are in different currencies (buying or selling foreign currency, paying a USD card bill in pesos): the positive decimal amount that ARRIVED in the destination account, e.g. '730.00' for 'Compraste u$s 730,00 a $ 1.520,00'. Null when both sides are the same currency",
+          },
+          counterCommodity: {
+            type: 'STRING',
+            nullable: true,
+            description: "Currency code of counterAmount (e.g. 'USD'). Null when both sides share a currency",
+          },
           splits: {
             type: 'ARRAY',
             description:
@@ -222,6 +233,10 @@ function prompt(accounts: PostableAccount[]): string {
     '"Acreditacion compra de dolares" — emit ONE transfer, not two rows), and transfers between the user\'s own',
     'accounts ("Transf recibida cvu mismo titular", "mismo titular", the user\'s own name on both sides).',
     'For a transfer set "account" to the account the money left and the split\'s "category" to the account it arrived in.',
+    'A currency exchange moves different amounts on each side: "amount" is what left (the pesos debited) and',
+    '"counterAmount"/"counterCommodity" are what arrived (the dollars credited), taken from the row\'s own text',
+    '("Compraste u$s 730,00 a $ 1.520,00" → amount 1109600.00 ARS, counterAmount 730.00 USD). Fill them whenever the',
+    'two sides are in different currencies; leave both null otherwise.',
     'If one of the two sides is not in the accounts list, still use "transfer" and leave that side null.',
     'Only use "transfer" when the counterparty really is the user; a transfer to another person is an expense.',
     'The account holder is named in the statement header: a row whose counterparty is that same person ("mismo',
@@ -295,6 +310,8 @@ interface GeminiCandidateTx {
   commodity: string;
   direction: 'expense' | 'income' | 'transfer';
   account?: string | null;
+  counterAmount?: string | null;
+  counterCommodity?: string | null;
   splits: GeminiSplit[];
 }
 
@@ -449,13 +466,26 @@ export async function handleAnalyze(
     // asset/liability accounts are valid payment methods.
     const ownMatch = t.account ? byPath.get(t.account.trim().toLowerCase()) : undefined;
     const own = ownMatch && (ownMatch.type === 'asset' || ownMatch.type === 'liability') ? ownMatch : undefined;
+    // The far leg of a currency exchange: different amount, different
+    // commodity. Only meaningful when it really is a second currency.
+    const counterCommodity = t.counterCommodity?.trim().toUpperCase() || null;
+    const counterMinor = t.counterAmount ? toMinor(t.counterAmount) : null;
+    const commodity = (t.commodity || 'ARS').trim().toUpperCase();
+    const hasCounter =
+      t.direction === 'transfer' &&
+      counterCommodity != null &&
+      counterCommodity !== commodity &&
+      counterMinor != null &&
+      counterMinor !== 0;
     return [
       {
         date,
         payee: t.payee.trim(),
         note: t.note?.trim() || null,
-        commodity: (t.commodity || 'ARS').trim().toUpperCase(),
+        commodity,
         direction: t.direction === 'income' || t.direction === 'transfer' ? t.direction : 'expense',
+        counterAmountMinor: hasCounter ? counterMinor : null,
+        counterCommodity: hasCounter ? counterCommodity : null,
         accountId: own?.id ?? null,
         accountPath: own?.path ?? null,
         splits,

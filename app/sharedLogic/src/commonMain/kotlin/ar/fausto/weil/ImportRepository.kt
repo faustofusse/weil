@@ -109,6 +109,14 @@ data class ImportCandidate(
      */
     val accountId: String? = null,
     val accountPath: String? = null,
+    /**
+     * Far leg of a currency exchange: what actually arrived in the
+     * destination account, when that side is in another currency (buying
+     * dollars debits pesos and credits dollars). Null for every other
+     * transaction, where both legs share [commodity].
+     */
+    val counterAmountMinor: Long? = null,
+    val counterCommodity: String? = null,
     val splits: List<ImportSplit>,
 ) {
     val total: Long get() = splits.sumOf { it.amountMinor }
@@ -142,6 +150,8 @@ private data class WireCandidate(
     val direction: String,
     @SerialName("accountId") val accountId: String? = null,
     @SerialName("accountPath") val accountPath: String? = null,
+    @SerialName("counterAmountMinor") val counterAmountMinor: Long? = null,
+    @SerialName("counterCommodity") val counterCommodity: String? = null,
     val splits: List<WireSplit> = emptyList(),
 )
 
@@ -210,6 +220,8 @@ class ImportRepository(
                     direction = ImportDirection.fromWire(it.direction),
                     accountId = it.accountId,
                     accountPath = it.accountPath,
+                    counterAmountMinor = it.counterAmountMinor,
+                    counterCommodity = it.counterCommodity,
                     splits = it.splits.map { s ->
                         ImportSplit(
                             amountMinor = s.amountMinor,

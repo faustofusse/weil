@@ -208,9 +208,21 @@ private fun buildValidated(
         )
     }
 
-    for ((commodity, residual) in residuals) {
-        if (residual != 0L) {
-            throw LedgerValidationException("unbalanced: $commodity still off by ${formatMinorUnits(residual)}")
+    // A currency exchange cannot balance per commodity: pesos leave one
+    // account and dollars arrive in another, and the rate lives in the row's
+    // prose, not in a posting. Its shape is unmistakable — exactly two
+    // postings, one commodity each, moving in opposite directions — so it is
+    // exempted narrowly. Anything else (a four-posting transaction with one
+    // currency short) is still a typo and still rejected.
+    val exchange = resolved.size == 2 &&
+        residuals.size == 2 &&
+        residuals.values.all { it != 0L } &&
+        residuals.values.map { it > 0L }.distinct().size == 2
+    if (!exchange) {
+        for ((commodity, residual) in residuals) {
+            if (residual != 0L) {
+                throw LedgerValidationException("unbalanced: $commodity still off by ${formatMinorUnits(residual)}")
+            }
         }
     }
     return resolved to residuals
