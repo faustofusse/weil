@@ -117,18 +117,29 @@ fun Database.migrateSchema() {
 /** Fixed ids for the seeded default accounts; synced PKs dedupe fresh devices. */
 const val EXTERNAL_EXPENSE_ID = "seed-external-expense"
 const val EXTERNAL_INCOME_ID = "seed-external-income"
-const val EXTERNAL_ACCOUNT_NAME = "External"
+const val EXTERNAL_ACCOUNT_NAME = "Otros"
 
 /**
- * Seeds the default "External" accounts on a fresh database (only when the
- * accounts table is empty, so user deletions are never resurrected). Fixed
- * ids make two concurrently-seeded devices converge on the same rows.
+ * Seeds the default "Otros" income/expense accounts on a fresh database (only
+ * when the accounts table is empty, so user deletions are never resurrected).
+ * Fixed ids make two concurrently-seeded devices converge on the same rows.
  */
 private fun Database.seedDefaultAccounts() {
     val count = query("select count(*) from accounts", null) { rows ->
         (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L
     }
-    if (count > 0) return
+    if (count > 0) {
+        // The seed used to be named "External" — English data in a Spanish
+        // UI. Renamed in place, only while the row still carries the seeded
+        // name (a user's own rename wins) and only for the fixed seed ids.
+        // Deterministic on every open, so concurrently-migrating devices
+        // converge on the same row state.
+        execute(
+            "update accounts set name = '$EXTERNAL_ACCOUNT_NAME' " +
+                "where id in ('$EXTERNAL_EXPENSE_ID', '$EXTERNAL_INCOME_ID') and name = 'External'",
+        )
+        return
+    }
     execute(
         "insert or ignore into accounts(id, name, parent_id, type) values" +
             "('$EXTERNAL_EXPENSE_ID', '$EXTERNAL_ACCOUNT_NAME', null, 'expense')," +
