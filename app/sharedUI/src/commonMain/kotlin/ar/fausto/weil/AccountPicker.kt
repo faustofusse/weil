@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,19 +42,33 @@ import weil.app.sharedui.generated.resources.picker_empty
  * rows keep the tree indentation; filtered rows fall back to the full path.
  * When [onCreate] is set, a leading action row labeled [createLabel] offers
  * inline account creation (e.g. expense categories).
+ *
+ * With [typeOptions] the caller hands over the *whole* tree and the sheet
+ * filters it by the chosen type, showing a chip row to switch: the default
+ * ([initialType], first option otherwise) covers the common case, the other
+ * chips let the user escape it (categorizing an import row against an asset
+ * or a liability instead of an expense, say).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountPickerSheet(
     tree: List<AccountNode>,
     title: String,
+    subtitle: String? = null,
     exclude: Set<String> = emptySet(),
     createLabel: String? = null,
     onCreate: (() -> Unit)? = null,
+    typeOptions: List<AccountType> = emptyList(),
+    initialType: AccountType? = null,
+    onTypeChange: (AccountType) -> Unit = {},
     onDismiss: () -> Unit,
     onPick: (AccountNode) -> Unit,
 ) {
     var filter by remember { mutableStateOf("") }
+    var type by remember { mutableStateOf(initialType ?: typeOptions.firstOrNull()) }
+    val shown = remember(tree, type, typeOptions) {
+        if (typeOptions.isEmpty() || type == null) tree else tree.filter { it.account.type == type }
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column {
             Text(
@@ -59,6 +76,38 @@ fun AccountPickerSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
+            // Context line for chained picking ("which row am I on?").
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+            }
+            if (typeOptions.size > 1) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                ) {
+                    typeOptions.forEach { option ->
+                        FilterChip(
+                            selected = option == type,
+                            onClick = {
+                                type = option
+                                onTypeChange(option)
+                            },
+                            label = { Text(accountTypeLabel(option)) },
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = filter,
@@ -106,7 +155,7 @@ fun AccountPickerSheet(
                 if (filtering) {
                     // Flat path list while searching: depth becomes someone
                     // else's name fragment, not a visual rail.
-                    val flat = tree.flatMap { it.selfAndDescendants }
+                    val flat = shown.flatMap { it.selfAndDescendants }
                         .filter { it.account.id !in exclude }
                         .filter { it.path.lowercase().contains(filter.trim().lowercase()) }
                     if (flat.isEmpty()) {
@@ -132,7 +181,7 @@ fun AccountPickerSheet(
                         )
                     }
                 } else {
-                    itemsIndented(tree, exclude, onPick)
+                    itemsIndented(shown, exclude, onPick)
                 }
                 item(key = "pad") {
                     Spacer(Modifier.height(16.dp))

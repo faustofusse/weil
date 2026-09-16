@@ -137,12 +137,17 @@ const RESPONSE_SCHEMA = {
           payee: { type: 'STRING', description: 'Merchant or counterparty name, cleaned up' },
           note: { type: 'STRING', nullable: true, description: 'Extra detail worth keeping, else null' },
           commodity: { type: 'STRING', description: "Currency code. 'ARS' unless the document explicitly shows another currency (e.g. USD)" },
-          direction: { type: 'STRING', enum: ['expense', 'income'], description: 'expense = money leaves the user, income = money comes in' },
+          direction: {
+            type: 'STRING',
+            enum: ['expense', 'income', 'transfer'],
+            description:
+              'expense = money leaves the user, income = money comes in, transfer = money moves between two accounts the user owns (paying a credit card from a bank account, buying foreign currency, moving money to a wallet) so the user is no richer or poorer',
+          },
           account: {
             type: 'STRING',
             nullable: true,
             description:
-              "The user's own account the money moved through (payment method, wallet, bank or card), verbatim from the provided list, or null when the document does not say",
+              "The user's own account the money moved through (payment method, wallet, bank or card), verbatim from the provided list, or null when the document does not say. For a transfer this is the account the money LEFT",
           },
           splits: {
             type: 'ARRAY',
@@ -152,7 +157,12 @@ const RESPONSE_SCHEMA = {
               type: 'OBJECT',
               properties: {
                 amount: { type: 'STRING', description: "Positive decimal amount for this split, '.' as decimal separator, e.g. '1234.56'" },
-                category: { type: 'STRING', nullable: true, description: 'Best-matching category path from the provided list, verbatim, or null' },
+                category: {
+                  type: 'STRING',
+                  nullable: true,
+                  description:
+                    "For expense/income: best-matching category path from the provided list, verbatim, or null. For a transfer: the user's own account the money ARRIVED in, from the accounts list",
+                },
               },
               required: ['amount'],
             },
@@ -173,7 +183,8 @@ function prompt(accounts: PostableAccount[]): string {
     'You extract financial transactions from a document (receipt, invoice, or bank/card statement, possibly multi-page).',
     'Return every distinct transaction you can see. For bank or card statements, emit one entry per statement row;',
     'ignore running balance columns, subtotals, opening/closing balances and summary rows.',
-    'Use debit/credit columns or signs to decide direction: debits/charges are "expense", credits/deposits are "income".',
+    'Use debit/credit columns or signs to decide direction: debits/charges are "expense", credits/deposits are "income",',
+    'unless both sides of the movement are accounts the user owns, in which case it is a "transfer".',
     'Amounts are always positive decimals. Assume currency ARS unless the document explicitly states another currency for that amount.',
     'Dates: use the document\'s dates in YYYY-MM-DD. If the year is missing, infer it from context (statement period or today).',
     'Payee: a short, human-readable merchant/counterparty name (strip codes, reference numbers and legal suffixes).',
@@ -184,6 +195,45 @@ function prompt(accounts: PostableAccount[]): string {
     'Do not split a payment just because it lists many similar items (e.g. ten grocery items all under "Comida"); one',
     'split covering the whole amount is correct there. The split amounts must sum exactly to the payment\'s total.',
     'For bank/card statements, each row is its own transaction with a single split — never merge multiple rows into one.',
+    '',
+    'STATEMENTS — avoiding duplicates and noise:',
+    'A statement prints the SAME movement several times: once in the main account-movements table and again in',
+    'per-product detail sections ("Tarjeta de débito - Compras", "Pagos", "Pago anterior y devoluciones", "Detalle").',
+    'Emit each economic event exactly ONCE. Prefer the row from the main movements table; skip a later section\'s row',
+    'when it repeats the same date/amount/description. A credit-card "Consumos del mes" row is NOT a duplicate of the',
+    'account\'s "Pago de tarjeta de credito" row: the purchases and the payment of the card bill are different events.',
+    'Never emit anything from: spending-breakdown charts or donuts ("Así usaste tu dinero"), product summaries',
+    '("Resumen de tus productos", limits, rates, points), installment projections ("Cuotas a vencer", "Próximas cuotas"),',
+    'minimum-payment / financing plans, totals rows ("Total", "Saldo total", "Consumos totales", "Monto total"),',
+    'opening/closing balances ("Saldo Inicial", "Saldo anterior") or legal/informational pages ("Legales", "Alicuotas").',
+    'Tax and fee rows that really were charged ("Impuesto ley 25.413", "IVA", "IIBB percep", "Impuesto de sellos",',
+    '"Pago interes por saldo", maintenance fees) ARE real transactions — keep them.',
+    '',
+    'STATEMENTS — which account a row belongs to:',
+    'When the movements table has one amount column per account (e.g. "Cuenta sueldo en pesos" and "Cuenta Corriente',
+    'en pesos"), the column carrying the amount names the account; the "Saldo en cuenta" / running-balance column is',
+    'not an amount. A section heading also names the account for every row under it ("Movimientos en dólares",',
+    '"Caja de Ahorro en dólares", "Consumos de ... | Tarjeta terminada en 1500"). Rows under a credit-card consumption',
+    'section belong to that card (a liability), not to a bank account.',
+    '',
+    'TRANSFERS (direction "transfer"): both legs are accounts the user owns, so nothing was spent or earned.',
+    'Typical statement cases: paying the credit card from the bank account ("Pago de tarjeta de credito",',
+    '"Pago tarjeta de credito visa"), buying or selling foreign currency ("Debito por compra de dolares" paired with',
+    '"Acreditacion compra de dolares" — emit ONE transfer, not two rows), and transfers between the user\'s own',
+    'accounts ("Transf recibida cvu mismo titular", "mismo titular", the user\'s own name on both sides).',
+    'For a transfer set "account" to the account the money left and the split\'s "category" to the account it arrived in.',
+    'If one of the two sides is not in the accounts list, still use "transfer" and leave that side null.',
+    'Only use "transfer" when the counterparty really is the user; a transfer to another person is an expense.',
+    'The account holder is named in the statement header: a row whose counterparty is that same person ("mismo',
+    'titular", "a nombre propio", the holder\'s own name after "A" or "De") is a transfer in BOTH directions, including',
+    'money coming in. For an incoming transfer, "account" is still the account the money left (the other wallet or bank,',
+    'null if it is not in the list) and the split\'s "category" is the statement account the money landed in.',
+    '',
+    'Dates are day/month/year in Argentine documents (31/07/26 is 2026-07-31), never month/day.',
+    'Credit-card installment rows ("09 de 18", "cuota 3/6") print the date of the ORIGINAL purchase but charge only',
+    'this period\'s installment: date them at the statement\'s closing date instead, so they land in the month they are',
+    'actually being paid, and keep the installment marker in "note".',
+    '',
     expense.length > 0
       ? `For "expense" splits, pick the best matching category from this list (verbatim path) or null: ${expense.join(' | ')}`
       : '',
@@ -215,7 +265,7 @@ interface GeminiCandidateTx {
   payee: string;
   note?: string | null;
   commodity: string;
-  direction: 'expense' | 'income';
+  direction: 'expense' | 'income' | 'transfer';
   account?: string | null;
   splits: GeminiSplit[];
 }
@@ -355,11 +405,15 @@ export async function handleAnalyze(
   const transactions = raw.flatMap((t) => {
     const date = toEpochMs(t.date);
     if (date == null || !t.payee?.trim()) return [];
+    // A transfer's "category" is the other side of the movement: one of the
+    // user's own accounts, not an expense/income category.
+    const categoryTypes: PostableType[] =
+      t.direction === 'transfer' ? ['asset', 'liability'] : [t.direction];
     const splits = (t.splits ?? []).flatMap((s) => {
       const amountMinor = toMinor(s.amount);
       if (amountMinor == null || amountMinor === 0) return [];
       const match = s.category ? byPath.get(s.category.trim().toLowerCase()) : undefined;
-      const category = match && match.type === t.direction ? match : undefined;
+      const category = match && categoryTypes.includes(match.type) ? match : undefined;
       return [{ amountMinor, categoryAccountId: category?.id ?? null, categoryPath: category?.path ?? null }];
     });
     if (splits.length === 0) return [];
@@ -373,7 +427,7 @@ export async function handleAnalyze(
         payee: t.payee.trim(),
         note: t.note?.trim() || null,
         commodity: (t.commodity || 'ARS').trim().toUpperCase(),
-        direction: t.direction,
+        direction: t.direction === 'income' || t.direction === 'transfer' ? t.direction : 'expense',
         accountId: own?.id ?? null,
         accountPath: own?.path ?? null,
         splits,

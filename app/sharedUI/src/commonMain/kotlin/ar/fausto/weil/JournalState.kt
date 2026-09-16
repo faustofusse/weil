@@ -136,9 +136,22 @@ class JournalState(
             val page = ledger.page(before = after)
             cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) } ?: after
             hasMore = page.size == LIST_PAGE_SIZE
-            items = items + page
+            append(page)
         }
         loaded = true
+    }
+
+    /**
+     * Appends a page, dropping rows already on screen. Page loads can overlap:
+     * [loadMore]/[extendSeed] capture a cursor, suspend on the DB, and in the
+     * meantime a [ledger.changes] emission (or the post-sync reconcile) can
+     * replace [items] with a fresh first page — appending blind then puts the
+     * same transaction in the list twice and LazyColumn dies on the duplicate
+     * key.
+     */
+    private fun append(page: List<Transaction>) {
+        val seen = items.mapTo(HashSet()) { it.id }
+        items = items + page.filter { seen.add(it.id) }
     }
 
     private suspend fun loadFirst() {
@@ -151,6 +164,17 @@ class JournalState(
         fetchedOwnPage = true
     }
 
+    /**
+     * Dev utility exposed from the journal's overflow menu: hard-deletes
+     * every transaction dated within [from, to] and reloads the first page.
+     * Returns the number of transactions removed.
+     */
+    suspend fun deleteRange(from: Long, to: Long): Int {
+        val count = ledger.deleteRange(from, to)
+        loadFirst()
+        return count
+    }
+
     fun loadMore() {
         val current = cursor ?: return
         if (isLoadingMore || !hasMore) return
@@ -160,7 +184,7 @@ class JournalState(
                 val page = ledger.page(before = current)
                 cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
                 hasMore = page.size == LIST_PAGE_SIZE
-                items = items + page
+                append(page)
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()

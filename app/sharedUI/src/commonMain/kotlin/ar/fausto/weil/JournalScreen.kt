@@ -18,6 +18,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -27,12 +32,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,19 +57,32 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.action_back
+import weil.app.sharedui.generated.resources.action_cancel
+import weil.app.sharedui.generated.resources.action_delete
+import weil.app.sharedui.generated.resources.action_ok
 import weil.app.sharedui.generated.resources.action_sync
 import weil.app.sharedui.generated.resources.day_date
 import weil.app.sharedui.generated.resources.day_date_year
 import weil.app.sharedui.generated.resources.day_today
 import weil.app.sharedui.generated.resources.day_yesterday
+import weil.app.sharedui.generated.resources.journal_dev_delete_range
+import weil.app.sharedui.generated.resources.journal_dev_delete_range_body
+import weil.app.sharedui.generated.resources.journal_dev_delete_range_confirm
+import weil.app.sharedui.generated.resources.journal_dev_delete_range_done
+import weil.app.sharedui.generated.resources.journal_dev_delete_range_from
+import weil.app.sharedui.generated.resources.journal_dev_delete_range_invalid
+import weil.app.sharedui.generated.resources.journal_dev_delete_range_title
+import weil.app.sharedui.generated.resources.journal_dev_delete_range_to
 import weil.app.sharedui.generated.resources.journal_empty
 import weil.app.sharedui.generated.resources.journal_more_postings
 import weil.app.sharedui.generated.resources.journal_title
 import weil.app.sharedui.generated.resources.months_short
+import weil.app.sharedui.generated.resources.more_options
 import weil.app.sharedui.generated.resources.weekdays_short
 import weil.app.sharedui.generated.resources.new_transaction
 import weil.app.sharedui.generated.resources.new_transaction_hint
@@ -65,6 +90,8 @@ import weil.app.sharedui.generated.resources.new_transaction_hint
 // Enough rows to cover any screen height while loading — the list is
 // lazy, so declaring more than fit on screen costs nothing.
 private const val JOURNAL_SKELETON_COUNT = 16
+
+private const val DAY_MILLIS = 24L * 60 * 60 * 1000
 
 /** Journal of transactions, newest first, grouped under day headers. */
 @Composable
@@ -75,6 +102,7 @@ fun JournalScreen(
     onOpenTransaction: (id: String) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    var showDeleteRangeDialog by remember { mutableStateOf(false) }
 
     // Consecutive same-day runs, computed once per page rather than inside
     // the LazyListScope builder (which isn't @Composable, so a plain
@@ -124,6 +152,22 @@ fun JournalScreen(
                 actions = {
                     IconButton(onClick = { state.refresh() }, enabled = !state.pullRefreshing) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.action_sync))
+                    }
+                    Box {
+                        var menuOpen by remember { mutableStateOf(false) }
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.more_options))
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(Res.string.journal_dev_delete_range)) },
+                                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                                onClick = {
+                                    menuOpen = false
+                                    showDeleteRangeDialog = true
+                                },
+                            )
+                        }
                     }
                 },
             )
@@ -220,6 +264,125 @@ fun JournalScreen(
                 }
             }
         }
+    }
+
+    if (showDeleteRangeDialog) {
+        DeleteRangeDialog(state = state, onDismiss = { showDeleteRangeDialog = false })
+    }
+}
+
+/**
+ * Dev-only utility from the journal's overflow menu: pick a from/to date and
+ * hard-delete every transaction in that (inclusive) range. No undo — this is
+ * for clearing test data, not something a real user flow should ever offer.
+ */
+@Composable
+private fun DeleteRangeDialog(state: JournalState, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var fromText by remember { mutableStateOf<String?>(null) }
+    var toText by remember { mutableStateOf<String?>(null) }
+    var pickingFrom by remember { mutableStateOf(false) }
+    var pickingTo by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var resultCount by remember { mutableStateOf<Int?>(null) }
+
+    val invalidMessage = stringResource(Res.string.journal_dev_delete_range_invalid)
+    val doneMessage = resultCount?.let { stringResource(Res.string.journal_dev_delete_range_done, it) }
+    LaunchedEffect(doneMessage) {
+        doneMessage?.let {
+            Feedback.show(it)
+            onDismiss()
+        }
+    }
+
+    fun confirm() {
+        val from = fromText?.let { parseDateInput(it) }
+        // Inclusive of the whole "to" day: its parsed midnight plus one day
+        // minus a millisecond.
+        val toStart = toText?.let { parseDateInput(it) }
+        val to = toStart?.plus(DAY_MILLIS - 1)
+        if (from == null || to == null || from > to) {
+            Feedback.show(invalidMessage)
+            return
+        }
+        deleting = true
+        scope.launch {
+            try {
+                resultCount = state.deleteRange(from, to)
+            } finally {
+                deleting = false
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!deleting) onDismiss() },
+        title = { Text(stringResource(Res.string.journal_dev_delete_range_title)) },
+        text = {
+            Column {
+                Text(
+                    stringResource(Res.string.journal_dev_delete_range_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { pickingFrom = true }) {
+                        Text(fromText ?: stringResource(Res.string.journal_dev_delete_range_from))
+                    }
+                    TextButton(onClick = { pickingTo = true }) {
+                        Text(toText ?: stringResource(Res.string.journal_dev_delete_range_to))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { confirm() },
+                enabled = !deleting && fromText != null && toText != null,
+            ) { Text(stringResource(Res.string.action_delete)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !deleting) {
+                Text(stringResource(Res.string.action_cancel))
+            }
+        },
+    )
+
+    if (pickingFrom) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = fromText?.let { parseDateInput(it) } ?: epochMillis(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickingFrom = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { fromText = dateInputOf(it) }
+                    pickingFrom = false
+                }) { Text(stringResource(Res.string.action_ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickingFrom = false }) { Text(stringResource(Res.string.action_cancel)) }
+            },
+        ) { DatePicker(state = pickerState) }
+    }
+
+    if (pickingTo) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = toText?.let { parseDateInput(it) } ?: epochMillis(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickingTo = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { toText = dateInputOf(it) }
+                    pickingTo = false
+                }) { Text(stringResource(Res.string.action_ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickingTo = false }) { Text(stringResource(Res.string.action_cancel)) }
+            },
+        ) { DatePicker(state = pickerState) }
     }
 }
 

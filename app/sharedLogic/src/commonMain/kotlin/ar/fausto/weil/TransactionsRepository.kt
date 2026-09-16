@@ -99,6 +99,30 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         emitChange()
     }
 
+
+    /**
+     * Dev utility: hard-deletes every transaction (and its postings) whose
+     * date falls within [from, to] (both inclusive, epoch ms). Returns the
+     * number of transactions removed. Irreversible — no undo, unlike
+     * [delete].
+     */
+    suspend fun deleteRange(from: Long, to: Long): Int {
+        val ids = db.useForRead { d ->
+            d.query(
+                "select id from ledger_transactions where date >= :from and date <= :to",
+                mapOf(":from" to from, ":to" to to),
+            ) { rows -> rows.mapNotNull { it.firstOrNull()?.toString() }.toList() }
+        }
+        if (ids.isEmpty()) return 0
+        writeAtomically {
+            val idList = quoteList(ids)
+            execute("delete from postings where transaction_id in ($idList)", null)
+            execute("delete from ledger_transactions where id in ($idList)", null)
+        }
+        emitChange()
+        return ids.size
+    }
+
     /** Page of the journal, newest first; postings grouped in memory. */
     suspend fun page(limit: Int = LIST_PAGE_SIZE, before: LedgerCursor? = null): List<Transaction> =
         db.useForRead { d ->

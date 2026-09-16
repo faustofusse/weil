@@ -55,14 +55,22 @@ val IMPORTABLE_MIME_TYPES = listOf(
     "image/heif",
 )
 
-/** Money moves out of (Expense) or into (Income) the user's accounts. */
+/**
+ * Money moves out of (Expense), into (Income), or between two accounts the
+ * user owns (Transfer — paying a credit card from the bank account, buying
+ * dollars, topping up a wallet: nothing is spent or earned).
+ */
 enum class ImportDirection {
     Expense,
-    Income;
+    Income,
+    Transfer;
 
     companion object {
-        fun fromWire(value: String): ImportDirection =
-            if (value.equals("income", ignoreCase = true)) Income else Expense
+        fun fromWire(value: String): ImportDirection = when {
+            value.equals("income", ignoreCase = true) -> Income
+            value.equals("transfer", ignoreCase = true) -> Transfer
+            else -> Expense
+        }
     }
 }
 
@@ -74,7 +82,11 @@ enum class ImportDirection {
  */
 data class ImportSplit(
     val amountMinor: Long,
-    /** Suggested expense/income account, when the model matched an existing one. */
+    /**
+     * Suggested expense/income account, when the model matched an existing
+     * one — or, on a [ImportDirection.Transfer], the user's own account the
+     * money arrived in.
+     */
     val categoryAccountId: String?,
     val categoryPath: String?,
 )

@@ -104,6 +104,14 @@
     <string name="journal_title">Transacciones</string>
     <string name="journal_empty">Todavía no hay transacciones</string>
     <string name="journal_more_postings">+%1$d más</string>
+    <string name="journal_dev_delete_range">Borrar por rango de fechas (dev)</string>
+    <string name="journal_dev_delete_range_title">Borrar transacciones</string>
+    <string name="journal_dev_delete_range_body">Esto borra permanentemente todas las transacciones entre las fechas elegidas. No se puede deshacer.</string>
+    <string name="journal_dev_delete_range_from">Desde</string>
+    <string name="journal_dev_delete_range_to">Hasta</string>
+    <string name="journal_dev_delete_range_confirm">Borrar %1$d transacciones</string>
+    <string name="journal_dev_delete_range_done">Se borraron %1$d transacciones</string>
+    <string name="journal_dev_delete_range_invalid">Elegí un rango de fechas válido</string>
 
     <!-- Transaction detail -->
     <string name="txn_detail_title">Transacción</string>
@@ -228,6 +236,9 @@
     <string name="import_category_label">Categoría</string>
     <string name="import_account_pick">Elegir cuenta</string>
     <string name="import_category_pick">Elegir categoría</string>
+    <string name="import_destination_label">Destino</string>
+    <string name="import_destination_pick">Elegir cuenta destino</string>
+    <string name="import_origin_label">Origen</string>
     <string name="import_payee_label">Descripción</string>
     <string name="import_amount_label">Monto</string>
     <string name="import_create">Crear %1$d</string>
@@ -242,6 +253,8 @@
     <string name="import_split_add">Agregar ítem</string>
     <string name="import_split_merge">Unir en un solo ítem</string>
     <string name="import_split_remove">Quitar ítem</string>
+    <string name="import_chain_start">Categorizar</string>
+    <string name="import_chain_progress">%1$d de %2$d</string>
 
     <!-- Passkey fallback names -->
     <string name="passkey_name">Passkey %1$s</string>

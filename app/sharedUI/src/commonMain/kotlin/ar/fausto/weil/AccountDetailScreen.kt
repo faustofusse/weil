@@ -111,7 +111,11 @@ fun AccountDetailScreen(
                     before = LedgerCursor(last.date, last.posting.transactionId),
                 )
                 hasMore = nextPage.size >= LIST_PAGE_SIZE
-                entries = entries + nextPage
+                // A concurrent loadAll() (ledger.changes) can have replaced
+                // the list while this page was in flight; appending blind
+                // would duplicate rows and crash the LazyColumn's keys.
+                val seen = entries.mapTo(HashSet()) { it.posting.id }
+                entries = entries + nextPage.filter { seen.add(it.posting.id) }
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()

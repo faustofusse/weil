@@ -40,6 +40,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -65,9 +66,14 @@ import weil.app.sharedui.generated.resources.import_analyzing
 import weil.app.sharedui.generated.resources.import_analyzing_hint
 import weil.app.sharedui.generated.resources.import_category_label
 import weil.app.sharedui.generated.resources.import_category_pick
+import weil.app.sharedui.generated.resources.import_chain_progress
+import weil.app.sharedui.generated.resources.import_chain_start
 import weil.app.sharedui.generated.resources.import_create
 import weil.app.sharedui.generated.resources.import_created
 import weil.app.sharedui.generated.resources.import_created_one
+import weil.app.sharedui.generated.resources.import_destination_label
+import weil.app.sharedui.generated.resources.import_destination_pick
+import weil.app.sharedui.generated.resources.import_origin_label
 import weil.app.sharedui.generated.resources.import_empty
 import weil.app.sharedui.generated.resources.import_failed
 import weil.app.sharedui.generated.resources.import_found
@@ -155,6 +161,18 @@ fun ImportReviewScreen(
     var attempt by remember { mutableStateOf(0) }
     var picking by remember { mutableStateOf<PickerTarget?>(null) }
     var creatingCategory by remember { mutableStateOf<PickerTarget.Category?>(null) }
+    // Chain mode: one picker sheet walks every row that still needs a
+    // category, advancing on each pick instead of closing. [visited] keeps
+    // the walk moving even when the user re-picks the same default.
+    var chaining by remember { mutableStateOf(false) }
+    val visited = remember { mutableStateListOf<Pair<CandidateDraft, Int>>() }
+    // CreateAccountDialog calls onCreated *and then* onDismiss; without this
+    // the dismiss would re-open the picker on a row the walk already left.
+    var categoryCreated by remember { mutableStateOf(false) }
+    // Type currently shown by the category picker. Starts at the direction's
+    // natural type and follows the sheet's chips, so inline creation makes an
+    // account of the type the user is actually looking at.
+    var categoryType by remember { mutableStateOf<AccountType?>(null) }
     val scope = rememberCoroutineScope()
     val createdOne = stringResource(Res.string.import_created_one)
     val createdMany = stringResource(Res.string.import_created)
@@ -212,6 +230,37 @@ fun ImportReviewScreen(
     val rows = drafts
     val included = rows?.count { it.include && it.valid && it.assetOr(assetId) != null } ?: 0
 
+    /**
+     * Splits worth walking: the ones still on the fallback category (or on
+     * none at all) — i.e. the rows the AI couldn't attribute. When every row
+     * already has a real category the whole included set is offered instead,
+     * so the button still does something useful.
+     */
+    fun chainQueue(): List<Pair<CandidateDraft, Int>> {
+        val current = rows ?: return emptyList()
+        val all = current.filter { it.include }
+            .flatMap { draft -> draft.splits.indices.map { draft to it } }
+        val pending = all.filter { (draft, index) ->
+            val category = draft.splits[index].categoryId
+            category == null || category == defaultCategoryId(tree, draft.direction)
+        }
+        return pending.ifEmpty { all }
+    }
+
+    /** Move to the next unvisited split, or end the walk. */
+    fun advanceChain() {
+        val next = chainQueue().firstOrNull { it !in visited }
+        if (next == null) {
+            chaining = false
+            picking = null
+        } else {
+            visited += next
+            next.first.expanded = true
+            categoryType = null
+            picking = PickerTarget.Category(next.first, next.second)
+        }
+    }
+
     fun create() {
         val current = rows ?: return
         val fallbackAsset = assetId
@@ -226,14 +275,19 @@ fun ImportReviewScreen(
                     // its own category leg. Expense: asset −total, category
                     // +share. Income: category −share, asset +total.
                     val assetLeg = when (draft.direction) {
-                        ImportDirection.Expense -> DraftPosting(asset, formatMinorUnits(-draft.totalMinor), draft.commodity)
+                        // A transfer leaves the row's account exactly like an
+                        // expense does; only the other leg differs (another
+                        // account of the user's, not a category).
+                        ImportDirection.Expense, ImportDirection.Transfer ->
+                            DraftPosting(asset, formatMinorUnits(-draft.totalMinor), draft.commodity)
                         ImportDirection.Income -> DraftPosting(asset, formatMinorUnits(draft.totalMinor), draft.commodity)
                     }
                     val splitLegs = draft.splits.map { split ->
                         val minor = split.amount!!.minorUnits
                         val category = split.categoryId!!
                         when (draft.direction) {
-                            ImportDirection.Expense -> DraftPosting(category, formatMinorUnits(minor), draft.commodity)
+                            ImportDirection.Expense, ImportDirection.Transfer ->
+                                DraftPosting(category, formatMinorUnits(minor), draft.commodity)
                             ImportDirection.Income -> DraftPosting(category, formatMinorUnits(-minor), draft.commodity)
                         }
                     }
@@ -343,22 +397,43 @@ fun ImportReviewScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     item {
-                        Text(
-                            if (rows.size == 1) {
-                                stringResource(Res.string.import_found_one)
-                            } else {
-                                stringResource(Res.string.import_found, rows.size)
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (rows.size == 1) {
+                                    stringResource(Res.string.import_found_one)
+                                } else {
+                                    stringResource(Res.string.import_found, rows.size)
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            // Deliberately quiet: a power-user shortcut, not a
+                            // second call to action next to "Crear".
+                            TextButton(
+                                onClick = {
+                                    visited.clear()
+                                    chaining = true
+                                    advanceChain()
+                                },
+                            ) {
+                                Text(
+                                    stringResource(Res.string.import_chain_start),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                     items(rows) { draft ->
                         CandidateCard(
                             draft = draft,
                             paths = paths,
                             fallbackAccountPath = assetId?.let { paths[it] },
-                            onPickCategory = { index -> picking = PickerTarget.Category(draft, index) },
+                            onPickCategory = { index ->
+                                categoryType = null
+                                picking = PickerTarget.Category(draft, index)
+                            },
                             onPickAccount = { picking = PickerTarget.RowAsset(draft) },
                             onToggleExpanded = { draft.expanded = !draft.expanded },
                         )
@@ -380,8 +455,10 @@ fun ImportReviewScreen(
     when (val target = picking) {
         null -> Unit
         PickerTarget.Asset -> AccountPickerSheet(
-            tree = tree.filter { it.account.type == AccountType.Asset },
+            tree = tree,
             title = stringResource(Res.string.import_account_pick),
+            typeOptions = listOf(AccountType.Asset, AccountType.Liability),
+            initialType = AccountType.Asset,
             onDismiss = { picking = null },
             onPick = {
                 assetId = it.account.id
@@ -389,10 +466,19 @@ fun ImportReviewScreen(
             },
         )
         is PickerTarget.RowAsset -> AccountPickerSheet(
-            tree = tree.filter {
-                it.account.type == AccountType.Asset || it.account.type == AccountType.Liability
-            },
+            tree = tree,
             title = stringResource(Res.string.import_account_pick),
+            typeOptions = listOf(
+                AccountType.Asset,
+                AccountType.Liability,
+                AccountType.Expense,
+                AccountType.Income,
+                AccountType.Equity,
+            ),
+            initialType = target.draft.accountId?.let { id ->
+                tree.flatMap { it.selfAndDescendants }
+                    .firstOrNull { it.account.id == id }?.account?.type
+            } ?: AccountType.Asset,
             onDismiss = { picking = null },
             onPick = {
                 target.draft.accountId = it.account.id
@@ -400,41 +486,87 @@ fun ImportReviewScreen(
             },
         )
         is PickerTarget.Category -> {
-            val type = when (target.draft.direction) {
+            val natural = when (target.draft.direction) {
                 ImportDirection.Expense -> AccountType.Expense
                 ImportDirection.Income -> AccountType.Income
+                ImportDirection.Transfer -> AccountType.Asset
             }
+            val current = target.draft.splits.getOrNull(target.splitIndex)?.categoryId
+            val currentType = current?.let { id ->
+                tree.flatMap { it.selfAndDescendants }.firstOrNull { it.account.id == id }?.account?.type
+            }
+            val queue = if (chaining) chainQueue() else emptyList()
             AccountPickerSheet(
-                tree = tree.filter { it.account.type == type },
-                title = stringResource(Res.string.import_category_pick),
+                tree = tree,
+                // The direction's own type first (the default), then the rest:
+                // a refund lands on an income account, a card payment on a
+                // liability, and the user shouldn't have to leave the sheet.
+                typeOptions = listOf(natural) + (AccountType.entries - natural),
+                initialType = currentType ?: natural,
+                onTypeChange = { categoryType = it },
+                title = stringResource(
+                    if (target.draft.direction == ImportDirection.Transfer) {
+                        Res.string.import_destination_pick
+                    } else {
+                        Res.string.import_category_pick
+                    },
+                ),
+                subtitle = if (chaining) {
+                    val step = (queue.size - queue.count { it !in visited }).coerceAtLeast(1)
+                    // Everything the document said about this row: what the
+                    // AI couldn't categorize is usually decided by the date
+                    // and the note, so both ride along with payee + amount.
+                    listOfNotNull(
+                        target.draft.payee.ifBlank { "—" },
+                        formatMinorUnits(target.draft.splits.getOrNull(target.splitIndex)?.amount?.minorUnits ?: 0L),
+                        dayLabel(dayGroup(target.draft.date)),
+                        target.draft.note?.takeIf { it.isNotBlank() },
+                        stringResource(Res.string.import_chain_progress, step, queue.size),
+                    ).joinToString(" · ")
+                } else {
+                    null
+                },
                 createLabel = stringResource(Res.string.picker_create),
                 onCreate = {
                     picking = null
+                    categoryCreated = false
+                    if (categoryType == null) categoryType = currentType ?: natural
                     creatingCategory = target
                 },
-                onDismiss = { picking = null },
+                onDismiss = {
+                    picking = null
+                    chaining = false
+                },
                 onPick = {
                     target.draft.splits.getOrNull(target.splitIndex)?.categoryId = it.account.id
-                    picking = null
+                    if (chaining) advanceChain() else picking = null
                 },
             )
         }
     }
 
     creatingCategory?.let { target ->
-        val type = when (target.draft.direction) {
+        val type = categoryType ?: when (target.draft.direction) {
             ImportDirection.Expense -> AccountType.Expense
             ImportDirection.Income -> AccountType.Income
+            ImportDirection.Transfer -> AccountType.Asset
         }
         CreateAccountDialog(
             title = stringResource(Res.string.picker_create),
             type = type,
             accounts = accounts,
-            onDismiss = { creatingCategory = null },
+            onDismiss = {
+                creatingCategory = null
+                // Cancelling creation shouldn't abort the walk: fall back to
+                // the picker for the same row.
+                if (chaining && !categoryCreated) picking = target
+            },
             onError = { error = it },
             onCreated = { id ->
                 target.draft.splits.getOrNull(target.splitIndex)?.categoryId = id
                 reloadTree()
+                categoryCreated = true
+                if (chaining) advanceChain()
             },
         )
     }
@@ -450,6 +582,10 @@ private fun defaultCategoryId(tree: List<AccountNode>, direction: ImportDirectio
     val (seedId, type) = when (direction) {
         ImportDirection.Expense -> EXTERNAL_EXPENSE_ID to AccountType.Expense
         ImportDirection.Income -> EXTERNAL_INCOME_ID to AccountType.Income
+        // A transfer's other leg is one of the user's own accounts; there is
+        // no sensible "Otros" to fall back to, so the row stays incomplete
+        // until the user picks the destination.
+        ImportDirection.Transfer -> return null
     }
     val nodes = tree.flatMap { it.selfAndDescendants }
     return nodes.firstOrNull { it.account.id == seedId }?.account?.id
@@ -487,10 +623,13 @@ private fun CandidateCard(
     val signed = when (draft.direction) {
         ImportDirection.Expense -> "−"
         ImportDirection.Income -> "+"
+        // Neither sign fits: the user's net worth didn't move.
+        ImportDirection.Transfer -> "⇄ "
     } + formatMinorUnits(draft.totalMinor)
     val amountColor = when {
         !draft.include -> MaterialTheme.colorScheme.onSurfaceVariant
         draft.direction == ImportDirection.Income -> MaterialTheme.colorScheme.primary
+        draft.direction == ImportDirection.Transfer -> MaterialTheme.colorScheme.onSurfaceVariant
         else -> MaterialTheme.colorScheme.onSurface
     }
     Card(
@@ -557,7 +696,13 @@ private fun CandidateCard(
                     )
                     Spacer(Modifier.height(8.dp))
                     AccountField(
-                        label = stringResource(Res.string.import_account_label),
+                        label = stringResource(
+                            if (draft.direction == ImportDirection.Transfer) {
+                                Res.string.import_origin_label
+                            } else {
+                                Res.string.import_account_label
+                            },
+                        ),
                         value = accountPath ?: fallbackAccountPath,
                         placeholder = stringResource(Res.string.import_account_pick),
                         onClick = onPickAccount,
@@ -567,6 +712,7 @@ private fun CandidateCard(
                         if (index > 0) Spacer(Modifier.height(8.dp))
                         SplitRow(
                             split = split,
+                            transfer = draft.direction == ImportDirection.Transfer,
                             categoryPath = split.categoryId?.let { paths[it] },
                             removable = draft.splits.size > 1,
                             onPickCategory = { onPickCategory(index) },
@@ -608,6 +754,7 @@ private fun CandidateCard(
 @Composable
 private fun SplitRow(
     split: SplitDraft,
+    transfer: Boolean,
     categoryPath: String?,
     removable: Boolean,
     onPickCategory: () -> Unit,
@@ -625,9 +772,13 @@ private fun SplitRow(
         )
         Spacer(Modifier.width(8.dp))
         AccountField(
-            label = stringResource(Res.string.import_category_label),
+            label = stringResource(
+                if (transfer) Res.string.import_destination_label else Res.string.import_category_label,
+            ),
             value = categoryPath,
-            placeholder = stringResource(Res.string.import_category_pick),
+            placeholder = stringResource(
+                if (transfer) Res.string.import_destination_pick else Res.string.import_category_pick,
+            ),
             onClick = onPickCategory,
             modifier = Modifier.weight(0.6f),
         )
