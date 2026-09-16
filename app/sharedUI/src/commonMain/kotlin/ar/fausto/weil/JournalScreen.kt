@@ -268,15 +268,6 @@ internal fun TransactionCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    tx.note?.takeIf { it.isNotBlank() }?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
                 }
                 Text(
                     timeShort(tx.date),
