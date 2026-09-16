@@ -75,16 +75,30 @@ class NotificationsState(private val notifications: NotificationsRepository) {
         if (loadStarted) return
         loadStarted = true
         scope.launch {
+            // Local-first: the replica already holds the last known state, so
+            // paint it immediately instead of waiting on a sync round trip.
             isInitialLoading = true
             syncError = null
             try {
-                notifications.syncNow()
                 loadFirst()
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 syncError = e.message ?: e.toString()
             } finally {
                 isInitialLoading = false
+            }
+            // Then reconcile with the server and repaint; a failed sync must
+            // not hide (or error out) the local view already on screen.
+            isSyncing = true
+            try {
+                notifications.syncNow()
+                loadFirst()
+                syncError = null
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                if (items.isEmpty()) syncError = e.message ?: e.toString()
+            } finally {
+                isSyncing = false
             }
             notifications.changes.collect { reloadWindow() }
         }
