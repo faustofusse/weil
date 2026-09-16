@@ -81,23 +81,37 @@ class AccountsRepository(private val db: DatabaseProvider) {
         d.sync()
     }
 
-    /** Re-parents; guards against cycles and cross-type moves. */
-    suspend fun reparent(id: String, newParentId: String) = db.use { d ->
+    /**
+     * Re-parents; guards against cycles and cross-type moves. A null
+     * [newParentId] moves the account to the root of its type — the only way
+     * back out of a subtree, and the inverse of every other move.
+     */
+    suspend fun reparent(id: String, newParentId: String?) = db.use { d ->
         val account = fetch(d, id) ?: throw IllegalArgumentException("account not found")
-        val parent = fetch(d, newParentId)
-            ?: throw IllegalArgumentException("parent account not found")
-        if (parent.id == id) throw IllegalArgumentException("an account cannot be its own parent")
-        if (parent.type != account.type) {
-            throw IllegalArgumentException("cannot move across types (${account.type.db} → ${parent.type.db})")
-        }
-        var ancestor: Account? = parent
-        while (ancestor != null) {
-            if (ancestor.id == id) throw IllegalArgumentException("cannot move an account under a descendant")
-            ancestor = ancestor.parentId?.let { fetch(d, it) }
+        if (newParentId != null) {
+            val parent = fetch(d, newParentId)
+                ?: throw IllegalArgumentException("parent account not found")
+            if (parent.id == id) throw IllegalArgumentException("an account cannot be its own parent")
+            if (parent.type != account.type) {
+                throw IllegalArgumentException("cannot move across types (${account.type.db} → ${parent.type.db})")
+            }
+            var ancestor: Account? = parent
+            while (ancestor != null) {
+                if (ancestor.id == id) throw IllegalArgumentException("cannot move an account under a descendant")
+                ancestor = ancestor.parentId?.let { fetch(d, it) }
+            }
         }
         d.execute(
-            "update accounts set parent_id = :parent where id = :id",
-            mapOf(":parent" to newParentId, ":id" to id),
+            if (newParentId == null) {
+                "update accounts set parent_id = null where id = :id"
+            } else {
+                "update accounts set parent_id = :parent where id = :id"
+            },
+            if (newParentId == null) {
+                mapOf(":id" to id)
+            } else {
+                mapOf(":parent" to newParentId, ":id" to id)
+            },
         )
         d.sync()
     }

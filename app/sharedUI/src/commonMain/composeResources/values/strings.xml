@@ -46,6 +46,7 @@
     <string name="account_expand">Expandir</string>
     <string name="account_rename">Renombrar</string>
     <string name="account_move_under">Mover</string>
+    <string name="account_move_to_root">Sacar del padre (nivel principal)</string>
     <string name="account_move_under_title">Mover</string>
     <string name="account_delete_message">Cuenta “%1$s” eliminada</string>
     <string name="account_add_title">Nueva cuenta</string>

@@ -58,6 +58,13 @@ fun AccountPickerSheet(
     exclude: Set<String> = emptySet(),
     createLabel: String? = null,
     onCreate: (() -> Unit)? = null,
+    /**
+     * Optional "no account" row, used by the move flow to send an account
+     * back to the root of its type. Without it a move is one-way: once an
+     * account has a parent there is no picker entry that means "none".
+     */
+    rootLabel: String? = null,
+    onPickRoot: (() -> Unit)? = null,
     typeOptions: List<AccountType> = emptyList(),
     initialType: AccountType? = null,
     onTypeChange: (AccountType) -> Unit = {},
@@ -126,6 +133,32 @@ fun AccountPickerSheet(
                     .fillMaxWidth()
                     .heightIn(max = 440.dp),
             ) {
+                if (onPickRoot != null && rootLabel != null) {
+                    item(key = "root") {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onPickRoot() }
+                                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.ArrowBack,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    rootLabel,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                        }
+                    }
+                }
                 if (onCreate != null && createLabel != null) {
                     item(key = "create") {
                         Column {

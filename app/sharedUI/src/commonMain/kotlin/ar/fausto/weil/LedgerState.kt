@@ -132,7 +132,8 @@ class LedgerState(
     fun rename(id: String, name: String) =
         mutate { accounts.rename(id, name) }
 
-    fun reparent(id: String, parentId: String) =
+    /** [parentId] null moves the account to the root of its type. */
+    fun reparent(id: String, parentId: String?) =
         mutate { accounts.reparent(id, parentId) }
 
     fun deleteAccount(id: String) =

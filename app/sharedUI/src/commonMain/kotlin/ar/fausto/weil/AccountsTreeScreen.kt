@@ -71,6 +71,7 @@ import weil.app.sharedui.generated.resources.account_collapse
 import weil.app.sharedui.generated.resources.account_delete_message
 import weil.app.sharedui.generated.resources.account_expand
 import weil.app.sharedui.generated.resources.account_includes_subaccounts
+import weil.app.sharedui.generated.resources.account_move_to_root
 import weil.app.sharedui.generated.resources.account_move_under
 import weil.app.sharedui.generated.resources.account_move_under_title
 import weil.app.sharedui.generated.resources.account_name_label
@@ -583,6 +584,20 @@ internal fun AccountActionsSheet(
             exclude = buildSet {
                 add(account.id)
                 node?.selfAndDescendants?.forEach { add(it.account.id) }
+            },
+            // Only offered when there is somewhere to come back from.
+            rootLabel = if (account.parentId != null) {
+                stringResource(Res.string.account_move_to_root)
+            } else {
+                null
+            },
+            onPickRoot = if (account.parentId != null) {
+                {
+                    state.reparent(account.id, null)
+                    onDismiss()
+                }
+            } else {
+                null
             },
             onDismiss = onDismiss,
         ) { picked ->
