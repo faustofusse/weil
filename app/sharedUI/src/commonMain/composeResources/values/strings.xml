@@ -238,6 +238,10 @@
     <string name="import_include">Incluir esta transacción</string>
     <string name="import_source_image">Imagen</string>
     <string name="import_source_pdf">PDF</string>
+    <string name="import_items">%1$d ítems</string>
+    <string name="import_split_add">Agregar ítem</string>
+    <string name="import_split_merge">Unir en un solo ítem</string>
+    <string name="import_split_remove">Quitar ítem</string>
 
     <!-- Passkey fallback names -->
     <string name="passkey_name">Passkey %1$s</string>
