@@ -2,9 +2,6 @@
 
 package ar.fausto.weil
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -17,6 +14,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
@@ -58,12 +58,12 @@ import weil.app.sharedui.generated.resources.action_save
 @Composable
 fun AccountAddScreen(
     state: LedgerState,
-    fixedType: AccountType?,
+    initialType: AccountType?,
     onSaved: () -> Unit,
     onNavigateBack: () -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf(fixedType ?: AccountType.Asset) }
+    var type by remember { mutableStateOf(initialType ?: AccountType.Asset) }
     var parent by remember { mutableStateOf<AccountNode?>(null) }
     var pickingParent by remember { mutableStateOf(false) }
     val nameFocus = remember { FocusRequester() }
@@ -71,6 +71,7 @@ fun AccountAddScreen(
     LaunchedEffect(Unit) { nameFocus.requestFocus() }
 
     fun save() {
+        if (name.isBlank() || state.busy) return
         state.addAccount(name.trim(), parent?.account?.type ?: type, parent?.account?.id)
         onSaved()
     }
@@ -127,53 +128,41 @@ fun AccountAddScreen(
                 onValueChange = { name = it },
                 label = { Text(stringResource(Res.string.account_name_label)) },
                 singleLine = true,
+                // Enter records right away — name + defaults is the common
+                // case, reaching for the sticky button shouldn't be required.
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { save() }),
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(nameFocus),
             )
             Spacer(Modifier.height(12.dp))
-            Box(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = if (parent == null) {
-                        stringResource(Res.string.account_parent_none)
-                    } else {
-                        stringResource(Res.string.account_parent_under, parent!!.path)
-                    },
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(Res.string.account_choose_parent)) },
-                    trailingIcon = { Icon(Icons.Filled.ExpandMore, contentDescription = null) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) { pickingParent = true },
-                )
-            }
-            if (fixedType == null) {
-                Spacer(Modifier.height(12.dp))
-                TypeDropdown(
-                    initial = if (parent != null) parent!!.account.type else type,
-                    enabled = parent == null,
-                    onPick = { type = it },
-                )
-            }
+            PickerField(
+                label = stringResource(Res.string.account_choose_parent),
+                value = parent?.let { stringResource(Res.string.account_parent_under, it.path) },
+                placeholder = stringResource(Res.string.account_parent_none),
+                onClick = { pickingParent = true },
+            )
+            Spacer(Modifier.height(12.dp))
+            // Always shown, even when the entry point suggested a type:
+            // Home's "+" sits under the assets section so Activo is the right
+            // default there, but a liability (credit card) is created from the
+            // same button and hiding the dropdown forced a detour through the
+            // tree screen. A picked parent locks the type to its own.
+            TypeDropdown(
+                initial = if (parent != null) parent!!.account.type else type,
+                enabled = parent == null,
+                onPick = { type = it },
+            )
         }
     }
 
     if (pickingParent) {
-        val allowedType = parent?.account?.type ?: fixedType
+        // Candidate parents follow the picked type, so the sheet never offers
+        // a parent that would silently flip the account's type.
+        val allowedType = parent?.account?.type ?: type
         AccountPickerSheet(
-            tree = if (allowedType != null) {
-                state.tree.filter { it.account.type == allowedType }
-            } else {
-                state.tree
-            },
+            tree = state.tree.filter { it.account.type == allowedType },
             title = stringResource(Res.string.account_choose_parent),
             exclude = emptySet(),
             onDismiss = { pickingParent = false },

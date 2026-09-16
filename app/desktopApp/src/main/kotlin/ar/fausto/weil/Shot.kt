@@ -65,7 +65,17 @@ fun main(args: Array<String>) {
             height = (HEIGHT_DP * DENSITY).toInt(),
             density = Density(DENSITY),
             coroutineContext = Dispatchers.Swing,
-        ) { RootScreen(graph) }
+        ) {
+            RootScreen(
+                graph,
+                initialRoute = when (route) {
+                    "quick" -> TransactionQuickRoute(TxnKind.Expense)
+                    "account-add" -> AccountAddRoute(AccountType.Asset)
+                    "journal" -> JournalRoute
+                    else -> null
+                },
+            )
+        }
     }
 
     val start = System.nanoTime()

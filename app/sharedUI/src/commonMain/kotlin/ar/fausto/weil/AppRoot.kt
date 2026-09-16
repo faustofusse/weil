@@ -81,7 +81,15 @@ private val slideIn = { full: Int -> (full * 0.4f).toInt() }
 private val slideOut = { full: Int -> (full * -0.2f).toInt() }
 
 @Composable
-fun RootScreen(graph: AppGraph) {
+fun RootScreen(
+    graph: AppGraph,
+    /**
+     * Route pushed on top of Home on first composition while signed in.
+     * Only the desktop shot harness uses it, to screenshot inner screens
+     * headlessly; real entry points never set it.
+     */
+    initialRoute: Any? = null,
+) {
     val authState by graph.auth.state.collectAsState()
     val scope = rememberCoroutineScope()
     val themeState = remember { AppThemeState() }
@@ -131,7 +139,9 @@ fun RootScreen(graph: AppGraph) {
                     val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
                     val snackbarHostState = remember(loggedIn) { SnackbarHostState() }
                     val backStack = remember(loggedIn) {
-                        mutableStateListOf<Any>(if (loggedIn) HomeRoute else LoginRoute)
+                        mutableStateListOf<Any>(if (loggedIn) HomeRoute else LoginRoute).apply {
+                            if (loggedIn && initialRoute != null) add(initialRoute)
+                        }
                     }
 
                     fun navigate(route: Any) {
@@ -202,7 +212,7 @@ fun RootScreen(graph: AppGraph) {
                                 entry<AccountAddRoute> { route ->
                                     AccountAddScreen(
                                         state = ledgerState,
-                                        fixedType = route.fixedType,
+                                        initialType = route.initialType,
                                         onSaved = { pop() },
                                         onNavigateBack = { pop() },
                                     )

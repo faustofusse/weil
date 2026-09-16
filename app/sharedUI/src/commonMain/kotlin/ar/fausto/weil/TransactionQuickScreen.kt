@@ -2,10 +2,7 @@
 
 package ar.fausto.weil
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -22,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,10 +51,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
-import weil.app.sharedui.generated.resources.account_name_label
-import weil.app.sharedui.generated.resources.action_add
 import weil.app.sharedui.generated.resources.action_back
-import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.picker_create
 import weil.app.sharedui.generated.resources.quick_amount_label
 import weil.app.sharedui.generated.resources.quick_category_label
@@ -140,9 +133,11 @@ fun TransactionQuickScreen(
         reloadTree()
     }
 
-    // Defaults for the active kind once the tree arrives: External is the
-    // seeded income/expense default; a lone asset account preselects itself.
-    // Re-runs keep any existing pick.
+    // Defaults for the active kind once the tree arrives: "Otros" is the
+    // seeded income/expense default, and the first asset account preselects
+    // itself — the point of this screen is amount → record, and "which of my
+    // accounts paid" is the pick the user most often wouldn't change anyway.
+    // Wrong guesses are one tap to fix. Re-runs keep any existing pick.
     LaunchedEffect(tree, currentKind) {
         if (tree.isEmpty()) return@LaunchedEffect
         val assets = tree.filter { it.account.type == AccountType.Asset }
@@ -151,12 +146,12 @@ fun TransactionQuickScreen(
                 ?: singleOrNull())?.account?.id
         when (currentKind) {
             TxnKind.Expense -> {
-                if (fromId == null) fromId = assets.singleOrNull()?.account?.id
+                if (fromId == null) fromId = assets.firstOrNull()?.account?.id
                 if (toId == null) toId = tree.filter { it.account.type == AccountType.Expense }.default()
             }
             TxnKind.Income -> {
                 if (fromId == null) fromId = tree.filter { it.account.type == AccountType.Income }.default()
-                if (toId == null) toId = assets.singleOrNull()?.account?.id
+                if (toId == null) toId = assets.firstOrNull()?.account?.id
             }
             TxnKind.Transfer -> {
                 if (fromId == null && toId == null) {
@@ -297,13 +292,13 @@ fun TransactionQuickScreen(
                     .fillMaxWidth()
                     .focusRequester(amountFocus),
             )
-            QuickAccountField(
+            PickerField(
                 label = fromLabel,
                 value = fromId?.let { paths[it] },
                 placeholder = chooseLabel,
                 onClick = { picking = QuickField.From },
             )
-            QuickAccountField(
+            PickerField(
                 label = toLabel,
                 value = toId?.let { paths[it] },
                 placeholder = chooseLabel,
@@ -354,47 +349,15 @@ fun TransactionQuickScreen(
     }
 
     if (creatingCategory) {
-        var name by remember { mutableStateOf("") }
-        fun create() {
-            val trimmed = name.trim()
-            if (trimmed.isEmpty() || busy) return
-            busy = true
-            scope.launch {
-                try {
-                    toId = accounts.add(trimmed, AccountType.Expense)
-                    reloadTree()
-                    creatingCategory = false
-                } catch (e: Throwable) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
-                    error = e.message ?: e.toString()
-                } finally {
-                    busy = false
-                }
-            }
-        }
-        val nameFocus = remember { FocusRequester() }
-        LaunchedEffect(Unit) { nameFocus.requestFocus() }
-        AlertDialog(
-            onDismissRequest = { creatingCategory = false },
-            title = { Text(newCategoryLabel) },
-            text = {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(Res.string.account_name_label)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { create() }),
-                    modifier = Modifier.focusRequester(nameFocus),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { create() }, enabled = name.isNotBlank() && !busy) {
-                    Text(stringResource(Res.string.action_add))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { creatingCategory = false }) { Text(stringResource(Res.string.action_cancel)) }
+        CreateAccountDialog(
+            title = newCategoryLabel,
+            type = AccountType.Expense,
+            accounts = accounts,
+            onDismiss = { creatingCategory = false },
+            onError = { error = it },
+            onCreated = { id ->
+                toId = id
+                reloadTree()
             },
         )
     }
@@ -409,36 +372,3 @@ private fun kindTitle(kind: TxnKind): String = stringResource(
     },
 )
 
-/**
- * Read-only text field used as the account selector: identical shape, border
- * and label behavior to the edit fields, with a transparent overlay making
- * the whole field open the picker.
- */
-@Composable
-private fun QuickAccountField(
-    label: String,
-    value: String?,
-    placeholder: String,
-    onClick: () -> Unit,
-) {
-    Box(modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(
-            value = value ?: "",
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            placeholder = { Text(placeholder) },
-            trailingIcon = { Icon(Icons.Filled.ExpandMore, contentDescription = null) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) { onClick() },
-        )
-    }
-}

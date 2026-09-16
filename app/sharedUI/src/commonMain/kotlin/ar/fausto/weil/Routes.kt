@@ -35,8 +35,8 @@ data class TransactionEditRoute(val id: String)
 
 data class AccountDetailRoute(val id: String)
 
-/** [fixedType] hides the type picker (Home only ever creates asset accounts). */
-data class AccountAddRoute(val fixedType: AccountType? = null)
+/** [initialType] preselects the type picker (Home suggests Activo); the user can still change it. */
+data class AccountAddRoute(val initialType: AccountType? = null)
 
 /**
  * Review of an image/PDF the user picked or shared into the app. The document

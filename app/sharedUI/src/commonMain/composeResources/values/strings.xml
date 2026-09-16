@@ -51,9 +51,9 @@
     <string name="account_add_title">Nueva cuenta</string>
     <string name="account_name_label">Nombre</string>
     <string name="account_type_label">Tipo</string>
-    <string name="account_parent_none">Sin padre</string>
-    <string name="account_parent_under">Bajo: %1$s</string>
-    <string name="account_choose_parent">Elegir padre</string>
+    <string name="account_parent_none">Ninguna</string>
+    <string name="account_parent_under">%1$s</string>
+    <string name="account_choose_parent">Cuenta padre</string>
     <string name="account_subaccounts_one">1 subcuenta</string>
     <string name="account_subaccounts_many">%1$d subcuentas</string>
     <string name="account_actions">Acciones de la cuenta</string>

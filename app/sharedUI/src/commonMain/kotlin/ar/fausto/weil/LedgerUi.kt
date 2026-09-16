@@ -1,5 +1,8 @@
 package ar.fausto.weil
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,21 +12,40 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import org.jetbrains.compose.resources.stringResource
+import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.account_name_label
+import weil.app.sharedui.generated.resources.action_add
+import weil.app.sharedui.generated.resources.action_cancel
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
@@ -226,4 +248,117 @@ private fun Banner(
             Text(message, style = MaterialTheme.typography.bodySmall, color = content)
         }
     }
+}
+
+/**
+ * Read-only text field used as a tap-to-pick selector (accounts, parent,
+ * category): same shape, border and label behavior as the editable fields
+ * around it, with a transparent overlay making the whole field open a picker.
+ *
+ * The placeholder rides in the *value* slot, dimmed: an M3 field only shows
+ * its real `placeholder` while focused, and a read-only picker never gets
+ * focus, so an unpicked field used to display its label centered like a value
+ * — next to a picked sibling with a floating label, the two read as different
+ * widgets. Putting text in the value keeps every label floating and the
+ * "nothing picked yet" state visible.
+ */
+@Composable
+internal fun PickerField(
+    label: String,
+    value: String?,
+    placeholder: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = value ?: placeholder,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { Icon(Icons.Filled.ExpandMore, contentDescription = null) },
+            singleLine = true,
+            textStyle = if (value == null) {
+                LocalTextStyle.current.copy(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
+            } else {
+                LocalTextStyle.current
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onClick() },
+        )
+    }
+}
+
+/**
+ * Inline "create an account" dialog: a name field and Save, nothing else —
+ * used wherever a picker offers to create the thing it doesn't have yet
+ * (an expense category from the quick screen or the import review). Type is
+ * fixed by the caller, so the same dialog serves an expense category, an
+ * income source, or (in principle) any other type without knowing which.
+ */
+@Composable
+internal fun CreateAccountDialog(
+    title: String,
+    type: AccountType,
+    accounts: AccountsRepository,
+    onDismiss: () -> Unit,
+    onError: (String) -> Unit,
+    onCreated: suspend (id: String) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val nameFocus = remember { FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(Unit) { nameFocus.requestFocus() }
+
+    fun create() {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || busy) return
+        busy = true
+        scope.launch {
+            try {
+                val id = accounts.add(trimmed, type)
+                onCreated(id)
+                onDismiss()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                onError(e.message ?: e.toString())
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(Res.string.account_name_label)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { create() }),
+                modifier = Modifier.focusRequester(nameFocus),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { create() }, enabled = name.isNotBlank() && !busy) {
+                Text(stringResource(Res.string.action_add))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
+        },
+    )
 }
