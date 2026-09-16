@@ -4,6 +4,7 @@
  * user's Turso database, then keeps the Gmail copy flowing via forward().
  */
 import { createClient, type Client } from '@libsql/client';
+import { parseEmail } from './email';
 import { authenticate, handleAnalyze, handleDocument, json } from './import';
 
 interface Env {
@@ -19,7 +20,6 @@ interface Env {
   GEMINI_API_KEY: string;
 }
 
-const BODY_LIMIT = 10_000;
 
 let cachedToken: { dbName: string; jwt: string } | null = null;
 
@@ -45,6 +45,20 @@ async function platformClient(env: Env, dbName: string, hostname: string): Promi
     url: `libsql://${hostname}`,
     authToken: await platformToken(env, dbName),
   });
+}
+
+/**
+ * Adds `emails.body_html` when the user's database predates it. The app's own
+ * migration (Schema.kt, user_version 3) does the same, but ingestion cannot
+ * wait for a device to open the app first — the insert would fail and the mail
+ * would be dropped. `alter table` is not idempotent, hence the pragma check.
+ */
+async function ensureEmailColumns(db: Client): Promise<void> {
+  const info = await db.execute('pragma table_info(emails)');
+  const columns = new Set(info.rows.map((r) => String((r as unknown as Record<string, unknown>).name)));
+  if (!columns.has('body_html')) {
+    await db.execute('alter table emails add column body_html text');
+  }
 }
 
 function sha256Hex(input: string): Promise<string> {
@@ -103,31 +117,39 @@ export default {
 
       // recipient -> user's Turso DB (the auth worker owns the mapping)
       const user = await env.AUTH_DB.prepare(
-        `SELECT turso_db_name, turso_db_hostname FROM users WHERE app_slug = ? AND email = ?`
-      ).bind(env.APP_SLUG, to).first<{ turso_db_name: string; turso_db_hostname: string }>();
+        `SELECT id, turso_db_name, turso_db_hostname FROM users WHERE app_slug = ? AND email = ?`
+      ).bind(env.APP_SLUG, to).first<{ id: string; turso_db_name: string; turso_db_hostname: string }>();
       if (!user) {
         console.log(`no ${env.APP_SLUG} user for ${to}; skipping ingest`);
         return;
       }
 
-      // parse the raw email minimally: headers + first body segment
-      const raw = await new Response(message.raw).text();
-      const sep = raw.indexOf('\r\n\r\n');
-      const headers = sep >= 0 ? raw.slice(0, sep) : raw;
-      const bodyText = sep >= 0 ? raw.slice(sep + 4, sep + 4 + BODY_LIMIT) : null;
-      const date = /^date:\s*(.*)$/im.exec(headers)?.[1]?.trim() ?? new Date().toISOString();
+      // The stream is single-use and both the parser and the R2 archive need it.
+      const raw = await new Response(message.raw).arrayBuffer();
+      const parsed = await parseEmail(raw);
 
-      const id = await sha256Hex(`${message.from}|${to}|${date}|${message.headers.get('subject') ?? ''}`);
+      // The id stays keyed on the *raw* subject header: decoding it would
+      // change the hash for the same message and let a reprocessed mail in twice.
+      const rawSubject = message.headers.get('subject') ?? '';
+      const date = message.headers.get('date')?.trim() ?? new Date().toISOString();
+      const id = await sha256Hex(`${message.from}|${to}|${date}|${rawSubject}`);
       const receivedAt = Date.now();
 
       ctx.waitUntil((async () => {
+        // Archived so a future parser improvement can reprocess the message;
+        // nothing else reads this key today.
+        await env.DOCS.put(`${user.id}/email/${id}`, raw, {
+          httpMetadata: { contentType: 'message/rfc822' },
+        }).catch((e) => console.error(`email ${id} archive failed:`, e));
+
         const db = await platformClient(env, user.turso_db_name, user.turso_db_hostname);
         try {
+          await ensureEmailColumns(db);
           await db.execute({
-            sql: 'insert or ignore into emails(id, from_email, to_email, subject, body_text, received_at) values (?, ?, ?, ?, ?, ?)',
-            args: [id, message.from, to, message.headers.get('subject'), bodyText, receivedAt],
+            sql: 'insert or ignore into emails(id, from_email, to_email, subject, body_text, body_html, received_at) values (?, ?, ?, ?, ?, ?, ?)',
+            args: [id, message.from, to, parsed.subject, parsed.text, parsed.html, receivedAt],
           });
-          console.log(`email ${id} inserted for ${user.turso_db_name}`);
+          console.log(`email ${id} inserted for ${user.turso_db_name} (html: ${parsed.html !== null})`);
         } finally {
           db.close();
         }

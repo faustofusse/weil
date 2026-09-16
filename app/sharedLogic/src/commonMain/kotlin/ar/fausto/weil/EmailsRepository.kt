@@ -25,6 +25,8 @@ class EmailDetail(
     val toEmail: String,
     val subject: String?,
     val bodyText: String?,
+    /** Sanitized by the worker; null on rows ingested before HTML was captured. */
+    val bodyHtml: String?,
     val receivedAt: Long,
 )
 
@@ -73,17 +75,18 @@ class EmailsRepository(private val db: DatabaseProvider) {
     /** Fetches one email's full detail (subject/body/recipient included) for the detail screen. */
     suspend fun get(id: String): EmailDetail? = db.useForRead { d ->
         d.query(
-            "select id, from_email, to_email, subject, body_text, received_at from emails where id = :id",
+            "select id, from_email, to_email, subject, body_text, body_html, received_at from emails where id = :id",
             mapOf(":id" to id),
         ) { rows ->
-            rows.firstOrNull()?.takeIf { it.size >= 6 }?.let {
+            rows.firstOrNull()?.takeIf { it.size >= 7 }?.let {
                 EmailDetail(
                     id = it[0]?.toString() ?: "",
                     fromEmail = it[1]?.toString() ?: "",
                     toEmail = it[2]?.toString() ?: "",
                     subject = it[3]?.toString(),
                     bodyText = it[4]?.toString(),
-                    receivedAt = (it[5] as? Number)?.toLong() ?: 0L,
+                    bodyHtml = it[5]?.toString(),
+                    receivedAt = (it[6] as? Number)?.toLong() ?: 0L,
                 )
             }
         }

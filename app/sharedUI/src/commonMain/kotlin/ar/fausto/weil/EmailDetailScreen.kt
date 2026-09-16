@@ -88,12 +88,14 @@ fun EmailDetailScreen(
             }
             else -> {
                 val current = email!!
+                // The header stays put and the body scrolls on its own: the
+                // HTML view brings its own scrolling and must never sit inside
+                // a verticalScroll parent (unbounded height breaks measuring).
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
-                        .padding(16.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .padding(16.dp),
                 ) {
                     Surface(
                         shape = RoundedCornerShape(GroupRadius),
@@ -128,13 +130,24 @@ fun EmailDetailScreen(
                     Surface(
                         shape = RoundedCornerShape(GroupRadius),
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
                     ) {
-                        Text(
-                            current.bodyText.orEmpty(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(16.dp),
-                        )
+                        val bodyHtml = current.bodyHtml
+                        if (bodyHtml.isNullOrBlank()) {
+                            // Pre-HTML rows, and mails that only carried text.
+                            Text(
+                                current.bodyText.orEmpty(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier
+                                    .padding(16.dp)
+                                    .verticalScroll(rememberScrollState()),
+                            )
+                        } else {
+                            HtmlView(
+                                html = rememberEmailDocument(bodyHtml),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 }
             }

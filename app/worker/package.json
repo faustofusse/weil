@@ -12,6 +12,7 @@
     "wrangler": "^4.42.0"
   },
   "dependencies": {
-    "@libsql/client": "^0.15.15"
+    "@libsql/client": "^0.15.15",
+    "postal-mime": "^3.0.0"
   }
 }

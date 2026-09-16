@@ -48,6 +48,7 @@ const val SCHEMA_SQL =
     "to_email text not null," +
     "subject text," +
     "body_text text," +
+    "body_html text," +
     "received_at integer not null);" +
     "create index if not exists idx_emails_received on emails(received_at desc);" +
     "update emails set received_at = received_at * 1000 where received_at < 1000000000000;"
@@ -59,7 +60,7 @@ const val SCHEMA_SQL =
  * (the Rust parser round trip for ~13 statements is real cost on every cold
  * start otherwise).
  */
-private const val SCHEMA_VERSION = 2L
+private const val SCHEMA_VERSION = 3L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -100,6 +101,15 @@ fun Database.migrateSchema() {
         // Provenance of AI-imported transactions: the R2 content hash of the
         // analyzed document (see the worker's /import/analyze).
         execute("alter table ledger_transactions add column source_document_id text")
+    }
+    val emailColumns = query("pragma table_info(emails)", null) { rows ->
+        rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
+    }
+    if ("body_html" !in emailColumns) {
+        // Sanitized HTML body (see the worker's email ingest). Null for rows
+        // ingested before the MIME parser landed — those cannot be backfilled
+        // from the device, only by reprocessing the archived raw message.
+        execute("alter table emails add column body_html text")
     }
     seedDefaultAccounts()
 }
