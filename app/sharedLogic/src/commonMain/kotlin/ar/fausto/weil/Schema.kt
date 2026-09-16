@@ -112,6 +112,7 @@ fun Database.migrateSchema() {
         execute("alter table emails add column body_html text")
     }
     seedDefaultAccounts()
+    adoptOrphanSeedPostings()
 }
 
 /** Fixed ids for the seeded default accounts; synced PKs dedupe fresh devices. */
@@ -145,4 +146,29 @@ private fun Database.seedDefaultAccounts() {
             "('$EXTERNAL_EXPENSE_ID', '$EXTERNAL_ACCOUNT_NAME', null, 'expense')," +
             "('$EXTERNAL_INCOME_ID', '$EXTERNAL_ACCOUNT_NAME', null, 'income')",
     )
+}
+
+/**
+ * Recreates a seeded "Otros" account when postings still point at it but the
+ * row is gone. The import review used to assign the fixed seed ids without
+ * checking they existed, so any ledger that was never seeded (the seed only
+ * runs on an empty accounts table) ended up with postings referencing a
+ * missing account — the journal had nothing to show but the raw id.
+ *
+ * Only fires when such a posting exists, so it never resurrects an account
+ * the user deleted cleanly, and it's deterministic: every device converges on
+ * the same row.
+ */
+private fun Database.adoptOrphanSeedPostings() {
+    listOf(
+        EXTERNAL_EXPENSE_ID to "expense",
+        EXTERNAL_INCOME_ID to "income",
+    ).forEach { (id, type) ->
+        execute(
+            "insert or ignore into accounts(id, name, parent_id, type) " +
+                "select '$id', '$EXTERNAL_ACCOUNT_NAME', null, '$type' " +
+                "where exists(select 1 from postings where account_id = '$id') " +
+                "and not exists(select 1 from accounts where id = '$id')",
+        )
+    }
 }
