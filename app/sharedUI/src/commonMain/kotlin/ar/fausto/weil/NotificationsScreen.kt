@@ -107,7 +107,7 @@ fun NotificationsScreen(
         },
     ) { innerPadding ->
         PullToRefreshBox(
-            isRefreshing = state.isSyncing,
+            isRefreshing = state.pullRefreshing,
             onRefresh = { state.sync() },
             modifier = Modifier
                 .fillMaxSize()

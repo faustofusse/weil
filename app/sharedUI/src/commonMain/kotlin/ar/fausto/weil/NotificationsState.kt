@@ -27,7 +27,12 @@ class NotificationsState(private val notifications: NotificationsRepository) {
         private set
     var isLoadingMore by mutableStateOf(false)
         private set
+    /** Any sync in flight, background reconcile included (disables the refresh action). */
     var isSyncing by mutableStateOf(false)
+        private set
+
+    /** Only a *user-initiated* refresh: drives the pull-to-refresh indicator. */
+    var pullRefreshing by mutableStateOf(false)
         private set
     var syncError by mutableStateOf<String?>(null)
         private set
@@ -107,6 +112,7 @@ class NotificationsState(private val notifications: NotificationsRepository) {
     fun sync() {
         scope.launch {
             isSyncing = true
+            pullRefreshing = true
             syncError = null
             try {
                 notifications.syncNow()
@@ -116,6 +122,7 @@ class NotificationsState(private val notifications: NotificationsRepository) {
                 syncError = e.message ?: e.toString()
             } finally {
                 isSyncing = false
+                pullRefreshing = false
             }
         }
     }

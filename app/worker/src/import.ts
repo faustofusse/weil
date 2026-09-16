@@ -117,7 +117,14 @@ async function loadAccounts(
   return out;
 }
 
-/** Gemini structured-output schema: amounts as decimal strings, parsed here. */
+/**
+ * Gemini structured-output schema. One entry is one payment: a single
+ * movement of the user's own money, split across one or more categories.
+ * A bank/card statement row is a payment with one split; a receipt with
+ * distinct line items is a payment with one split per item. There's no
+ * separate "receipt mode" — the split list is the only shape, and its length
+ * happens to be 1 most of the time. Amounts are decimal strings, parsed here.
+ */
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -129,18 +136,29 @@ const RESPONSE_SCHEMA = {
           date: { type: 'STRING', description: 'ISO date YYYY-MM-DD of the transaction' },
           payee: { type: 'STRING', description: 'Merchant or counterparty name, cleaned up' },
           note: { type: 'STRING', nullable: true, description: 'Extra detail worth keeping, else null' },
-          amount: { type: 'STRING', description: "Positive decimal amount, '.' as decimal separator, e.g. '1234.56'" },
           commodity: { type: 'STRING', description: "Currency code. 'ARS' unless the document explicitly shows another currency (e.g. USD)" },
           direction: { type: 'STRING', enum: ['expense', 'income'], description: 'expense = money leaves the user, income = money comes in' },
-          category: { type: 'STRING', nullable: true, description: 'Best-matching category path from the provided list, verbatim, or null' },
           account: {
             type: 'STRING',
             nullable: true,
             description:
               "The user's own account the money moved through (payment method, wallet, bank or card), verbatim from the provided list, or null when the document does not say",
           },
+          splits: {
+            type: 'ARRAY',
+            description:
+              "One entry per category this payment's total is split across. Almost always one entry; use more only when the document itself breaks the payment into distinct, separately categorizable items (e.g. a supermarket receipt's line items). The split amounts must add up to the full payment.",
+            items: {
+              type: 'OBJECT',
+              properties: {
+                amount: { type: 'STRING', description: "Positive decimal amount for this split, '.' as decimal separator, e.g. '1234.56'" },
+                category: { type: 'STRING', nullable: true, description: 'Best-matching category path from the provided list, verbatim, or null' },
+              },
+              required: ['amount'],
+            },
+          },
         },
-        required: ['date', 'payee', 'amount', 'commodity', 'direction'],
+        required: ['date', 'payee', 'commodity', 'direction', 'splits'],
       },
     },
   },
@@ -159,11 +177,18 @@ function prompt(accounts: PostableAccount[]): string {
     'Amounts are always positive decimals. Assume currency ARS unless the document explicitly states another currency for that amount.',
     'Dates: use the document\'s dates in YYYY-MM-DD. If the year is missing, infer it from context (statement period or today).',
     'Payee: a short, human-readable merchant/counterparty name (strip codes, reference numbers and legal suffixes).',
+    'Each transaction is one payment: one movement of the user\'s own money, made up of one or more "splits".',
+    'Use exactly one split for the common case — a single charge, a statement row, a simple receipt with one purpose.',
+    'Use multiple splits only when the document itself itemizes the payment into parts that belong in different',
+    'categories — a supermarket receipt listing groceries and a pharmacy item, an invoice separating a fee from a tax.',
+    'Do not split a payment just because it lists many similar items (e.g. ten grocery items all under "Comida"); one',
+    'split covering the whole amount is correct there. The split amounts must sum exactly to the payment\'s total.',
+    'For bank/card statements, each row is its own transaction with a single split — never merge multiple rows into one.',
     expense.length > 0
-      ? `For "expense" entries, pick the best matching category from this list (verbatim path) or null: ${expense.join(' | ')}`
+      ? `For "expense" splits, pick the best matching category from this list (verbatim path) or null: ${expense.join(' | ')}`
       : '',
     income.length > 0
-      ? `For "income" entries, pick the best matching category from this list (verbatim path) or null: ${income.join(' | ')}`
+      ? `For "income" splits, pick the best matching category from this list (verbatim path) or null: ${income.join(' | ')}`
       : '',
     own.length > 0
       ? [
@@ -180,15 +205,19 @@ function prompt(accounts: PostableAccount[]): string {
     .join('\n');
 }
 
+interface GeminiSplit {
+  amount: string;
+  category?: string | null;
+}
+
 interface GeminiCandidateTx {
   date: string;
   payee: string;
   note?: string | null;
-  amount: string;
   commodity: string;
   direction: 'expense' | 'income';
-  category?: string | null;
   account?: string | null;
+  splits: GeminiSplit[];
 }
 
 /**
@@ -324,11 +353,16 @@ export async function handleAnalyze(
 
   const byPath = new Map(accounts.map((c) => [c.path.toLowerCase(), c]));
   const transactions = raw.flatMap((t) => {
-    const amountMinor = toMinor(t.amount);
     const date = toEpochMs(t.date);
-    if (amountMinor == null || amountMinor === 0 || date == null || !t.payee?.trim()) return [];
-    const match = t.category ? byPath.get(t.category.trim().toLowerCase()) : undefined;
-    const category = match && match.type === t.direction ? match : undefined;
+    if (date == null || !t.payee?.trim()) return [];
+    const splits = (t.splits ?? []).flatMap((s) => {
+      const amountMinor = toMinor(s.amount);
+      if (amountMinor == null || amountMinor === 0) return [];
+      const match = s.category ? byPath.get(s.category.trim().toLowerCase()) : undefined;
+      const category = match && match.type === t.direction ? match : undefined;
+      return [{ amountMinor, categoryAccountId: category?.id ?? null, categoryPath: category?.path ?? null }];
+    });
+    if (splits.length === 0) return [];
     // The model may hand back a category path here; only the user's own
     // asset/liability accounts are valid payment methods.
     const ownMatch = t.account ? byPath.get(t.account.trim().toLowerCase()) : undefined;
@@ -338,13 +372,11 @@ export async function handleAnalyze(
         date,
         payee: t.payee.trim(),
         note: t.note?.trim() || null,
-        amountMinor,
         commodity: (t.commodity || 'ARS').trim().toUpperCase(),
         direction: t.direction,
-        categoryAccountId: category?.id ?? null,
-        categoryPath: category?.path ?? null,
         accountId: own?.id ?? null,
         accountPath: own?.path ?? null,
+        splits,
       },
     ];
   });

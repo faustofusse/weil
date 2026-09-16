@@ -72,16 +72,33 @@ import weil.app.sharedui.generated.resources.import_empty
 import weil.app.sharedui.generated.resources.import_failed
 import weil.app.sharedui.generated.resources.import_found
 import weil.app.sharedui.generated.resources.import_found_one
+import weil.app.sharedui.generated.resources.import_items
 import weil.app.sharedui.generated.resources.import_payee_label
+import weil.app.sharedui.generated.resources.picker_create
 import weil.app.sharedui.generated.resources.import_retry
 import weil.app.sharedui.generated.resources.import_source_pdf
 import weil.app.sharedui.generated.resources.import_source_image
+import weil.app.sharedui.generated.resources.import_split_add
+import weil.app.sharedui.generated.resources.import_split_merge
+import weil.app.sharedui.generated.resources.import_split_remove
 import weil.app.sharedui.generated.resources.import_title
 
 /**
  * Editable copy of an [ImportCandidate]: the user reviews, tweaks and either
  * keeps or drops each row before anything reaches the ledger.
  */
+/**
+ * One split line of a candidate, editable independently: its own amount and
+ * category. [commodity] rides along only to parse [amountText] — every split
+ * of one candidate shares the same currency.
+ */
+private class SplitDraft(split: ImportSplit, val commodity: String) {
+    var amountText by mutableStateOf(formatMinorUnits(split.amountMinor))
+    var categoryId by mutableStateOf(split.categoryAccountId)
+    val amount: Money? get() = Money.parse(amountText, commodity)
+    val valid: Boolean get() = (amount?.minorUnits ?: 0L) != 0L && categoryId != null
+}
+
 private class CandidateDraft(candidate: ImportCandidate) {
     val date = candidate.date
     val direction = candidate.direction
@@ -89,8 +106,6 @@ private class CandidateDraft(candidate: ImportCandidate) {
     var include by mutableStateOf(true)
     var expanded by mutableStateOf(false)
     var payee by mutableStateOf(candidate.payee)
-    var amountText by mutableStateOf(formatMinorUnits(candidate.amountMinor))
-    var categoryId by mutableStateOf(candidate.categoryAccountId)
 
     /**
      * Own account for this row when the document named one ("Forma de Pago:
@@ -100,8 +115,18 @@ private class CandidateDraft(candidate: ImportCandidate) {
     var accountId by mutableStateOf(candidate.accountId)
     val note = candidate.note
 
-    val amount: Money? get() = Money.parse(amountText, commodity)
-    val valid: Boolean get() = payee.isNotBlank() && (amount?.minorUnits ?: 0L) != 0L && categoryId != null
+    /**
+     * Almost always one line; more only when the document itself itemized
+     * the payment (a receipt's line items). A mutable list so the user can
+     * add, remove or merge lines by hand.
+     */
+    val splits = candidate.splits.ifEmpty { listOf(ImportSplit(0L, null, null)) }
+        .map { SplitDraft(it, commodity) }
+        .toMutableStateList()
+
+    val totalMinor: Long get() = splits.sumOf { it.amount?.minorUnits ?: 0L }
+    val valid: Boolean get() =
+        payee.isNotBlank() && splits.isNotEmpty() && splits.all { it.valid } && totalMinor != 0L
 
     fun assetOr(fallback: String?): String? = accountId ?: fallback
 }
@@ -129,18 +154,23 @@ fun ImportReviewScreen(
     var busy by remember { mutableStateOf(false) }
     var attempt by remember { mutableStateOf(0) }
     var picking by remember { mutableStateOf<PickerTarget?>(null) }
+    var creatingCategory by remember { mutableStateOf<PickerTarget.Category?>(null) }
     val scope = rememberCoroutineScope()
     val createdOne = stringResource(Res.string.import_created_one)
     val createdMany = stringResource(Res.string.import_created)
     val undoLabel = stringResource(Res.string.action_undo)
+
+    suspend fun reloadTree() {
+        tree = accounts.tree()
+        paths = tree.flatMap { it.selfAndDescendants }.associate { it.account.id to it.path }
+    }
 
     LaunchedEffect(document, attempt) {
         error = null
         analysis = null
         drafts = null
         try {
-            tree = accounts.tree()
-            paths = tree.flatMap { it.selfAndDescendants }.associate { it.account.id to it.path }
+            reloadTree()
             val assets = tree.filter { it.account.type == AccountType.Asset }
             val result = imports.analyze(document)
             analysis = result
@@ -156,13 +186,17 @@ fun ImportReviewScreen(
             }
             drafts = result.candidates.map { candidate ->
                 CandidateDraft(candidate).also { draft ->
-                    if (draft.categoryId == null) {
-                        // Fall back to the seeded External accounts, exactly
-                        // like the quick-entry screen does.
-                        draft.categoryId = when (draft.direction) {
-                            ImportDirection.Expense -> EXTERNAL_EXPENSE_ID
-                            ImportDirection.Income -> EXTERNAL_INCOME_ID
-                        }
+                    // Fall back to the seeded "Otros" account — but only if it
+                    // actually exists. Assigning the fixed id blind wrote
+                    // postings pointing at a missing account on any ledger
+                    // that never got seeded (the seed only runs on an empty
+                    // accounts table), and the journal then had nothing to
+                    // render but the raw id. Null leaves the row invalid, so
+                    // the user picks a category instead of silently creating
+                    // a dangling posting.
+                    val defaultCategory = defaultCategoryId(tree, draft.direction)
+                    draft.splits.forEach { split ->
+                        if (split.categoryId == null) split.categoryId = defaultCategory
                     }
                     // A single candidate has nothing to scan through — open it
                     // straight away instead of making the user tap to see it.
@@ -187,25 +221,27 @@ fun ImportReviewScreen(
         scope.launch {
             try {
                 val entries = current.filter { it.include && it.valid }.mapNotNull { draft ->
-                    val amount = draft.amount!!.minorUnits
-                    val category = draft.categoryId!!
                     val asset = draft.assetOr(fallbackAsset) ?: return@mapNotNull null
-                    // Expense: asset −X / category +X. Income: category −X / asset +X.
-                    val postings = when (draft.direction) {
-                        ImportDirection.Expense -> listOf(
-                            DraftPosting(asset, formatMinorUnits(-amount), draft.commodity),
-                            DraftPosting(category, formatMinorUnits(amount), draft.commodity),
-                        )
-                        ImportDirection.Income -> listOf(
-                            DraftPosting(category, formatMinorUnits(-amount), draft.commodity),
-                            DraftPosting(asset, formatMinorUnits(amount), draft.commodity),
-                        )
+                    // The asset leg is the payment's full total; each split is
+                    // its own category leg. Expense: asset −total, category
+                    // +share. Income: category −share, asset +total.
+                    val assetLeg = when (draft.direction) {
+                        ImportDirection.Expense -> DraftPosting(asset, formatMinorUnits(-draft.totalMinor), draft.commodity)
+                        ImportDirection.Income -> DraftPosting(asset, formatMinorUnits(draft.totalMinor), draft.commodity)
+                    }
+                    val splitLegs = draft.splits.map { split ->
+                        val minor = split.amount!!.minorUnits
+                        val category = split.categoryId!!
+                        when (draft.direction) {
+                            ImportDirection.Expense -> DraftPosting(category, formatMinorUnits(minor), draft.commodity)
+                            ImportDirection.Income -> DraftPosting(category, formatMinorUnits(-minor), draft.commodity)
+                        }
                     }
                     NewTransaction(
                         date = draft.date,
                         payee = draft.payee.trim(),
                         note = draft.note,
-                        drafts = postings,
+                        drafts = listOf(assetLeg) + splitLegs,
                         sourceDocumentId = docId,
                     )
                 }
@@ -320,10 +356,9 @@ fun ImportReviewScreen(
                     items(rows) { draft ->
                         CandidateCard(
                             draft = draft,
-                            categoryPath = draft.categoryId?.let { paths[it] },
-                            accountPath = draft.accountId?.let { paths[it] },
+                            paths = paths,
                             fallbackAccountPath = assetId?.let { paths[it] },
-                            onPickCategory = { picking = PickerTarget.Category(draft) },
+                            onPickCategory = { index -> picking = PickerTarget.Category(draft, index) },
                             onPickAccount = { picking = PickerTarget.RowAsset(draft) },
                             onToggleExpanded = { draft.expanded = !draft.expanded },
                         )
@@ -372,38 +407,87 @@ fun ImportReviewScreen(
             AccountPickerSheet(
                 tree = tree.filter { it.account.type == type },
                 title = stringResource(Res.string.import_category_pick),
+                createLabel = stringResource(Res.string.picker_create),
+                onCreate = {
+                    picking = null
+                    creatingCategory = target
+                },
                 onDismiss = { picking = null },
                 onPick = {
-                    target.draft.categoryId = it.account.id
+                    target.draft.splits.getOrNull(target.splitIndex)?.categoryId = it.account.id
                     picking = null
                 },
             )
         }
     }
+
+    creatingCategory?.let { target ->
+        val type = when (target.draft.direction) {
+            ImportDirection.Expense -> AccountType.Expense
+            ImportDirection.Income -> AccountType.Income
+        }
+        CreateAccountDialog(
+            title = stringResource(Res.string.picker_create),
+            type = type,
+            accounts = accounts,
+            onDismiss = { creatingCategory = null },
+            onError = { error = it },
+            onCreated = { id ->
+                target.draft.splits.getOrNull(target.splitIndex)?.categoryId = id
+                reloadTree()
+            },
+        )
+    }
+}
+
+/**
+ * The "Otros" account for [direction], resolved against the live tree: the
+ * fixed seeded id when that row exists, else any same-type account carrying
+ * the seeded name (a ledger seeded before the rename, or one where the user
+ * made their own), else null.
+ */
+private fun defaultCategoryId(tree: List<AccountNode>, direction: ImportDirection): String? {
+    val (seedId, type) = when (direction) {
+        ImportDirection.Expense -> EXTERNAL_EXPENSE_ID to AccountType.Expense
+        ImportDirection.Income -> EXTERNAL_INCOME_ID to AccountType.Income
+    }
+    val nodes = tree.flatMap { it.selfAndDescendants }
+    return nodes.firstOrNull { it.account.id == seedId }?.account?.id
+        ?: nodes.firstOrNull {
+            it.account.type == type && it.account.name.equals(EXTERNAL_ACCOUNT_NAME, ignoreCase = true)
+        }?.account?.id
 }
 
 private sealed interface PickerTarget {
     /** The screen-wide fallback account in the bottom bar. */
     data object Asset : PickerTarget
     data class RowAsset(val draft: CandidateDraft) : PickerTarget
-    data class Category(val draft: CandidateDraft) : PickerTarget
+    data class Category(val draft: CandidateDraft, val splitIndex: Int) : PickerTarget
 }
 
 @Composable
 private fun CandidateCard(
     draft: CandidateDraft,
-    categoryPath: String?,
-    accountPath: String?,
+    paths: Map<String, String>,
     fallbackAccountPath: String?,
-    onPickCategory: () -> Unit,
+    onPickCategory: (splitIndex: Int) -> Unit,
     onPickAccount: () -> Unit,
     onToggleExpanded: () -> Unit,
 ) {
+    val accountPath = draft.accountId?.let { paths[it] }
+    // One split names its own category; several collapse to a count —
+    // "3 ítems" is what identifies the row when there's no single category
+    // to show, the same way a folded account shows a subaccount count.
+    val categoryOrCount = if (draft.splits.size == 1) {
+        draft.splits.first().categoryId?.let { paths[it] }
+    } else {
+        stringResource(Res.string.import_items, draft.splits.size)
+    }
     val dim = if (draft.include) 1f else 0.4f
     val signed = when (draft.direction) {
         ImportDirection.Expense -> "−"
         ImportDirection.Income -> "+"
-    } + draft.amountText
+    } + formatMinorUnits(draft.totalMinor)
     val amountColor = when {
         !draft.include -> MaterialTheme.colorScheme.onSurfaceVariant
         draft.direction == ImportDirection.Income -> MaterialTheme.colorScheme.primary
@@ -430,7 +514,7 @@ private fun CandidateCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        listOfNotNull(dayLabel(dayGroup(draft.date)), accountPath, categoryPath)
+                        listOfNotNull(dayLabel(dayGroup(draft.date)), accountPath, categoryOrCount)
                             .joinToString(" · "),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = dim),
@@ -472,30 +556,88 @@ private fun CandidateCard(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = draft.amountText,
-                        onValueChange = { draft.amountText = it },
-                        label = { Text(stringResource(Res.string.import_amount_label)) },
-                        singleLine = true,
-                        isError = draft.amount == null,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    AccountField(
-                        label = stringResource(Res.string.import_category_label),
-                        value = categoryPath,
-                        placeholder = stringResource(Res.string.import_category_pick),
-                        onClick = onPickCategory,
-                    )
-                    Spacer(Modifier.height(8.dp))
                     AccountField(
                         label = stringResource(Res.string.import_account_label),
                         value = accountPath ?: fallbackAccountPath,
                         placeholder = stringResource(Res.string.import_account_pick),
                         onClick = onPickAccount,
                     )
+                    Spacer(Modifier.height(12.dp))
+                    draft.splits.forEachIndexed { index, split ->
+                        if (index > 0) Spacer(Modifier.height(8.dp))
+                        SplitRow(
+                            split = split,
+                            categoryPath = split.categoryId?.let { paths[it] },
+                            removable = draft.splits.size > 1,
+                            onPickCategory = { onPickCategory(index) },
+                            onRemove = { draft.splits.removeAt(index) },
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { draft.splits.add(SplitDraft(ImportSplit(0L, null, null), draft.commodity)) }) {
+                            Text(stringResource(Res.string.import_split_add))
+                        }
+                        // Undoes an accidental split, or one the user decides
+                        // isn't worth categorizing separately after all.
+                        if (draft.splits.size > 1) {
+                            TextButton(
+                                onClick = {
+                                    val merged = draft.totalMinor
+                                    val category = draft.splits.first().categoryId
+                                    draft.splits.clear()
+                                    draft.splits.add(
+                                        SplitDraft(
+                                            ImportSplit(merged, category, null),
+                                            draft.commodity,
+                                        ),
+                                    )
+                                },
+                            ) {
+                                Text(stringResource(Res.string.import_split_merge))
+                            }
+                        }
+                    }
                 }
+            }
+        }
+    }
+}
+
+/** One editable split line: its own amount and category, in a row. */
+@Composable
+private fun SplitRow(
+    split: SplitDraft,
+    categoryPath: String?,
+    removable: Boolean,
+    onPickCategory: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = split.amountText,
+            onValueChange = { split.amountText = it },
+            label = { Text(stringResource(Res.string.import_amount_label)) },
+            singleLine = true,
+            isError = split.amount == null,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.weight(0.4f),
+        )
+        Spacer(Modifier.width(8.dp))
+        AccountField(
+            label = stringResource(Res.string.import_category_label),
+            value = categoryPath,
+            placeholder = stringResource(Res.string.import_category_pick),
+            onClick = onPickCategory,
+            modifier = Modifier.weight(0.6f),
+        )
+        if (removable) {
+            IconButton(onClick = onRemove) {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = stringResource(Res.string.import_split_remove),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -508,12 +650,13 @@ private fun AccountField(
     value: String?,
     placeholder: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             if (label != null) {

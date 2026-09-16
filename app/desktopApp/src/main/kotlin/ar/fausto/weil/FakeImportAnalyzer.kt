@@ -6,7 +6,8 @@ import kotlinx.coroutines.delay
  * Seeded stand-in for the worker-backed [ImportRepository], used by the
  * headless screenshot harness: the review screen can be rendered without a
  * session, a network call or a Gemini bill. The delay keeps the "analyzing"
- * state on screen for a beat, like the real round trip.
+ * state on screen for a beat, like the real round trip. Carrefour carries
+ * multiple splits so the harness exercises the itemized-receipt row too.
  */
 class FakeImportAnalyzer : DocumentAnalyzer {
     override suspend fun analyze(document: PickedDocument): ImportAnalysis {
@@ -20,41 +21,43 @@ class FakeImportAnalyzer : DocumentAnalyzer {
                     date = now - day,
                     payee = "Carrefour",
                     note = "Compra semanal",
-                    amountMinor = 4_532_50,
                     commodity = "ARS",
                     direction = ImportDirection.Expense,
-                    categoryAccountId = null,
-                    categoryPath = null,
+                    splits = listOf(
+                        ImportSplit(amountMinor = 3_120_50, categoryAccountId = null, categoryPath = null),
+                        ImportSplit(amountMinor = 980_00, categoryAccountId = null, categoryPath = null),
+                        ImportSplit(amountMinor = 432_00, categoryAccountId = null, categoryPath = null),
+                    ),
                 ),
                 ImportCandidate(
                     date = now - 2 * day,
                     payee = "Netflix",
                     note = null,
-                    amountMinor = 12_99,
                     commodity = "USD",
                     direction = ImportDirection.Expense,
-                    categoryAccountId = null,
-                    categoryPath = null,
+                    splits = listOf(
+                        ImportSplit(amountMinor = 12_99, categoryAccountId = null, categoryPath = null),
+                    ),
                 ),
                 ImportCandidate(
                     date = now - 3 * day,
                     payee = "Sueldo",
                     note = null,
-                    amountMinor = 1_250_000_00,
                     commodity = "ARS",
                     direction = ImportDirection.Income,
-                    categoryAccountId = null,
-                    categoryPath = null,
+                    splits = listOf(
+                        ImportSplit(amountMinor = 1_250_000_00, categoryAccountId = null, categoryPath = null),
+                    ),
                 ),
                 ImportCandidate(
                     date = now - 4 * day,
                     payee = "YPF",
                     note = "Nafta",
-                    amountMinor = 38_400_00,
                     commodity = "ARS",
                     direction = ImportDirection.Expense,
-                    categoryAccountId = null,
-                    categoryPath = null,
+                    splits = listOf(
+                        ImportSplit(amountMinor = 38_400_00, categoryAccountId = null, categoryPath = null),
+                    ),
                 ),
             ),
         )

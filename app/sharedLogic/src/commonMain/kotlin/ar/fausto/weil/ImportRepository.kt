@@ -66,17 +66,30 @@ enum class ImportDirection {
     }
 }
 
-/** One transaction the model found in the document, before user review. */
+/**
+ * One category slice of a candidate's total — almost always the whole payment
+ * (a single split), occasionally one of several when the source document
+ * itself breaks the payment into separately categorizable parts (a
+ * supermarket receipt's line items, an invoice's fee-plus-tax).
+ */
+data class ImportSplit(
+    val amountMinor: Long,
+    /** Suggested expense/income account, when the model matched an existing one. */
+    val categoryAccountId: String?,
+    val categoryPath: String?,
+)
+
+/**
+ * One payment the model found in the document, before user review: a single
+ * movement of the user's own money (the [total]), sliced into one or more
+ * [splits] by category.
+ */
 data class ImportCandidate(
     val date: Long,
     val payee: String,
     val note: String?,
-    val amountMinor: Long,
     val commodity: String,
     val direction: ImportDirection,
-    /** Suggested expense/income account, when the model matched an existing one. */
-    val categoryAccountId: String?,
-    val categoryPath: String?,
     /**
      * The user's own asset/liability account the money moved through, when the
      * document names a payment method the model could match (a Mercado Pago
@@ -84,7 +97,10 @@ data class ImportCandidate(
      */
     val accountId: String? = null,
     val accountPath: String? = null,
-)
+    val splits: List<ImportSplit>,
+) {
+    val total: Long get() = splits.sumOf { it.amountMinor }
+}
 
 /** [docId] is the R2 content hash, stored as the transactions' provenance. */
 data class ImportAnalysis(
@@ -99,17 +115,22 @@ private data class AnalyzeResponse(
 )
 
 @Serializable
+private data class WireSplit(
+    val amountMinor: Long,
+    @SerialName("categoryAccountId") val categoryAccountId: String? = null,
+    @SerialName("categoryPath") val categoryPath: String? = null,
+)
+
+@Serializable
 private data class WireCandidate(
     val date: Long,
     val payee: String,
     val note: String? = null,
-    val amountMinor: Long,
     val commodity: String,
     val direction: String,
-    @SerialName("categoryAccountId") val categoryAccountId: String? = null,
-    @SerialName("categoryPath") val categoryPath: String? = null,
     @SerialName("accountId") val accountId: String? = null,
     @SerialName("accountPath") val accountPath: String? = null,
+    val splits: List<WireSplit> = emptyList(),
 )
 
 /**
@@ -173,13 +194,17 @@ class ImportRepository(
                     date = it.date,
                     payee = it.payee,
                     note = it.note,
-                    amountMinor = it.amountMinor,
                     commodity = it.commodity,
                     direction = ImportDirection.fromWire(it.direction),
-                    categoryAccountId = it.categoryAccountId,
-                    categoryPath = it.categoryPath,
                     accountId = it.accountId,
                     accountPath = it.accountPath,
+                    splits = it.splits.map { s ->
+                        ImportSplit(
+                            amountMinor = s.amountMinor,
+                            categoryAccountId = s.categoryAccountId,
+                            categoryPath = s.categoryPath,
+                        )
+                    },
                 )
             },
         )
