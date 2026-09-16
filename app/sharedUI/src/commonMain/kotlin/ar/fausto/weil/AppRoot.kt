@@ -112,6 +112,17 @@ fun RootScreen(graph: AppGraph) {
                     val ledgerState = remember(loggedIn) {
                         LedgerState(graph.accounts, graph.ledger)
                     }
+                    // Hoisted above the nav host, same reasoning as [ledgerState]: the
+                    // journal keeps its loaded page across a visit to a transaction and
+                    // back, instead of re-fetching every time the screen re-enters
+                    // composition.
+                    val journalState = remember(loggedIn) {
+                        JournalState(graph.ledger, graph.accounts)
+                    }
+                    // Home's already-loaded recent transactions paint the journal
+                    // instantly on first visit — no skeleton for rows the app showed
+                    // a moment ago on Home.
+                    LaunchedEffect(ledgerState.recent) { journalState.seed(ledgerState.recent) }
                     val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
                     val snackbarHostState = remember(loggedIn) { SnackbarHostState() }
                     val backStack = remember(loggedIn) {
@@ -172,6 +183,7 @@ fun RootScreen(graph: AppGraph) {
                                         onNavigateToJournal = { navigate(JournalRoute) },
                                         onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
+                                        onNavigateToAddAccount = { navigate(AccountAddRoute(AccountType.Asset)) },
                                     )
                                 }
                                 entry<AccountsTreeRoute> {
@@ -179,6 +191,15 @@ fun RootScreen(graph: AppGraph) {
                                         ledgerState = ledgerState,
                                         onNavigateBack = { pop() },
                                         onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
+                                        onNavigateToAdd = { navigate(AccountAddRoute()) },
+                                    )
+                                }
+                                entry<AccountAddRoute> { route ->
+                                    AccountAddScreen(
+                                        state = ledgerState,
+                                        fixedType = route.fixedType,
+                                        onSaved = { pop() },
+                                        onNavigateBack = { pop() },
                                     )
                                 }
                                 entry<TransactionQuickRoute> { route ->
@@ -192,8 +213,7 @@ fun RootScreen(graph: AppGraph) {
                                 }
                                 entry<JournalRoute> {
                                     JournalScreen(
-                                        ledger = graph.ledger,
-                                        accounts = graph.accounts,
+                                        state = journalState,
                                         onNavigateBack = { pop() },
                                         onNavigateToNew = { navigate(TransactionNewRoute()) },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },

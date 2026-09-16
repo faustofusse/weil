@@ -32,11 +32,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,7 +45,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
@@ -74,82 +68,24 @@ private const val JOURNAL_SKELETON_COUNT = 16
 /** Journal of transactions, newest first, grouped under day headers. */
 @Composable
 fun JournalScreen(
-    ledger: TransactionsRepository,
-    accounts: AccountsRepository,
+    state: JournalState,
     onNavigateBack: () -> Unit,
     onNavigateToNew: () -> Unit,
     onOpenTransaction: (id: String) -> Unit,
 ) {
-    var items by remember { mutableStateOf(emptyList<Transaction>()) }
-    var cursor by remember { mutableStateOf<LedgerCursor?>(null) }
-    var hasMore by remember { mutableStateOf(true) }
-    var isInitialLoading by remember { mutableStateOf(true) }
-    var isSyncing by remember { mutableStateOf(false) }
-    var isLoadingMore by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var paths by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var types by remember { mutableStateOf<Map<String, AccountType>>(emptyMap()) }
-    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    suspend fun loadFirst() {
-        val page = ledger.page()
-        cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
-        hasMore = page.size == LIST_PAGE_SIZE
-        paths = accountPaths(accounts)
-        types = accountTypes(accounts)
-        items = page
-    }
-
-    suspend fun refreshAll() {
-        isSyncing = true
-        error = null
-        try {
-            ledger.syncNow()
-            loadFirst()
-        } catch (e: Throwable) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            error = e.message ?: e.toString()
-        } finally {
-            isSyncing = false
-            isInitialLoading = false
-        }
-    }
-
-    fun sync() = scope.launch { refreshAll() }
-
-    fun loadMore() {
-        val current = cursor ?: return
-        if (isLoadingMore || !hasMore) return
-        isLoadingMore = true
-        scope.launch {
-            try {
-                val page = ledger.page(before = current)
-                cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
-                hasMore = page.size == LIST_PAGE_SIZE
-                items = items + page
-            } catch (e: Throwable) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                error = e.message ?: e.toString()
-            } finally {
-                isLoadingMore = false
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) { refreshAll() }
-
-    // Live refresh after edits made anywhere (mutations emit to `changes`).
-    LaunchedEffect(Unit) {
-        ledger.changes.collect { loadFirst() }
-    }
+    // No-ops after the first real page has been fetched, so returning from a
+    // transaction (this composable re-entering composition) never re-fetches
+    // — the state survives navigation because it's hoisted above the nav host.
+    LaunchedEffect(Unit) { state.ensureLoaded() }
 
     // Infinite scroll.
-    LaunchedEffect(listState, hasMore, items.size) {
+    LaunchedEffect(listState, state.hasMore, state.items.size) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .distinctUntilChanged()
             .collect { last ->
-                if (last != null && last >= items.size - 5) loadMore()
+                if (last != null && last >= state.items.size - 5) state.loadMore()
             }
     }
 
@@ -175,8 +111,8 @@ fun JournalScreen(
         },
     ) { innerPadding ->
         PullToRefreshBox(
-            isRefreshing = isSyncing,
-            onRefresh = { sync() },
+            isRefreshing = state.pullRefreshing,
+            onRefresh = { state.refresh() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
@@ -189,13 +125,13 @@ fun JournalScreen(
                     vertical = 8.dp,
                 ),
             ) {
-                if (isInitialLoading) {
+                if (state.isInitialLoading && state.items.isEmpty()) {
                     repeat(JOURNAL_SKELETON_COUNT) { i ->
                         item(key = "skeleton-$i") { TransactionCardSkeleton() }
                     }
                     return@LazyColumn
                 }
-                error?.let { err ->
+                state.error?.let { err ->
                     item(key = "error") {
                         Text(
                             err,
@@ -205,7 +141,7 @@ fun JournalScreen(
                         )
                     }
                 }
-                if (items.isEmpty() && !isSyncing && error == null) {
+                if (state.items.isEmpty() && !state.isInitialLoading && state.error == null) {
                     item(key = "empty") {
                         Column(
                             modifier = Modifier
@@ -228,7 +164,7 @@ fun JournalScreen(
                     }
                 }
                 var lastGroup: DayGroup? = null
-                for (tx in items) {
+                for (tx in state.items) {
                     val group = dayGroup(tx.date)
                     if (group != lastGroup) {
                         lastGroup = group
@@ -239,13 +175,13 @@ fun JournalScreen(
                     item(key = tx.id) {
                         TransactionCard(
                             tx = tx,
-                            paths = paths,
-                            types = types,
+                            paths = state.paths,
+                            types = state.types,
                             onOpen = { onOpenTransaction(tx.id) },
                         )
                     }
                 }
-                if (isLoadingMore) {
+                if (state.isLoadingMore) {
                     item(key = "loading") {
                         Column {
                             TransactionCardSkeleton()

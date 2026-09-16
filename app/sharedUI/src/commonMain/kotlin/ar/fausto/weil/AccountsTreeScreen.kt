@@ -8,7 +8,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -86,7 +85,6 @@ import weil.app.sharedui.generated.resources.account_type_expense
 import weil.app.sharedui.generated.resources.account_type_income
 import weil.app.sharedui.generated.resources.account_type_label
 import weil.app.sharedui.generated.resources.account_type_liability
-import weil.app.sharedui.generated.resources.action_add
 import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.action_delete
@@ -117,12 +115,12 @@ fun AccountsTreeScreen(
     ledgerState: LedgerState,
     onNavigateBack: () -> Unit,
     onNavigateToAccount: (id: String) -> Unit,
+    onNavigateToAdd: () -> Unit,
 ) {
-    var adding by remember { mutableStateOf(false) }
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { adding = true },
+                onClick = onNavigateToAdd,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
@@ -141,8 +139,8 @@ fun AccountsTreeScreen(
         },
     ) { innerPadding ->
         PullToRefreshBox(
-            isRefreshing = ledgerState.busy,
-            onRefresh = { ledgerState.refresh() },
+            isRefreshing = ledgerState.pullRefreshing,
+            onRefresh = { ledgerState.refresh(userInitiated = true) },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
@@ -155,14 +153,10 @@ fun AccountsTreeScreen(
                 AccountsTreeSection(
                     state = ledgerState,
                     onNavigateToAccount = onNavigateToAccount,
-                    onAdd = { adding = true },
+                    onAdd = onNavigateToAdd,
                 )
             }
         }
-    }
-
-    if (adding) {
-        AddAccountDialog(state = ledgerState, onDismiss = { adding = false })
     }
 }
 
@@ -659,99 +653,5 @@ internal fun TypeDropdown(
     }
 }
 
-/**
- * Account creation dialog. When [fixedType] is set (Home creates asset
- * accounts only) the type dropdown is hidden and the parent picker is
- * restricted to that type's subtree.
- */
-@Composable
-internal fun AddAccountDialog(
-    state: LedgerState,
-    onDismiss: () -> Unit,
-    fixedType: AccountType? = null,
-) {
-    var name by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf(fixedType ?: AccountType.Asset) }
-    var parent by remember { mutableStateOf<AccountNode?>(null) }
-    var pickingParent by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(Res.string.account_add_title)) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(Res.string.account_name_label)) },
-                    singleLine = true,
-                )
-                Spacer(Modifier.height(8.dp))
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = if (parent == null) {
-                            stringResource(Res.string.account_parent_none)
-                        } else {
-                            stringResource(Res.string.account_parent_under, parent!!.path)
-                        },
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text(stringResource(Res.string.account_choose_parent)) },
-                        trailingIcon = { Icon(Icons.Filled.ExpandMore, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) { pickingParent = true },
-                    )
-                }
-                if (fixedType == null) {
-                    Spacer(Modifier.height(8.dp))
-                    TypeDropdown(
-                        initial = if (parent != null) parent!!.account.type else type,
-                        enabled = parent == null,
-                        onPick = { type = it },
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    state.addAccount(
-                        name.trim(),
-                        parent?.account?.type ?: type,
-                        parent?.account?.id,
-                    )
-                    onDismiss()
-                },
-                enabled = name.isNotBlank() && !state.busy,
-            ) { Text(stringResource(Res.string.action_add)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
-        },
-    )
-
-    if (pickingParent) {
-        val allowedType = parent?.account?.type ?: fixedType
-        AccountPickerSheet(
-            tree = if (allowedType != null) {
-                state.tree.filter { it.account.type == allowedType }
-            } else {
-                state.tree
-            },
-            title = stringResource(Res.string.account_choose_parent),
-            exclude = emptySet(),
-            onDismiss = { pickingParent = false },
-        ) { picked ->
-            parent = picked
-            pickingParent = false
-        }
-    }
-}
+// Account creation now lives in its own screen, AccountAddScreen.kt — see
+// AccountAddRoute.

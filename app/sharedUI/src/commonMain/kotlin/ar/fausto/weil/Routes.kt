@@ -33,6 +33,9 @@ data class TransactionEditRoute(val id: String)
 
 data class AccountDetailRoute(val id: String)
 
+/** [fixedType] hides the type picker (Home only ever creates asset accounts). */
+data class AccountAddRoute(val fixedType: AccountType? = null)
+
 /**
  * Review of an image/PDF the user picked or shared into the app. The document
  * itself rides in the route: the back stack is in-memory, and holding the

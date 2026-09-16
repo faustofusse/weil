@@ -26,6 +26,14 @@ class LedgerState(
         private set
     var busy by mutableStateOf(false)
         private set
+    /**
+     * Bound to the pull-to-refresh spinner: true only for a user-initiated
+     * pull, never for the automatic first load or a silent background sync —
+     * both of those already have data on screen a moment later and don't
+     * need a top-of-screen animation to say so.
+     */
+    var pullRefreshing by mutableStateOf(false)
+        private set
     var error by mutableStateOf<String?>(null)
         private set
     /**
@@ -62,9 +70,10 @@ class LedgerState(
         }
     }
 
-    fun refresh() {
+    fun refresh(userInitiated: Boolean = false) {
         scope.launch {
             busy = true
+            if (userInitiated) pullRefreshing = true
             error = null
             try {
                 // Local-first: the replica already has the last known state, so
@@ -84,6 +93,7 @@ class LedgerState(
                 error = e.message ?: e.toString()
             } finally {
                 busy = false
+                pullRefreshing = false
             }
         }
     }

@@ -90,11 +90,11 @@ fun HomeScreen(
     onNewTransaction: (TxnKind) -> Unit,
     onNavigateToAccount: (id: String) -> Unit,
     onOpenTransaction: (id: String) -> Unit,
+    onNavigateToAddAccount: () -> Unit,
 ) {
     if (!ledgerState.loaded) {
         LaunchedEffect(Unit) { ledgerState.refresh() }
     }
-    var adding by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val noPickerMessage = stringResource(Res.string.import_no_picker)
     val unsupportedMessage = stringResource(Res.string.import_unsupported)
@@ -175,8 +175,8 @@ fun HomeScreen(
         },
     ) { innerPadding ->
         PullToRefreshBox(
-            isRefreshing = ledgerState.busy,
-            onRefresh = { ledgerState.refresh() },
+            isRefreshing = ledgerState.pullRefreshing,
+            onRefresh = { ledgerState.refresh(userInitiated = true) },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
@@ -201,7 +201,7 @@ fun HomeScreen(
                             SectionHeaderButton(
                                 icon = Icons.Filled.Add,
                                 contentDescription = stringResource(Res.string.account_add_title),
-                                onClick = { adding = true },
+                                onClick = onNavigateToAddAccount,
                             )
                         },
                     )
@@ -211,7 +211,7 @@ fun HomeScreen(
                         EmptyHint(
                             title = stringResource(Res.string.home_no_accounts_yet),
                             action = stringResource(Res.string.home_add_first_account),
-                            onAction = { adding = true },
+                            onAction = onNavigateToAddAccount,
                         )
                     }
                 } else {
@@ -281,13 +281,6 @@ fun HomeScreen(
         }
     }
 
-    if (adding) {
-        AddAccountDialog(
-            state = ledgerState,
-            onDismiss = { adding = false },
-            fixedType = AccountType.Asset,
-        )
-    }
 }
 
 @Composable
@@ -326,7 +319,10 @@ private fun NetWorthCard(state: LedgerState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                if (state.busy) {
+                // Only while there's nothing to show yet, or the user asked
+                // for a refresh directly — a silent background sync after data
+                // is already on screen doesn't get an animation to announce it.
+                if (state.busy && (!state.loaded || state.pullRefreshing)) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(14.dp),
                         strokeWidth = 2.dp,
