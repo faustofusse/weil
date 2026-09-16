@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -55,7 +57,6 @@ import weil.app.sharedui.generated.resources.account_add_title
 import weil.app.sharedui.generated.resources.app_title
 import weil.app.sharedui.generated.resources.home_accounts_title
 import weil.app.sharedui.generated.resources.home_add_first_account
-import weil.app.sharedui.generated.resources.home_net_worth
 import weil.app.sharedui.generated.resources.home_no_accounts_yet
 import weil.app.sharedui.generated.resources.home_no_recent
 import weil.app.sharedui.generated.resources.home_recent_title
@@ -228,28 +229,28 @@ fun HomeScreen(
                             onOpen = onNavigateToAccount,
                             skin = rowSkin(first = index == 0, last = index == rows.lastIndex),
                             toggleSlot = foldable,
+                            // Long-press still opens the same sheet; see the
+                            // parameter's doc for why Home drops the ⋮.
+                            actions = false,
                         )
                     }
                 }
 
                 item(key = "recent-header") {
-                    // divider = true: this section follows the accounts
-                    // card directly, so the boundary needs a line, not just
-                    // whitespace, to read as a new section rather than more
-                    // of the same one.
+                    // No divider: the day labels now live inside the card, so
+                    // the section already starts on a clean rounded edge. A
+                    // rule here stacked a third separation mark on top of the
+                    // header and the first day label.
                     SectionHeader(
                         title = stringResource(Res.string.home_recent_title),
-                        divider = true,
                         trailing = {
-                            // Same button as the accounts header above: same
-                            // shape, size and colors, only the icon changes
-                            // (add vs. go-to-journal) so the two headers read
-                            // as siblings instead of two different widgets.
-                            SectionHeaderButton(
-                                icon = Icons.Filled.ChevronRight,
-                                contentDescription = stringResource(Res.string.home_see_all),
-                                onClick = onNavigateToJournal,
-                            )
+                            // A text button, not the accounts header's filled
+                            // circle: that circle is the weight reserved for
+                            // "this creates something". Going to the journal
+                            // is navigation and shouldn't shout as loud.
+                            TextButton(onClick = onNavigateToJournal) {
+                                Text(stringResource(Res.string.home_see_all))
+                            }
                         },
                     )
                 }
@@ -259,23 +260,21 @@ fun HomeScreen(
                         EmptyHint(title = stringResource(Res.string.home_no_recent))
                     }
                 }
-                // One card per day, exactly like the accounts card above: the
-                // day header labels the run, the run's outer rows get the
-                // rounded corners.
-                val days = recentItems.groupBy { dayGroup(it.date) }.entries.toList()
-                days.forEachIndexed { dayIndex, (group, txs) ->
-                    item(key = "recent-day-${group.key}") {
-                        DayHeader(group, top = if (dayIndex == 0) 4.dp else 16.dp)
-                    }
-                    itemsIndexed(txs, key = { _, tx -> "recent-${tx.id}" }) { index, tx ->
-                        TransactionRow(
-                            tx = tx,
-                            names = names,
-                            types = types,
-                            onOpen = { onOpenTransaction(tx.id) },
-                            skin = rowSkin(first = index == 0, last = index == txs.lastIndex),
-                        )
-                    }
+                // No day grouping here at all: five rows don't need to be cut
+                // into runs, and a day label sitting above the first row of a
+                // run read as a caption belonging to that one movement rather
+                // than as a heading over several. Each row carries its own
+                // date instead; the journal, where runs are long, keeps the
+                // day-header grouping.
+                itemsIndexed(recentItems, key = { _, tx -> "recent-${tx.id}" }) { index, tx ->
+                    TransactionRow(
+                        tx = tx,
+                        names = names,
+                        types = types,
+                        onOpen = { onOpenTransaction(tx.id) },
+                        skin = rowSkin(first = index == 0, last = index == recentItems.lastIndex),
+                        dateLabel = dayLabel(dayGroup(tx.date)),
+                    )
                 }
             }
         }
@@ -297,73 +296,76 @@ private fun OverflowItem(
 }
 
 /**
- * Net worth hero: the dominant commodity reads as the headline figure, the
- * rest ride along as pills so a multi-currency ledger never pushes the card
- * taller than a glance.
+ * Net worth hero: every commodity side by side, on the page background rather
+ * than in a card, starting at the same left margin as the section headers
+ * below it so the screen keeps a single reading edge. No "Patrimonio" label —
+ * the biggest number on the screen, sitting above everything else, doesn't
+ * need to be told what it is.
  */
 @Composable
 private fun NetWorthCard(state: LedgerState) {
     val lines = netWorthOf(state).entries.sortedByDescending { abs(it.value) }
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    // No card here on purpose: this is the top of the page, not one section
+    // among others, so it sits straight on the screen background instead of
+    // competing with the tonal cards below it for "boxed" attention.
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 12.dp),
+            // start inset matches SectionHeader's, so "Patrimonio", "Cuentas"
+            // and "Movimientos" all start on the same vertical edge.
+            .padding(top = 20.dp, bottom = 4.dp, start = 4.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(Res.string.home_net_worth),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                // Only while there's nothing to show yet, or the user asked
-                // for a refresh directly — a silent background sync after data
-                // is already on screen doesn't get an animation to announce it.
-                if (state.busy && (!state.loaded || state.pullRefreshing)) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            // Every commodity at the same size — ARS used to run big while USD
-            // rode along as a small pill underneath, which read as "USD is a
-            // footnote." A second currency now costs a line, not a demotion.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // All commodities share one row instead of stacking a line per
+            // currency: a multi-currency ledger reads as one figure with
+            // siblings beside it, not a list growing downward.
             if (lines.isEmpty()) {
                 Text(
                     if (state.loaded) "${Money.DEFAULT_COMMODITY} ${formatMinorUnits(0)}" else "—",
                     style = MaterialTheme.typography.displaySmall,
                 )
             }
-            lines.forEach { (commodity, minor) ->
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        commodity,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 5.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        formatMinorUnits(minor),
-                        style = MaterialTheme.typography.displaySmall,
-                        color = if (minor < 0) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+            FlowRow(
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(24.dp),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                lines.forEach { (commodity, minor) ->
+                    Column {
+                        Text(
+                            commodity,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            formatMinorUnits(minor),
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = if (minor < 0) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
-            state.error?.let { ErrorBanner(it, modifier = Modifier.padding(top = 14.dp)) }
+            // Only while there's nothing to show yet, or the user asked for a
+            // refresh directly — a silent background sync after data is
+            // already on screen doesn't get an animation to announce it. It
+            // used to sit beside the label; with the label gone it trails the
+            // figures instead.
+            if (state.busy && (!state.loaded || state.pullRefreshing)) {
+                Spacer(Modifier.width(12.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
+        state.error?.let { ErrorBanner(it, modifier = Modifier.padding(top = 14.dp)) }
     }
 }
 
@@ -417,7 +419,7 @@ internal fun SectionHeader(
         ) {
             Text(
                 title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )

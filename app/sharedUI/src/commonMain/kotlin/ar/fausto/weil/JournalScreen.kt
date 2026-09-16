@@ -210,7 +210,10 @@ internal fun DayHeader(group: DayGroup, modifier: Modifier = Modifier, top: Dp =
     Text(
         dayLabel(group),
         style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
+        // Not `primary`: in a warm palette that coral sits one step from the
+        // `error` used by negative amounts, so "Hoy" and "−500,00" read as the
+        // same kind of mark. Dates are structure; color belongs to the money.
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.padding(top = top, bottom = 4.dp, start = 4.dp),
     )
 }
@@ -404,6 +407,11 @@ internal fun TransactionRow(
     types: Map<String, AccountType>,
     onOpen: () -> Unit,
     skin: RowSkin? = null,
+    /**
+     * Per-row date, for callers that don't group into day runs (Home). It
+     * rides under the amount so the payee keeps the full width of the line.
+     */
+    dateLabel: String? = null,
 ) {
     val flow = flowOf(tx, types)
     val from = flow?.fromId?.let { names[it] }
@@ -464,21 +472,36 @@ internal fun TransactionRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (flow != null) {
-                Text(
-                    // The commodity is spelled out only when it isn't the
-                    // default one — an all-ARS ledger doesn't need "ARS" on
-                    // every row, a USD movement must never be mistaken for one.
-                    if (flow.commodity == Money.DEFAULT_COMMODITY) {
-                        formatMinorUnits(flow.amountMinor)
-                    } else {
-                        "${flow.commodity} ${formatMinorUnits(flow.amountMinor)}"
-                    },
-                    style = MaterialTheme.typography.titleSmall,
-                    color = flowColor(flow.direction),
-                    maxLines = 1,
+            if (flow != null || dateLabel != null) {
+                Column(
+                    horizontalAlignment = Alignment.End,
                     modifier = Modifier.padding(start = 12.dp),
-                )
+                ) {
+                    if (flow != null) {
+                        Text(
+                            // The commodity is spelled out only when it isn't
+                            // the default one — an all-ARS ledger doesn't need
+                            // "ARS" on every row, a USD movement must never be
+                            // mistaken for one.
+                            if (flow.commodity == Money.DEFAULT_COMMODITY) {
+                                formatMinorUnits(flow.amountMinor)
+                            } else {
+                                "${flow.commodity} ${formatMinorUnits(flow.amountMinor)}"
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            color = flowColor(flow.direction),
+                            maxLines = 1,
+                        )
+                    }
+                    if (dateLabel != null) {
+                        Text(
+                            dateLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            maxLines = 1,
+                        )
+                    }
+                }
             }
         }
     }

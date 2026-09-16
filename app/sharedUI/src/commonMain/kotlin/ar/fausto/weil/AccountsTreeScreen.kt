@@ -284,9 +284,17 @@ internal fun NodeRowView(
      * of meaningless bullets.
      */
     toggleSlot: Boolean = false,
+    /**
+     * Show the trailing ⋮ button. It only ever duplicates the row's own
+     * long-press, so Home (a handful of accounts, read at a glance) turns it
+     * off: the column of dots was the busiest thing in the card and its
+     * 32.dp pushed the balances out of line with the movement amounts
+     * underneath. The full tree keeps it, where the gesture is less obvious.
+     */
+    actions: Boolean = true,
 ) {
     val node = row.node
-    var actions by remember { mutableStateOf(false) }
+    var actionsOpen by remember { mutableStateOf(false) }
     val expanded = node.account.id in state.expandedIds
     val childCount = node.children.size
     val rotation by animateFloatAsState(
@@ -319,7 +327,7 @@ internal fun NodeRowView(
                 .fillMaxWidth()
                 .combinedClickable(
                     onClick = { onOpen(node.account.id) },
-                    onLongClick = { actions = true },
+                    onLongClick = { actionsOpen = true },
                 )
                 .heightIn(min = 56.dp)
                 // The trailing IconButton below is shrunk to 32.dp and
@@ -329,7 +337,15 @@ internal fun NodeRowView(
                 // with this inset — 8.dp here + that button's own 7.dp of
                 // internal centering lines back up with the 16.dp leading
                 // inset instead of dwarfing it.
-                .padding(start = 16.dp + indent, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                // Without the trailing button the row owns its full inset,
+                // so the balance ends on the same edge as a TransactionRow's
+                // amount (both 16.dp from the card edge).
+                .padding(
+                    start = 16.dp + indent,
+                    end = if (actions) 8.dp else 16.dp,
+                    top = 8.dp,
+                    bottom = 8.dp,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (toggleSlot) {
@@ -424,26 +440,28 @@ internal fun NodeRowView(
             // affordance and can honor its explicit 32.dp size instead of
             // Material's 48.dp minimum, which was the actual cause of the
             // lopsided right-hand gap.
-            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-                IconButton(
-                    onClick = { actions = true },
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Icon(
-                        Icons.Filled.MoreVert,
-                        contentDescription = stringResource(Res.string.account_actions),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
+            if (actions) {
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                    IconButton(
+                        onClick = { actionsOpen = true },
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.MoreVert,
+                            contentDescription = stringResource(Res.string.account_actions),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         }
     }
-    if (actions) {
+    if (actionsOpen) {
         AccountActionsSheet(
             state = state,
             account = node.account,
-            onDismiss = { actions = false },
+            onDismiss = { actionsOpen = false },
         )
     }
 }

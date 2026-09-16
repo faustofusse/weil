@@ -19,7 +19,6 @@
 
     <!-- Home -->
     <string name="home_accounts_title">Cuentas</string>
-    <string name="home_net_worth">Patrimonio</string>
     <string name="home_no_accounts_yet">Todavía no hay cuentas</string>
     <string name="home_add_first_account">Crear tu primera cuenta</string>
     <string name="home_recent_title">Movimientos</string>
