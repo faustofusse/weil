@@ -213,6 +213,11 @@ class TransactionsRepository(private val db: DatabaseProvider) {
      * Register for an account (optionally a whole subtree via the account
      * tree): postings newest first with running balances computed by walking
      * the page oldest→newest on top of the opening sum.
+     *
+     * Balances are tracked per commodity: an account holding two currencies
+     * (or a subtree mixing a pesos and a dollars account) has one running
+     * balance each, and every entry reports the one for its own commodity.
+     * A single accumulator would add dollars to pesos.
      */
     suspend fun register(
         subtreeIds: List<String>,
@@ -222,14 +227,6 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         if (subtreeIds.isEmpty()) return emptyList()
         val idList = quoteList(subtreeIds)
         return db.useForRead { d ->
-            val opening = d.query(
-                "select sum(p.amount_minor) from postings p" +
-                    " join ledger_transactions t on p.transaction_id = t.id" +
-                    " where p.account_id in ($idList)" +
-                    (if (before == null) "" else " and ($TX_CURSOR_FILTER)"),
-                cursorParams(before),
-            ) { rows -> (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L }
-
             val entries = d.query(
                 "select p.id, p.transaction_id, p.account_id, p.amount_minor, p.commodity," +
                     " t.date, t.payee" +
@@ -252,11 +249,37 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 }.toList()
             }
 
-            var running = opening
+            // The balance the page starts from: everything strictly OLDER
+            // than its last row. Summing the whole account instead (what the
+            // cursor-less path used to do) counted the page twice and showed
+            // doubled balances on the first screen of every register.
+            val oldest = entries.lastOrNull()?.let { (posting, meta) ->
+                LedgerCursor(meta.first, posting.transactionId)
+            }
+            val opening = if (oldest == null) {
+                emptyMap()
+            } else {
+                d.query(
+                    "select p.commodity, sum(p.amount_minor) from postings p" +
+                        " join ledger_transactions t on p.transaction_id = t.id" +
+                        " where p.account_id in ($idList) and ($TX_CURSOR_FILTER)" +
+                        " group by p.commodity",
+                    cursorParams(oldest),
+                ) { rows ->
+                    rows.mapNotNull { row ->
+                        val commodity = row.getOrNull(0)?.toString() ?: return@mapNotNull null
+                        val sum = (row.getOrNull(1) as? Number)?.toLong() ?: 0L
+                        commodity to sum
+                    }.toMap()
+                }
+            }
+
+            val running = HashMap(opening)
             val balanceAfter = HashMap<String, Long>(entries.size)
             for ((posting, _) in entries.asReversed()) {
-                running += posting.amountMinor
-                balanceAfter[posting.id] = running
+                val next = (running[posting.commodity] ?: 0L) + posting.amountMinor
+                running[posting.commodity] = next
+                balanceAfter[posting.id] = next
             }
             entries.map { (posting, meta) ->
                 RegisterEntry(posting, meta.first, meta.second, Money(balanceAfter.getValue(posting.id), posting.commodity))
