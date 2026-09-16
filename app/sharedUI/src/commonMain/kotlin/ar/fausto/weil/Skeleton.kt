@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -52,9 +50,10 @@ private fun SkeletonBox(modifier: Modifier = Modifier) {
 /** Mirrors NotificationCard's layout. */
 @Composable
 fun NotificationCardSkeleton() {
-    Card(
+    Surface(
+        shape = RoundedCornerShape(GroupRadius),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -75,9 +74,10 @@ fun NotificationCardSkeleton() {
 /** Mirrors EmailCard's layout. */
 @Composable
 fun EmailCardSkeleton() {
-    Card(
+    Surface(
+        shape = RoundedCornerShape(GroupRadius),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             SkeletonBox(modifier = Modifier.fillMaxWidth(0.6f).height(16.dp))

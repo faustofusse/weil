@@ -13,13 +13,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,16 +29,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.action_back
@@ -60,134 +56,34 @@ private const val NOTIFICATION_SKELETON_COUNT = 16
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationsScreen(
-    notifications: NotificationsRepository,
+    state: NotificationsState,
     onNavigateBack: () -> Unit,
 ) {
-    var items by remember { mutableStateOf(emptyList<NotificationItem>()) }
-    var cursor by remember { mutableStateOf<NotificationCursor?>(null) }
-    var hasMore by remember { mutableStateOf(true) }
-    var isInitialLoading by remember { mutableStateOf(true) }
-    var isLoadingMore by remember { mutableStateOf(false) }
-    var isSyncing by remember { mutableStateOf(false) }
-    var syncError by remember { mutableStateOf<String?>(null) }
-    var totalCount by remember { mutableStateOf(0L) }
-    var filteredCount by remember { mutableStateOf(0L) }
-    var showOnlyTransactions by remember { mutableStateOf(false) }
-    var initialized by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    suspend fun refreshCounts() {
-        totalCount = notifications.count(onlyTransactions = false)
-        filteredCount = notifications.count(onlyTransactions = true)
-    }
-
-    suspend fun loadFirst() {
-        val page = notifications.page(onlyTransactions = showOnlyTransactions)
-        items = page.items
-        cursor = page.nextCursor
-        hasMore = page.nextCursor != null
-        refreshCounts()
-    }
-
-    fun reloadWindow() {
-        scope.launch {
-            try {
-                val page = notifications.page(
-                    limit = maxOf(items.size, LIST_PAGE_SIZE),
-                    onlyTransactions = showOnlyTransactions,
-                )
-                items = page.items
-                cursor = page.nextCursor
-                hasMore = page.nextCursor != null
-                refreshCounts()
-            } catch (_: Throwable) {
-            }
-        }
-    }
-
-    fun sync() {
-        scope.launch {
-            isSyncing = true
-            syncError = null
-            try {
-                notifications.syncNow()
-                loadFirst()
-            } catch (e: Throwable) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                syncError = e.message ?: e.toString()
-            } finally {
-                isSyncing = false
-            }
-        }
-    }
-
-    fun loadMore() {
-        val currentCursor = cursor ?: return
-        if (isLoadingMore || !hasMore) return
-        isLoadingMore = true
-        scope.launch {
-            try {
-                val page = notifications.page(
-                    before = currentCursor,
-                    onlyTransactions = showOnlyTransactions,
-                )
-                items = items + page.items
-                cursor = page.nextCursor
-                hasMore = page.nextCursor != null
-            } catch (e: Throwable) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                syncError = e.message ?: e.toString()
-            } finally {
-                isLoadingMore = false
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        try {
-            notifications.syncNow()
-            loadFirst()
-        } catch (e: Throwable) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            syncError = e.message ?: e.toString()
-        } finally {
-            isInitialLoading = false
-        }
-        initialized = true
-        notifications.changes.collect { reloadWindow() }
-    }
-
-    LaunchedEffect(showOnlyTransactions) {
-        if (!initialized) return@LaunchedEffect
-        syncError = null
-        try {
-            loadFirst()
-        } catch (e: Throwable) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            syncError = e.message ?: e.toString()
-        }
-    }
+    // No-ops after the first real load — returning to this screen re-enters
+    // composition without re-fetching or re-showing a skeleton.
+    LaunchedEffect(Unit) { state.ensureLoaded() }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .collect { last ->
-                if (last != null && last >= items.size - 10) loadMore()
+                if (last != null && last >= state.items.size - 10) state.loadMore()
             }
     }
 
     val typography = MaterialTheme.typography
     val colorScheme = MaterialTheme.colorScheme
-    val shownCount = if (showOnlyTransactions) filteredCount else totalCount
+    val shownCount = if (state.showOnlyTransactions) state.filteredCount else state.totalCount
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(Res.string.notifications_title_counts, shownCount, totalCount))
+                        Text(stringResource(Res.string.notifications_title_counts, shownCount, state.totalCount))
                         Spacer(Modifier.width(8.dp))
-                        if (syncError != null) {
+                        if (state.syncError != null) {
                             Icon(
                                 imageVector = Icons.Filled.Warning,
                                 contentDescription = stringResource(Res.string.sync_error),
@@ -203,7 +99,7 @@ fun NotificationsScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { sync() }, enabled = !isSyncing) {
+                    IconButton(onClick = { state.sync() }, enabled = !state.isSyncing) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.action_sync))
                     }
                 },
@@ -211,8 +107,8 @@ fun NotificationsScreen(
         },
     ) { innerPadding ->
         PullToRefreshBox(
-            isRefreshing = isSyncing,
-            onRefresh = { sync() },
+            isRefreshing = state.isSyncing,
+            onRefresh = { state.sync() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
@@ -231,12 +127,12 @@ fun NotificationsScreen(
                     Text(stringResource(Res.string.notifications_potential_transactions), style = typography.bodyMedium)
                     Spacer(Modifier.width(8.dp))
                     Switch(
-                        checked = showOnlyTransactions,
-                        onCheckedChange = { showOnlyTransactions = it },
+                        checked = state.showOnlyTransactions,
+                        onCheckedChange = { state.toggleShowOnlyTransactions(it) },
                     )
                 }
                 Spacer(Modifier.height(16.dp))
-                if (isInitialLoading) {
+                if (state.isInitialLoading && state.items.isEmpty()) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         repeat(NOTIFICATION_SKELETON_COUNT) {
                             NotificationCardSkeleton()
@@ -245,14 +141,14 @@ fun NotificationsScreen(
                     }
                 } else {
                     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                        items(items, key = { it.id }) { notificationItem ->
+                        items(state.items, key = { it.id }) { notificationItem ->
                             NotificationCard(notificationItem = notificationItem)
                             Spacer(Modifier.height(8.dp))
                         }
-                        if (hasMore) {
+                        if (state.hasMore) {
                             item(key = "skeleton-footer") {
                                 Column {
-                                    if (isLoadingMore) {
+                                    if (state.isLoadingMore) {
                                         NotificationCardSkeleton()
                                         Spacer(Modifier.height(8.dp))
                                         NotificationCardSkeleton()
@@ -296,9 +192,10 @@ private fun NotificationAccessBanner() {
 private fun NotificationCard(notificationItem: NotificationItem) {
     val typography = MaterialTheme.typography
 
-    Card(
+    Surface(
+        shape = RoundedCornerShape(GroupRadius),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

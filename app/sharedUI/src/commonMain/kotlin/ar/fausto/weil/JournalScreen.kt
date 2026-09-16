@@ -49,6 +49,7 @@ import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.action_back
+import weil.app.sharedui.generated.resources.action_sync
 import weil.app.sharedui.generated.resources.day_date
 import weil.app.sharedui.generated.resources.day_date_year
 import weil.app.sharedui.generated.resources.day_today
@@ -96,6 +97,11 @@ fun JournalScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { state.refresh() }, enabled = !state.pullRefreshing) {
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.action_sync))
                     }
                 },
             )
@@ -377,6 +383,13 @@ internal fun flowColor(direction: Int): Color = when {
     else -> MaterialTheme.colorScheme.onSurface
 }
 
+// A small "›" chevron reads as "leads to" without the vertical-alignment
+// headaches of the wider "→" arrow glyph, which sits at different heights
+// across the platform default fonts (Roboto on Android, the desktop font,
+// San Francisco on iOS). The chevron is designed to sit on the x-height like
+// regular punctuation, so it centers the same everywhere with no hacks.
+internal const val ROUTE_ARROW = "›"
+
 /**
  * One movement on a single line — description first, the accounts it moved
  * between trailing it in a dimmer, smaller span ("Efectivo → Comida"), amount
@@ -398,13 +411,7 @@ internal fun TransactionRow(
     // A split (more than the two ends shown) advertises what it's hiding.
     val extra = tx.postings.size - 2
     val moreLabel = if (extra > 0) stringResource(Res.string.journal_more_postings, extra) else null
-    val route = buildString {
-        when {
-            from != null && to != null && from != to -> append("$from → $to")
-            else -> append(from ?: to ?: "")
-        }
-        moreLabel?.let { if (isNotEmpty()) append("  ") ; append(it) }
-    }
+    val hasRoute = (from != null || to != null)
     // Well under onSurfaceVariant: at full strength the route read as a
     // second description instead of as context hanging off the first one.
     val dim = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
@@ -412,10 +419,18 @@ internal fun TransactionRow(
     val label = buildAnnotatedString {
         if (tx.payee.isNotBlank()) {
             append(tx.payee)
-            if (route.isNotEmpty()) append("  ")
+            if (hasRoute) append("  ")
         }
-        if (route.isNotEmpty()) {
-            withStyle(SpanStyle(color = dim, fontSize = dimSize)) { append(route) }
+        if (hasRoute) {
+            withStyle(SpanStyle(color = dim, fontSize = dimSize)) {
+                when {
+                    from != null && to != null && from != to -> append("$from $ROUTE_ARROW $to")
+                    else -> append(from ?: to ?: "")
+                }
+                moreLabel?.let { if (length > 0) append("  "); append(it) }
+            }
+        } else if (moreLabel != null) {
+            withStyle(SpanStyle(color = dim, fontSize = dimSize)) { append(moreLabel) }
         }
     }
 

@@ -18,6 +18,16 @@ data class EmailsPage(
     val nextCursor: EmailCursor?,
 )
 
+/** Full row, fetched only for the detail screen — the list page skips [toEmail]/[bodyText]. */
+class EmailDetail(
+    val id: String,
+    val fromEmail: String,
+    val toEmail: String,
+    val subject: String?,
+    val bodyText: String?,
+    val receivedAt: Long,
+)
+
 class EmailsRepository(private val db: DatabaseProvider) {
 
     /** Pulls remote changes into the local replica. */
@@ -57,6 +67,25 @@ class EmailsRepository(private val db: DatabaseProvider) {
                 items.lastOrNull()?.let { EmailCursor(receivedAt = it.receivedAt, id = it.id) }
             }
             EmailsPage(items, next)
+        }
+    }
+
+    /** Fetches one email's full detail (subject/body/recipient included) for the detail screen. */
+    suspend fun get(id: String): EmailDetail? = db.useForRead { d ->
+        d.query(
+            "select id, from_email, to_email, subject, body_text, received_at from emails where id = :id",
+            mapOf(":id" to id),
+        ) { rows ->
+            rows.firstOrNull()?.takeIf { it.size >= 6 }?.let {
+                EmailDetail(
+                    id = it[0]?.toString() ?: "",
+                    fromEmail = it[1]?.toString() ?: "",
+                    toEmail = it[2]?.toString() ?: "",
+                    subject = it[3]?.toString(),
+                    bodyText = it[4]?.toString(),
+                    receivedAt = (it[5] as? Number)?.toLong() ?: 0L,
+                )
+            }
         }
     }
 

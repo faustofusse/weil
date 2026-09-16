@@ -10,6 +10,8 @@ object NotificationsRoute
 
 object EmailsRoute
 
+data class EmailDetailRoute(val id: String)
+
 object ProfileRoute
 
 object JournalRoute

@@ -11,29 +11,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.action_back
@@ -50,79 +44,20 @@ private const val EMAIL_SKELETON_COUNT = 16
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmailScreen(
-    emails: EmailsRepository,
+    state: EmailsState,
     onNavigateBack: () -> Unit,
+    onOpenEmail: (id: String) -> Unit,
 ) {
-    var items by remember { mutableStateOf(emptyList<Email>()) }
-    var cursor by remember { mutableStateOf<EmailCursor?>(null) }
-    var hasMore by remember { mutableStateOf(true) }
-    var isInitialLoading by remember { mutableStateOf(true) }
-    var isLoadingMore by remember { mutableStateOf(false) }
-    var isSyncing by remember { mutableStateOf(false) }
-    var syncError by remember { mutableStateOf<String?>(null) }
-    var totalCount by remember { mutableStateOf(0L) }
-    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    suspend fun loadFirst() {
-        val page = emails.page()
-        items = page.items
-        cursor = page.nextCursor
-        hasMore = page.nextCursor != null
-        totalCount = emails.count()
-    }
-
-    fun sync() {
-        scope.launch {
-            isSyncing = true
-            syncError = null
-            try {
-                emails.syncNow()
-                loadFirst()
-            } catch (e: Throwable) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                syncError = e.message ?: e.toString()
-            } finally {
-                isSyncing = false
-            }
-        }
-    }
-
-    fun loadMore() {
-        val currentCursor = cursor ?: return
-        if (isLoadingMore || !hasMore) return
-        isLoadingMore = true
-        scope.launch {
-            try {
-                val page = emails.page(before = currentCursor)
-                items = items + page.items
-                cursor = page.nextCursor
-                hasMore = page.nextCursor != null
-            } catch (e: Throwable) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                syncError = e.message ?: e.toString()
-            } finally {
-                isLoadingMore = false
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        try {
-            emails.syncNow()
-            loadFirst()
-        } catch (e: Throwable) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            syncError = e.message ?: e.toString()
-        } finally {
-            isInitialLoading = false
-        }
-    }
+    // No-ops after the first real load — coming back from an email's detail
+    // re-enters composition without re-fetching or re-showing a skeleton.
+    LaunchedEffect(Unit) { state.ensureLoaded() }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .collect { last ->
-                if (last != null && last >= items.size - 10) loadMore()
+                if (last != null && last >= state.items.size - 10) state.loadMore()
             }
     }
 
@@ -131,8 +66,8 @@ fun EmailScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(Res.string.emails_title_count, totalCount))
-                        if (syncError != null) {
+                        Text(stringResource(Res.string.emails_title_count, state.totalCount))
+                        if (state.syncError != null) {
                             Icon(
                                 imageVector = Icons.Filled.Warning,
                                 contentDescription = stringResource(Res.string.sync_error),
@@ -148,7 +83,7 @@ fun EmailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { sync() }, enabled = !isSyncing) {
+                    IconButton(onClick = { state.sync() }, enabled = !state.isSyncing) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.action_sync))
                     }
                 },
@@ -156,14 +91,14 @@ fun EmailScreen(
         },
     ) { innerPadding ->
         PullToRefreshBox(
-            isRefreshing = isSyncing,
-            onRefresh = { sync() },
+            isRefreshing = state.isSyncing,
+            onRefresh = { state.sync() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
             when {
-                isInitialLoading -> {
+                state.isInitialLoading && state.items.isEmpty() -> {
                     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                         repeat(EMAIL_SKELETON_COUNT) {
                             EmailCardSkeleton()
@@ -171,7 +106,7 @@ fun EmailScreen(
                         }
                     }
                 }
-                items.isEmpty() -> {
+                state.items.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(stringResource(Res.string.emails_empty), style = MaterialTheme.typography.bodyLarge)
                     }
@@ -182,14 +117,14 @@ fun EmailScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     ) {
-                        items(items, key = { it.id }) { email ->
-                            EmailCard(email = email)
+                        items(state.items, key = { it.id }) { email ->
+                            EmailCard(email = email, onOpen = { onOpenEmail(email.id) })
                             Spacer(Modifier.height(8.dp))
                         }
-                        if (hasMore) {
+                        if (state.hasMore) {
                             item(key = "skeleton-footer") {
                                 Column {
-                                    if (isLoadingMore) {
+                                    if (state.isLoadingMore) {
                                         EmailCardSkeleton()
                                         Spacer(Modifier.height(8.dp))
                                         EmailCardSkeleton()
@@ -205,12 +140,14 @@ fun EmailScreen(
 }
 
 @Composable
-private fun EmailCard(email: Email) {
+private fun EmailCard(email: Email, onOpen: () -> Unit) {
     val typography = MaterialTheme.typography
 
-    Card(
+    Surface(
+        onClick = onOpen,
+        shape = RoundedCornerShape(GroupRadius),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(

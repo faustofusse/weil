@@ -22,7 +22,7 @@
     <string name="home_net_worth">Patrimonio</string>
     <string name="home_no_accounts_yet">Todavía no hay cuentas</string>
     <string name="home_add_first_account">Crear tu primera cuenta</string>
-    <string name="home_recent_title">Últimos movimientos</string>
+    <string name="home_recent_title">Movimientos</string>
     <string name="home_see_all">Ver todo</string>
     <string name="home_no_recent">Sin movimientos todavía. Tocá + para registrar un gasto.</string>
     <string name="more_options">Más opciones</string>
@@ -181,6 +181,9 @@
     <string name="emails_title_count">Correos (%1$d)</string>
     <string name="emails_empty">Todavía no hay correos</string>
     <string name="emails_no_subject">(Sin asunto)</string>
+    <string name="email_detail_title">Correo</string>
+    <string name="email_detail_from">De: %1$s</string>
+    <string name="email_detail_to">Para: %1$s</string>
 
     <!-- Day labels -->
     <string name="day_today">Hoy</string>

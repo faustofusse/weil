@@ -123,6 +123,11 @@ fun RootScreen(graph: AppGraph) {
                     // instantly on first visit — no skeleton for rows the app showed
                     // a moment ago on Home.
                     LaunchedEffect(ledgerState.recent) { journalState.seed(ledgerState.recent) }
+                    // Same reasoning as [journalState]: surviving above the nav host
+                    // means a visit to an email's/notification's detail screen and back
+                    // doesn't re-fetch and re-show a skeleton.
+                    val emailsState = remember(loggedIn) { EmailsState(graph.emails) }
+                    val notificationsState = remember(loggedIn) { NotificationsState(graph.notifications) }
                     val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
                     val snackbarHostState = remember(loggedIn) { SnackbarHostState() }
                     val backStack = remember(loggedIn) {
@@ -269,13 +274,21 @@ fun RootScreen(graph: AppGraph) {
                                 }
                                 entry<EmailsRoute> {
                                     EmailScreen(
+                                        state = emailsState,
+                                        onNavigateBack = { pop() },
+                                        onOpenEmail = { navigate(EmailDetailRoute(it)) },
+                                    )
+                                }
+                                entry<EmailDetailRoute> { route ->
+                                    EmailDetailScreen(
                                         emails = graph.emails,
+                                        id = route.id,
                                         onNavigateBack = { pop() },
                                     )
                                 }
                                 entry<NotificationsRoute> {
                                     NotificationsScreen(
-                                        notifications = graph.notifications,
+                                        state = notificationsState,
                                         onNavigateBack = { pop() },
                                     )
                                 }

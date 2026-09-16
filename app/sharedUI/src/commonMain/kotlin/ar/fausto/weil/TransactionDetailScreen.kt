@@ -230,13 +230,11 @@ fun TransactionDetailScreen(
                         // Línea origen → destino.
                         val from = flow.fromId?.let { paths[it] }
                         val to = flow.toId?.let { paths[it] }
-                        val route = buildString {
-                            when {
-                                from != null && to != null && from != to -> append("$from → $to")
-                                else -> append(from ?: to ?: "")
-                            }
+                        val route = when {
+                            from != null && to != null && from != to -> "$from $ROUTE_ARROW $to"
+                            else -> from ?: to
                         }
-                        if (route.isNotEmpty()) {
+                        if (route != null) {
                             Text(
                                 route,
                                 style = MaterialTheme.typography.bodyMedium,
