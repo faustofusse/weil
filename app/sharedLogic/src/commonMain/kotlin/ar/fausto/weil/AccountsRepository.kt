@@ -147,6 +147,13 @@ class AccountsRepository(private val db: DatabaseProvider) {
             throw IllegalArgumentException("account has transactions; move or delete them first")
         }
         d.execute("delete from accounts where id = :id", mapOf(":id" to id))
+        // Drop a preference pointing at the account that just went away.
+        // resolveDefault() tolerates a dangling id, but leaving the row means
+        // a later account reusing the id would silently inherit the default.
+        d.execute(
+            "delete from settings where key like 'default_account.%' and value = :id",
+            mapOf(":id" to id),
+        )
         d.sync()
     }
 

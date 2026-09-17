@@ -247,6 +247,7 @@ fun ImportReviewScreen(
     ingest: IngestRepository,
     ledger: TransactionsRepository,
     accounts: AccountsRepository,
+    settings: SettingsRepository,
     onDone: () -> Unit,
     onNavigateBack: () -> Unit,
 ) {
@@ -259,6 +260,7 @@ fun ImportReviewScreen(
     // what tells two same-named leaves apart.
     var names by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var assetId by remember { mutableStateOf<String?>(null) }
+    var defaults by remember { mutableStateOf<Map<AccountType, String>>(emptyMap()) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var attempt by remember { mutableStateOf(0) }
@@ -289,6 +291,7 @@ fun ImportReviewScreen(
     val matchPolicy = remember { MatchPolicy() }
 
     suspend fun reloadTree() {
+        defaults = settings.defaultAccounts()
         tree = accounts.tree()
         val nodes = tree.flatMap { it.selfAndDescendants }
         paths = nodes.associate { it.account.id to it.path }
@@ -301,7 +304,6 @@ fun ImportReviewScreen(
         drafts = null
         try {
             reloadTree()
-            val assets = tree.filter { it.account.type == AccountType.Asset }
             // Matching runs against the local replica, so pull first: without
             // this, rows another device wrote minutes ago are invisible and
             // every one of them would be imported a second time.
@@ -333,8 +335,7 @@ fun ImportReviewScreen(
             if (assetId == null) {
                 assetId = candidates.mapNotNull { it.accountId }
                     .groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
-                    ?: assets.singleOrNull()?.account?.id
-                    ?: assets.firstOrNull()?.account?.id
+                    ?: resolveDefault(tree, AccountType.Asset, defaults[AccountType.Asset])
             }
             // Blocking step: one window query for the whole document instead
             // of a lookup per candidate.
@@ -364,7 +365,7 @@ fun ImportReviewScreen(
                     // render but the raw id. Null leaves the row invalid, so
                     // the user picks a category instead of silently creating
                     // a dangling posting.
-                    val defaultCategory = defaultCategoryId(tree, draft.direction)
+                    val defaultCategory = defaultCategoryId(tree, defaults, draft.direction)
                     draft.splits.forEach { split ->
                         if (split.categoryId == null) split.categoryId = defaultCategory
                     }
@@ -420,7 +421,7 @@ fun ImportReviewScreen(
             .flatMap { draft -> draft.splits.indices.map { draft to it } }
         val pending = all.filter { (draft, index) ->
             val category = draft.splits[index].categoryId
-            category == null || category == defaultCategoryId(tree, draft.direction)
+            category == null || category == defaultCategoryId(tree, defaults, draft.direction)
         }
         return pending.ifEmpty { all }
     }
@@ -864,25 +865,23 @@ fun ImportReviewScreen(
 }
 
 /**
- * The "Otros" account for [direction], resolved against the live tree: the
- * fixed seeded id when that row exists, else any same-type account carrying
- * the seeded name (a ledger seeded before the rename, or one where the user
- * made their own), else null.
+ * The fallback category for [direction]: the user's default account for that
+ * type when it still exists, else the seeded "Otros" (see [resolveDefault]).
  */
-private fun defaultCategoryId(tree: List<AccountNode>, direction: ImportDirection): String? {
-    val (seedId, type) = when (direction) {
-        ImportDirection.Expense -> EXTERNAL_EXPENSE_ID to AccountType.Expense
-        ImportDirection.Income -> EXTERNAL_INCOME_ID to AccountType.Income
+private fun defaultCategoryId(
+    tree: List<AccountNode>,
+    defaults: Map<AccountType, String>,
+    direction: ImportDirection,
+): String? {
+    val type = when (direction) {
+        ImportDirection.Expense -> AccountType.Expense
+        ImportDirection.Income -> AccountType.Income
         // A transfer's other leg is one of the user's own accounts; there is
         // no sensible "Otros" to fall back to, so the row stays incomplete
         // until the user picks the destination.
         ImportDirection.Transfer -> return null
     }
-    val nodes = tree.flatMap { it.selfAndDescendants }
-    return nodes.firstOrNull { it.account.id == seedId }?.account?.id
-        ?: nodes.firstOrNull {
-            it.account.type == type && it.account.name.equals(EXTERNAL_ACCOUNT_NAME, ignoreCase = true)
-        }?.account?.id
+    return resolveDefault(tree, type, defaults[type])
 }
 
 private sealed interface PickerTarget {

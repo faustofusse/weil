@@ -24,6 +24,7 @@ import org.jetbrains.skia.Image
  *     WhatsApp linking card)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=account  (register of the seeded
  *       bank account, which holds both ARS and USD postings)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=tree     (full account tree)
  *
  * Session and database are sandboxed under the temp dir: the harness must
  * never touch `~/.weil` (a real desktop session lives there) and always starts
@@ -80,6 +81,7 @@ fun main(args: Array<String>) {
                     "journal" -> JournalRoute
                     "tx-new" -> TransactionNewRoute()
                     "account" -> AccountDetailRoute("seed-asset-bank")
+                    "tree" -> AccountsTreeRoute
                     "inbox" -> InboxReviewRoute
                     "tx" -> TransactionDetailRoute("seed-tx-2")
                     // Chain and WhatsApp sections call the worker, which the

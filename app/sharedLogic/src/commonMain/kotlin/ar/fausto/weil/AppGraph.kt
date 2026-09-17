@@ -38,6 +38,7 @@ class AppGraph(
     val db = DatabaseProvider(auth, dbContext, dbFactory, dbReadContext)
     val accounts = AccountsRepository(db)
     val ledger = TransactionsRepository(db)
+    val settings = SettingsRepository(db)
     val notifications = NotificationsRepository(db)
     val emails = EmailsRepository(db)
     val imports: DocumentAnalyzer = importAnalyzer ?: ImportRepository(store)

@@ -65,7 +65,15 @@ const val SCHEMA_SQL =
     "created_at integer not null," +
     "primary key(transaction_id, kind, ref));" +
     "create index if not exists idx_transaction_sources_ref on transaction_sources(kind, ref);" +
-    "create index if not exists idx_transaction_sources_event on transaction_sources(event_key);"
+    "create index if not exists idx_transaction_sources_event on transaction_sources(event_key);" +
+    // Scalar user preferences that must follow the user across devices (the
+    // secure store is device-local and holds tokens only). One row per key,
+    // so the sync engine's row-level last-writer-wins is exactly the right
+    // semantic for a preference. See SettingsRepository.
+    "create table if not exists settings(" +
+    "key text primary key not null," +
+    "value text not null," +
+    "updated_at integer not null);"
 
 /**
  * Bumped whenever [SCHEMA_SQL] or [migrateSchema] changes shape. Stamped into
@@ -221,6 +229,14 @@ private fun Database.seedDefaultAccounts() {
         "insert or ignore into accounts(id, name, parent_id, type) values" +
             "('$EXTERNAL_EXPENSE_ID', '$EXTERNAL_ACCOUNT_NAME', null, 'expense')," +
             "('$EXTERNAL_INCOME_ID', '$EXTERNAL_ACCOUNT_NAME', null, 'income')",
+    )
+    // The two seeds are also the starting per-type defaults, so quick entry
+    // works before the user has set anything. `insert or ignore` keeps two
+    // concurrently-seeded devices converging on the same rows.
+    execute(
+        "insert or ignore into settings(key, value, updated_at) values" +
+            "('${defaultAccountKey(AccountType.Expense)}', '$EXTERNAL_EXPENSE_ID', 0)," +
+            "('${defaultAccountKey(AccountType.Income)}', '$EXTERNAL_INCOME_ID', 0)",
     )
 }
 

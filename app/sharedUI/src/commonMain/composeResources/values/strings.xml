@@ -60,6 +60,10 @@
     <string name="account_actions">Acciones de la cuenta</string>
     <string name="account_includes_subaccounts">subtotal</string>
     <string name="account_in_net_worth_toggle">Contar en el patrimonio</string>
+    <string name="account_set_default">Usar como predeterminada</string>
+    <string name="account_unset_default">Quitar como predeterminada</string>
+    <string name="account_default_hint">Se preselecciona en movimientos nuevos (%1$s)</string>
+    <string name="account_default_badge">Cuenta predeterminada</string>
 
     <!-- Net worth picker -->
     <string name="net_worth_picker_title">Patrimonio</string>

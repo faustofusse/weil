@@ -35,6 +35,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
@@ -69,6 +70,8 @@ import weil.app.sharedui.generated.resources.account_actions
 import weil.app.sharedui.generated.resources.account_add_title
 import weil.app.sharedui.generated.resources.account_choose_parent
 import weil.app.sharedui.generated.resources.account_collapse
+import weil.app.sharedui.generated.resources.account_default_badge
+import weil.app.sharedui.generated.resources.account_default_hint
 import weil.app.sharedui.generated.resources.account_delete_message
 import weil.app.sharedui.generated.resources.account_expand
 import weil.app.sharedui.generated.resources.account_in_net_worth_toggle
@@ -80,6 +83,7 @@ import weil.app.sharedui.generated.resources.account_name_label
 import weil.app.sharedui.generated.resources.account_parent_none
 import weil.app.sharedui.generated.resources.account_parent_under
 import weil.app.sharedui.generated.resources.account_rename
+import weil.app.sharedui.generated.resources.account_set_default
 import weil.app.sharedui.generated.resources.account_subaccounts_many
 import weil.app.sharedui.generated.resources.account_subaccounts_one
 import weil.app.sharedui.generated.resources.account_type_asset
@@ -88,6 +92,7 @@ import weil.app.sharedui.generated.resources.account_type_expense
 import weil.app.sharedui.generated.resources.account_type_income
 import weil.app.sharedui.generated.resources.account_type_label
 import weil.app.sharedui.generated.resources.account_type_liability
+import weil.app.sharedui.generated.resources.account_unset_default
 import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.action_delete
@@ -393,21 +398,34 @@ internal fun NodeRowView(
                 Spacer(Modifier.width(10.dp))
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    node.account.name,
-                    style = if (row.depth == 0) {
-                        MaterialTheme.typography.titleSmall
-                    } else {
-                        MaterialTheme.typography.bodyLarge
-                    },
-                    color = if (row.depth == 0) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        node.account.name,
+                        style = if (row.depth == 0) {
+                            MaterialTheme.typography.titleSmall
+                        } else {
+                            MaterialTheme.typography.bodyLarge
+                        },
+                        color = if (row.depth == 0) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    // The account new transactions of this type preselect.
+                    if (state.defaultAccounts[node.account.type] == node.account.id) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = stringResource(Res.string.account_default_badge),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
                 // Folded parents advertise what they're hiding; expanded ones
                 // don't need the noise.
                 if (childCount > 0 && !expanded && !flat) {
@@ -520,6 +538,41 @@ internal fun AccountActionsSheet(
                         moving = true
                     },
                 )
+                run {
+                    val isDefault = state.defaultAccounts[account.type] == account.id
+                    ListItem(
+                        colors = itemColors,
+                        leadingContent = {
+                            Icon(
+                                if (isDefault) Icons.Filled.Star else Icons.Filled.StarOutline,
+                                contentDescription = null,
+                                tint = if (isDefault) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    LocalContentColor.current
+                                },
+                            )
+                        },
+                        headlineContent = {
+                            Text(
+                                stringResource(
+                                    if (isDefault) {
+                                        Res.string.account_unset_default
+                                    } else {
+                                        Res.string.account_set_default
+                                    },
+                                ),
+                            )
+                        },
+                        supportingContent = {
+                            Text(stringResource(Res.string.account_default_hint, accountTypeLabel(account.type)))
+                        },
+                        modifier = Modifier.clickable {
+                            state.toggleDefaultAccount(account)
+                            onDismiss()
+                        },
+                    )
+                }
                 if (account.type == AccountType.Asset || account.type == AccountType.Liability) {
                     ListItem(
                         colors = itemColors,

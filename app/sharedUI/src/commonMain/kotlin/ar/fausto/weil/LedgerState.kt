@@ -18,7 +18,16 @@ import kotlinx.coroutines.launch
 class LedgerState(
     val accounts: AccountsRepository,
     val ledger: TransactionsRepository,
+    val settings: SettingsRepository,
 ) {
+    /**
+     * Per-type default account ids as stored (not resolved): the account a
+     * new transaction preselects for that type. Raw ids, because the account
+     * may have been deleted on another device — [resolveDefault] validates
+     * them against [tree] at the point of use.
+     */
+    var defaultAccounts by mutableStateOf<Map<AccountType, String>>(emptyMap())
+        private set
     var tree by mutableStateOf<List<AccountNode>>(emptyList())
         private set
     /** Survives navigation because the state lives above the nav host. */
@@ -68,6 +77,9 @@ class LedgerState(
         scope.launch {
             ledger.changes.collect { refresh() }
         }
+        scope.launch {
+            settings.changes.collect { defaultAccounts = settings.defaultAccounts() }
+        }
     }
 
     fun refresh(userInitiated: Boolean = false) {
@@ -104,6 +116,7 @@ class LedgerState(
         tree = newTree
         leafTotals = leafs
         totals = rollupSubtrees(newTree, leafs)
+        defaultAccounts = settings.defaultAccounts()
         recent = ledger.page(limit = RECENT_COUNT)
     }
 
@@ -138,6 +151,16 @@ class LedgerState(
 
     fun deleteAccount(id: String) =
         mutate { accounts.delete(id) }
+
+    /**
+     * Makes [id] the preselected account for its type, or clears the default
+     * when it already is it (the row is a toggle).
+     */
+    fun toggleDefaultAccount(account: Account) = mutate {
+        val current = defaultAccounts[account.type]
+        settings.setDefaultAccount(account.type, account.id.takeIf { it != current })
+        defaultAccounts = settings.defaultAccounts()
+    }
 
     /** Only meaningful for Asset/Liability; see [excludedFromNetWorth]. */
     fun setInNetWorth(id: String, included: Boolean) =

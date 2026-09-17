@@ -84,6 +84,7 @@ private enum class QuickField { From, To }
 fun TransactionQuickScreen(
     ledger: TransactionsRepository,
     accounts: AccountsRepository,
+    settings: SettingsRepository,
     kind: TxnKind,
     onSaved: () -> Unit,
     onNavigateBack: () -> Unit,
@@ -110,6 +111,7 @@ fun TransactionQuickScreen(
     var fromId by remember { mutableStateOf<String?>(null) }
     var toId by remember { mutableStateOf<String?>(null) }
     var tree by remember { mutableStateOf<List<AccountNode>>(emptyList()) }
+    var defaults by remember { mutableStateOf<Map<AccountType, String>>(emptyMap()) }
     var paths by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var picking by remember { mutableStateOf<QuickField?>(null) }
     var creatingCategory by remember { mutableStateOf(false) }
@@ -123,6 +125,7 @@ fun TransactionQuickScreen(
     val canRecord = !busy && amountValid && fromId != null && toId != null
 
     suspend fun reloadTree() {
+        defaults = settings.defaultAccounts()
         tree = accounts.tree()
         paths = tree.flatMap { it.selfAndDescendants }
             .associate { it.account.id to it.path }
@@ -133,30 +136,32 @@ fun TransactionQuickScreen(
         reloadTree()
     }
 
-    // Defaults for the active kind once the tree arrives: "Otros" is the
-    // seeded income/expense default, and the first asset account preselects
-    // itself — the point of this screen is amount → record, and "which of my
-    // accounts paid" is the pick the user most often wouldn't change anyway.
-    // Wrong guesses are one tap to fix. Re-runs keep any existing pick.
-    LaunchedEffect(tree, currentKind) {
+    // Defaults for the active kind once the tree arrives: the account the
+    // user marked as default for each type (long-press → "Usar como
+    // predeterminada"), falling back to the seeded "Otros"/first account —
+    // the point of this screen is amount → record, and "which of my accounts
+    // paid" is the pick the user most often wouldn't change anyway. Wrong
+    // guesses are one tap to fix. Re-runs keep any existing pick.
+    LaunchedEffect(tree, defaults, currentKind) {
         if (tree.isEmpty()) return@LaunchedEffect
-        val assets = tree.filter { it.account.type == AccountType.Asset }
-        fun List<AccountNode>.default(): String? =
-            (firstOrNull { it.account.name.equals(EXTERNAL_ACCOUNT_NAME, ignoreCase = true) }
-                ?: singleOrNull())?.account?.id
+        fun default(type: AccountType): String? = resolveDefault(tree, type, defaults[type])
         when (currentKind) {
             TxnKind.Expense -> {
-                if (fromId == null) fromId = assets.firstOrNull()?.account?.id
-                if (toId == null) toId = tree.filter { it.account.type == AccountType.Expense }.default()
+                if (fromId == null) fromId = default(AccountType.Asset)
+                if (toId == null) toId = default(AccountType.Expense)
             }
             TxnKind.Income -> {
-                if (fromId == null) fromId = tree.filter { it.account.type == AccountType.Income }.default()
-                if (toId == null) toId = assets.firstOrNull()?.account?.id
+                if (fromId == null) fromId = default(AccountType.Income)
+                if (toId == null) toId = default(AccountType.Asset)
             }
             TxnKind.Transfer -> {
                 if (fromId == null && toId == null) {
-                    fromId = assets.getOrNull(0)?.account?.id
-                    toId = assets.getOrNull(1)?.account?.id
+                    // Both legs are assets, so the default can only fill one;
+                    // the other is any other asset account.
+                    val from = default(AccountType.Asset)
+                    fromId = from
+                    toId = tree.filter { it.account.type == AccountType.Asset }
+                        .firstOrNull { it.account.id != from }?.account?.id
                 }
             }
         }
