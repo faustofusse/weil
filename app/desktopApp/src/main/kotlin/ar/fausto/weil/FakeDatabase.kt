@@ -144,5 +144,63 @@ class FakeDatabase(
             "seed-tx-6", now - 2 * day, "Transferencia recibida",
             listOf(Triple(bank, 20_000_000L, "ARS"), Triple(EXTERNAL_INCOME_ID, -20_000_000L, "ARS")),
         )
+
+        // Provenance for a row that arrived twice: the push alert first, the
+        // statement later. The detail screen lists both.
+        fun source(tx: String, kind: String, ref: String, at: Long) = execute(
+            "insert or ignore into transaction_sources(transaction_id, kind, ref, event_key, created_at)" +
+                " values (:tx, :kind, :ref, null, :at)",
+            mapOf(":tx" to tx, ":kind" to kind, ":ref" to ref, ":at" to at),
+        )
+        source("seed-tx-2", "notification", "seed-notif-x", now - 7200_000)
+        source("seed-tx-2", "document", "seed-doc-x", now - 3600_000)
+
+        account("seed-asset-mp", "Mercado Pago", "asset")
+        // Verbatim captures from a real device, so the inbox harness exercises
+        // the actual sentences the rules are written against — including the
+        // promotion that must stay out of it.
+        fun notification(id: String, pkg: String, title: String, text: String, at: Long) = execute(
+            "insert or ignore into notifications(id, package_name, title, text, category, post_time, received_at)" +
+                " values (:id, :pkg, :title, :text, null, :at, :at)",
+            mapOf(":id" to id, ":pkg" to pkg, ":title" to title, ":text" to text, ":at" to at),
+        )
+        notification(
+            "seed-notif-1", "com.mercadopago.wallet",
+            "Pagaste a Spotify", "Debitamos $ 5.895,57 de tu cuenta.", now - 3 * day,
+        )
+        notification(
+            "seed-notif-2", "com.mercadopago.wallet",
+            "Recibiste $ 15.000",
+            "Luciano Ramiro Veiga te envi\u00f3 dinero y ya est\u00e1 generando rendimientos en tu cuenta.",
+            now - 4 * day,
+        )
+        // The mirror of seed-tx-6: that transaction records the money
+        // *arriving* (filed as plain income because the receiving statement
+        // could not tell the payer was the user), and this alert is the same
+        // amount *leaving* the other account — so the review screen should
+        // offer to complete the transfer instead of inventing a second row.
+        notification(
+            "seed-notif-3", "ar.com.santander.rio.mbanking",
+            "Transferiste con \u00e9xito", "Enviaste $ 200.000,00 a Fausto Fusse.", now - 2 * day,
+        )
+        notification(
+            "seed-notif-4", "com.mercadopago.wallet",
+            "\u00a115% OFF en Carrefour! \ud83d\ude31",
+            "Aprovech\u00e1 hoy \u00a1Sin tope! Llen\u00e1 el carrito Compra m\u00ednima: $15.000",
+            now - 2 * day,
+        )
+        execute(
+            "insert or ignore into emails(id, from_email, to_email, subject, body_text, body_html, received_at)" +
+                " values (:id, :from, 'wallet@fausto.ar', :subject, null, :html, :at)",
+            mapOf(
+                ":id" to "seed-email-1",
+                ":from" to "mensajesyavisos@mails.santander.com.ar",
+                ":subject" to "Aviso de consumo",
+                ":html" to "<style>.t { color: #767676 }</style>" +
+                    "<p>Tarjeta Santander Visa Cr\u00e9dito terminada en 1500</p>" +
+                    "<td>Monto U\$S21,23</td><td>Cuotas 1</td><td>Comercio ANOMALY</td><td>Fecha 28/08/2026</td>",
+                ":at" to now - 5 * day,
+            ),
+        )
     }
 }

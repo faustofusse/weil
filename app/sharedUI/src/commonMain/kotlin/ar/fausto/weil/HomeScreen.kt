@@ -62,6 +62,7 @@ import weil.app.sharedui.generated.resources.home_no_recent
 import weil.app.sharedui.generated.resources.home_recent_title
 import weil.app.sharedui.generated.resources.home_see_all
 import weil.app.sharedui.generated.resources.import_menu
+import weil.app.sharedui.generated.resources.inbox_menu
 import weil.app.sharedui.generated.resources.import_no_picker
 import weil.app.sharedui.generated.resources.import_unsupported
 import weil.app.sharedui.generated.resources.more_options
@@ -83,6 +84,7 @@ fun HomeScreen(
     ledgerState: LedgerState,
     documents: () -> DocumentPicker?,
     onImportDocument: (PickedDocument) -> Unit,
+    onNavigateToInbox: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToEmails: () -> Unit,
@@ -156,6 +158,10 @@ fun HomeScreen(
                             OverflowItem(Icons.Filled.DocumentScanner, stringResource(Res.string.import_menu)) {
                                 menuOpen = false
                                 importDocument()
+                            }
+                            OverflowItem(Icons.Filled.Bolt, stringResource(Res.string.inbox_menu)) {
+                                menuOpen = false
+                                onNavigateToInbox()
                             }
                         }
                     }

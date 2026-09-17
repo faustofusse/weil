@@ -44,3 +44,10 @@ data class AccountAddRoute(val initialType: AccountType? = null)
  * bytes here keeps them alive across the analyze round trip.
  */
 data class ImportReviewRoute(val document: PickedDocument)
+
+/**
+ * Review of the movements recognized in captured notifications and email
+ * receipts — the same screen as [ImportReviewRoute], reading the device's own
+ * inbox instead of a document.
+ */
+object InboxReviewRoute

@@ -111,6 +111,9 @@ import weil.app.sharedui.generated.resources.import_split_add
 import weil.app.sharedui.generated.resources.import_split_merge
 import weil.app.sharedui.generated.resources.import_split_remove
 import weil.app.sharedui.generated.resources.import_title
+import weil.app.sharedui.generated.resources.inbox_empty
+import weil.app.sharedui.generated.resources.inbox_source
+import weil.app.sharedui.generated.resources.inbox_title
 
 /**
  * Editable copy of an [ImportCandidate]: the user reviews, tweaks and either
@@ -128,7 +131,28 @@ private class SplitDraft(split: ImportSplit, val commodity: String) {
     val valid: Boolean get() = (amount?.minorUnits ?: 0L) != 0L && categoryId != null
 }
 
-private class CandidateDraft(val candidate: ImportCandidate) {
+/**
+ * What the review screen is reviewing. Both arms end in the same rows: a
+ * statement and a push alert describe the same kind of event, and the whole
+ * point of the reconciliation work is that the ledger cannot tell which door
+ * a movement used.
+ */
+sealed interface ReviewSource {
+    /** An image/PDF the user picked or shared; analyzed by the worker. */
+    data class Document(val document: PickedDocument) : ReviewSource
+
+    /** Movements recognized locally in captured notifications and emails. */
+    data object Inbox : ReviewSource
+}
+
+private class CandidateDraft(
+    val candidate: ImportCandidate,
+    /** Origin of this row; the document arm shares one for the whole batch. */
+    val sourceKind: EventSource = EventSource.Document,
+    val sourceRef: String? = null,
+    /** Headline of the originating message, shown instead of a page number. */
+    val sourceTitle: String? = null,
+) {
     val date = candidate.date
     val direction = candidate.direction
     val commodity = candidate.commodity
@@ -192,6 +216,16 @@ private class CandidateDraft(val candidate: ImportCandidate) {
      */
     fun eventKey(fallbackAsset: String?): String =
         candidate.toEvent(null, assetOr(fallbackAsset), totalMinor).eventKey
+
+    /**
+     * Provenance rows for this draft: which message or document it came from,
+     * plus the door-independent fingerprint that recognizes the same movement
+     * arriving later through a different one.
+     */
+    fun provenance(fallbackAsset: String?): List<TransactionSource> {
+        val ref = sourceRef ?: return emptyList()
+        return listOf(TransactionSource(sourceKind, ref, eventKey(fallbackAsset)))
+    }
 }
 
 /**
@@ -201,8 +235,9 @@ private class CandidateDraft(val candidate: ImportCandidate) {
  */
 @Composable
 fun ImportReviewScreen(
-    document: PickedDocument,
+    source: ReviewSource,
     imports: DocumentAnalyzer,
+    ingest: IngestRepository,
     ledger: TransactionsRepository,
     accounts: AccountsRepository,
     onDone: () -> Unit,
@@ -253,7 +288,7 @@ fun ImportReviewScreen(
         names = nodes.associate { it.account.id to it.account.name }
     }
 
-    LaunchedEffect(document, attempt) {
+    LaunchedEffect(source, attempt) {
         error = null
         analysis = null
         drafts = null
@@ -268,24 +303,38 @@ fun ImportReviewScreen(
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
             }
-            val result = imports.analyze(document)
-            analysis = result
+            // The two doors differ only in how the rows are obtained: the
+            // worker reads a document, the device reads its own notification
+            // and email captures. Everything below is shared.
+            val loaded: List<CandidateDraft> = when (source) {
+                is ReviewSource.Document -> {
+                    val result = imports.analyze(source.document)
+                    analysis = result
+                    result.candidates.map {
+                        CandidateDraft(it, EventSource.Document, result.docId)
+                    }
+                }
+                ReviewSource.Inbox -> ingest.inbox().map {
+                    CandidateDraft(it.candidate, it.kind, it.ref, it.title)
+                }
+            }
+            val candidates = loaded.map { it.candidate }
             // The default in the bottom bar only covers rows the document
             // didn't attribute to one of the user's own accounts, so seed it
             // from whatever the analysis detected most — not an arbitrary
             // first account — and fall back the way the quick-entry screen does.
             if (assetId == null) {
-                assetId = result.candidates.mapNotNull { it.accountId }
+                assetId = candidates.mapNotNull { it.accountId }
                     .groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
                     ?: assets.singleOrNull()?.account?.id
                     ?: assets.firstOrNull()?.account?.id
             }
             // Blocking step: one window query for the whole document instead
             // of a lookup per candidate.
-            val facts = if (result.candidates.isEmpty()) {
+            val facts = if (candidates.isEmpty()) {
                 emptyList()
             } else {
-                val dates = result.candidates.map { it.date }
+                val dates = candidates.map { it.date }
                 ledger.reconcileFacts(
                     dates.min() - matchPolicy.windowMs,
                     dates.max() + matchPolicy.windowMs,
@@ -294,12 +343,12 @@ fun ImportReviewScreen(
             // Batch-matched, not row-by-row: `matchAll` also makes sure two
             // candidates never claim the same existing transaction.
             val outcomes = matchAll(
-                result.candidates.map { it.toEvent(result.docId, assetId) },
+                loaded.map { it.candidate.toEvent(it.sourceRef, assetId) },
                 facts,
                 matchPolicy,
             )
-            drafts = result.candidates.mapIndexed { index, candidate ->
-                CandidateDraft(candidate).also { draft ->
+            drafts = loaded.mapIndexed { index, draft ->
+                draft.also {
                     // Fall back to the seeded "Otros" account — but only if it
                     // actually exists. Assigning the fixed id blind wrote
                     // postings pointing at a missing account on any ledger
@@ -314,7 +363,7 @@ fun ImportReviewScreen(
                     }
                     // A single candidate has nothing to scan through — open it
                     // straight away instead of making the user tap to see it.
-                    if (result.candidates.size == 1) draft.expanded = true
+                    if (candidates.size == 1) draft.expanded = true
 
                     // Confident matches default to associating; anything less
                     // is only a suggestion the row displays. An event already
@@ -401,15 +450,7 @@ fun ImportReviewScreen(
                         val mirror = match.relation == MatchRelation.Mirror
                         AssociateOp(
                             transactionId = match.fact.transactionId,
-                            sources = docId?.let {
-                                listOf(
-                                    TransactionSource(
-                                        kind = EventSource.Document,
-                                        ref = it,
-                                        eventKey = draft.eventKey(fallbackAsset),
-                                    ),
-                                )
-                            }.orEmpty(),
+                            sources = draft.provenance(fallbackAsset),
                             retargetPostingId = if (mirror) match.retargetPostingId else null,
                             retargetAccountId = if (mirror) draft.assetOr(fallbackAsset) else null,
                         )
@@ -454,15 +495,7 @@ fun ImportReviewScreen(
                         note = draft.note,
                         drafts = listOf(assetLeg) + splitLegs,
                         sourceDocumentId = docId,
-                        sources = docId?.let {
-                            listOf(
-                                TransactionSource(
-                                    kind = EventSource.Document,
-                                    ref = it,
-                                    eventKey = draft.eventKey(fallbackAsset),
-                                ),
-                            )
-                        }.orEmpty(),
+                        sources = draft.provenance(fallbackAsset),
                     )
                 }
                 if (entries.isEmpty() && associations.isEmpty()) return@launch
@@ -511,7 +544,16 @@ fun ImportReviewScreen(
         modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(Res.string.import_title)) },
+                title = {
+                    Text(
+                        stringResource(
+                            when (source) {
+                                is ReviewSource.Document -> Res.string.import_title
+                                ReviewSource.Inbox -> Res.string.inbox_title
+                            },
+                        ),
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
@@ -520,7 +562,12 @@ fun ImportReviewScreen(
                 actions = {
                     Text(
                         stringResource(
-                            if (document.isPdf) Res.string.import_source_pdf else Res.string.import_source_image,
+                            when {
+                                source is ReviewSource.Document && source.document.isPdf ->
+                                    Res.string.import_source_pdf
+                                source is ReviewSource.Document -> Res.string.import_source_image
+                                else -> Res.string.inbox_source
+                            },
                         ),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -597,7 +644,14 @@ fun ImportReviewScreen(
             when {
                 error != null && rows == null -> ImportError(error!!) { attempt++ }
                 rows == null -> AnalyzingState()
-                rows.isEmpty() -> CenteredMessage(stringResource(Res.string.import_empty))
+                rows.isEmpty() -> CenteredMessage(
+                    stringResource(
+                        when (source) {
+                            is ReviewSource.Document -> Res.string.import_empty
+                            ReviewSource.Inbox -> Res.string.inbox_empty
+                        },
+                    ),
+                )
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),

@@ -41,6 +41,9 @@ class AppGraph(
     val notifications = NotificationsRepository(db)
     val emails = EmailsRepository(db)
     val imports: DocumentAnalyzer = importAnalyzer ?: ImportRepository(store)
+
+    /** Movements recognized in captured notifications and email receipts. */
+    val ingest = IngestRepository(notifications, emails, accounts, ledger)
     val scanner: QrScanner? get() = qrScannerProvider()
 
     /** Needs a foreground activity/controller, so it is resolved lazily. */

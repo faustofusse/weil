@@ -248,6 +248,41 @@ class TransactionsRepository(private val db: DatabaseProvider) {
 
 
     /**
+     * Which of [refs] already belong to some transaction. The inbox asks this
+     * to stop re-offering a notification it has already turned into (or
+     * attached to) a transaction; passing the refs in keeps it one bounded
+     * query instead of loading the whole provenance table.
+     */
+    suspend fun knownSourceRefs(refs: List<String>): Set<String> {
+        if (refs.isEmpty()) return emptySet()
+        return db.useForRead { d ->
+            d.query(
+                "select ref from transaction_sources where ref in (${quoteList(refs)})",
+                null,
+            ) { rows -> rows.mapNotNull { it.firstOrNull()?.toString() }.toSet() }
+        }
+    }
+
+    /** Every origin recorded for one transaction, oldest first. */
+    suspend fun sources(transactionId: String): List<StoredSource> = db.useForRead { d ->
+        d.query(
+            "select kind, ref, event_key, created_at from transaction_sources" +
+                " where transaction_id = :id order by created_at",
+            mapOf(":id" to transactionId),
+        ) { rows ->
+            rows.filter { it.size >= 4 }.mapNotNull { row ->
+                val kind = EventSource.fromDb(row[0]?.toString()) ?: return@mapNotNull null
+                StoredSource(
+                    kind = kind,
+                    ref = row[1]?.toString() ?: "",
+                    eventKey = row[2]?.toString(),
+                    createdAt = (row[3] as? Number)?.toLong() ?: 0L,
+                )
+            }.toList()
+        }
+    }
+
+    /**
      * Dev utility: hard-deletes every transaction (and its postings) whose
      * date falls within [from, to] (both inclusive, epoch ms). Returns the
      * number of transactions removed. Irreversible — no undo, unlike

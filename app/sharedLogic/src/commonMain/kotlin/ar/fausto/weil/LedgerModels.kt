@@ -140,6 +140,17 @@ data class NewTransaction(
 )
 
 /**
+ * An origin as stored, with when it was linked — [TransactionSource] is the
+ * write shape, this is the read one.
+ */
+data class StoredSource(
+    val kind: EventSource,
+    val ref: String,
+    val eventKey: String?,
+    val createdAt: Long,
+)
+
+/**
  * Attaching an incoming event to a transaction that already records it.
  *
  * [retargetPostingId] completes a half-recorded transfer: the other document

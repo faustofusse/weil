@@ -222,6 +222,20 @@
         <item>dic</item>
     </string-array>
 
+    <!-- Movimientos detectados en notificaciones y mails -->
+    <string name="inbox_menu">Detectar movimientos</string>
+    <string name="inbox_title">Detectados</string>
+    <string name="inbox_source">Avisos</string>
+    <string name="inbox_empty">No hay movimientos nuevos en tus notificaciones ni en tus mails</string>
+    <string name="inbox_analyzing">Revisando notificaciones y mails…</string>
+
+    <!-- Origen de una transacción -->
+    <string name="txn_sources_title">Origen</string>
+    <string name="txn_source_document">Documento importado</string>
+    <string name="txn_source_notification">Notificación</string>
+    <string name="txn_source_email">Mail</string>
+    <string name="txn_source_manual">Carga manual</string>
+
     <!-- Document import -->
     <string name="import_menu">Importar documento</string>
     <string name="import_title">Importar</string>

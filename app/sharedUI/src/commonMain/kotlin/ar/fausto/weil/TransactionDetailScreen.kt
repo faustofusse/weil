@@ -49,6 +49,22 @@ import weil.app.sharedui.generated.resources.editor_transaction_deleted
 import weil.app.sharedui.generated.resources.journal_more_postings
 import weil.app.sharedui.generated.resources.txn_detail_postings
 import weil.app.sharedui.generated.resources.txn_detail_title
+import weil.app.sharedui.generated.resources.txn_source_document
+import weil.app.sharedui.generated.resources.txn_source_email
+import weil.app.sharedui.generated.resources.txn_source_manual
+import weil.app.sharedui.generated.resources.txn_source_notification
+import weil.app.sharedui.generated.resources.txn_sources_title
+
+/** Nombre visible de cada puerta de entrada; `EventSource` vive sin traducir. */
+@Composable
+private fun sourceLabel(kind: EventSource): String = stringResource(
+    when (kind) {
+        EventSource.Document -> Res.string.txn_source_document
+        EventSource.Notification -> Res.string.txn_source_notification
+        EventSource.Email -> Res.string.txn_source_email
+        EventSource.Manual -> Res.string.txn_source_manual
+    },
+)
 
 /**
  * Vista de solo lectura de una transacción. El botón de editar lleva al editor completo.
@@ -63,6 +79,9 @@ fun TransactionDetailScreen(
     onNavigateToAccount: (id: String) -> Unit,
 ) {
     var tx by remember { mutableStateOf<Transaction?>(null) }
+    // Where this transaction came from. A single purchase legitimately has a
+    // push alert, a mail receipt and a statement row, so this is a list.
+    var sources by remember { mutableStateOf<List<StoredSource>>(emptyList()) }
     var paths by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var types by remember { mutableStateOf<Map<String, AccountType>>(emptyMap()) }
     var loaded by remember { mutableStateOf(false) }
@@ -80,6 +99,7 @@ fun TransactionDetailScreen(
                 return
             }
             tx = fetched
+            sources = ledger.sources(id)
             paths = accountPaths(accounts)
             types = accountTypes(accounts)
             loaded = true
@@ -100,6 +120,7 @@ fun TransactionDetailScreen(
                 onNavigateBack()
             } else {
                 tx = fetched
+                sources = ledger.sources(id)
                 paths = accountPaths(accounts)
                 types = accountTypes(accounts)
             }
@@ -310,6 +331,54 @@ fun TransactionDetailScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                            }
+                        }
+                    }
+
+                    if (sources.isNotEmpty()) {
+                        Spacer(Modifier.height(24.dp))
+                        Text(
+                            stringResource(Res.string.txn_sources_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(GroupRadius),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column {
+                                sources.forEachIndexed { index, origin ->
+                                    if (index > 0) {
+                                        androidx.compose.material3.HorizontalDivider(
+                                            modifier = Modifier.padding(start = 16.dp),
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 48.dp)
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            sourceLabel(origin.kind),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        // When it was linked, which is not the
+                                        // transaction's date: a statement
+                                        // imported in September can attach to
+                                        // a movement from August.
+                                        Text(
+                                            dayLabel(dayGroup(origin.createdAt)),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

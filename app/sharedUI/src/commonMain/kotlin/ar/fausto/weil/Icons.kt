@@ -71,6 +71,12 @@ object Icons {
             "M4 4h3V2H4c-1.1 0-2 .9-2 2v3h2V4zm16 0v3h2V4c0-1.1-.9-2-2-2h-3v2h3zM4 17H2v3c0 1.1.9 2 2 2h3v-2H4v-3zm16 3h-3v2h3c1.1 0 2-.9 2-2v-3h-2v3zM17 6H7v12h10V6zm-2 10H9V8h6v8z",
         )
 
+        /** Material "bolt": movements detected in notifications and mail. */
+        val Bolt: ImageVector = materialIcon(
+            "Bolt",
+            "M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z",
+        )
+
         val MoreVert: ImageVector = materialIcon(
             "MoreVert",
             "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",

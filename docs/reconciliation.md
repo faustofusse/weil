@@ -237,3 +237,36 @@ with categories/accounts the user had since edited by hand):
   the *ledger*, so the second one matches whatever the first one wrote — which
   is the case that was broken and now works. Matching against another import's
   *unconfirmed* candidates is not supported.
+
+## The other two doors
+
+`Ingest.kt` turns notifications and email receipts into the same
+`CandidateEvent` a statement row becomes, and `IngestRepository.inbox()`
+offers them through the same review screen (`ReviewSource.Inbox`). Nothing in
+the matcher changed to accommodate them, which was the point of making
+`CandidateEvent` source-agnostic in the first place.
+
+Two properties are worth keeping:
+
+- **It never writes.** A parser bug costs a wrong suggestion on a review
+  screen, never a wrong ledger row.
+- **A message is offered until something links it.** `knownSourceRefs` filters
+  refs already in `transaction_sources`, so acting on an alert — by creating
+  *or* by associating — takes it out of the inbox.
+
+The account a movement belongs to is the weak link: an app name is not an
+account ("Santander" is four of them). `resolveAccountHint` uses the commodity
+as a tiebreak and gives up when the winner is not alone, falling back to the
+screen's default account rather than guessing.
+
+### Known gaps here
+
+- **Ingestion truncation.** Mercado Pago's "Pago aprobado en X" and Santander's
+  "Aviso de transferencia" store an empty `body_html` and a `body_text` that is
+  raw MIME cut at 10 kB — all stylesheet, no receipt. Those are unparseable
+  until the worker's email path stores the receipt rather than the wrapper.
+- **Broker mail.** IOL's "Estado de la Transacción" parses cleanly but
+  describes a securities purchase (asset↔asset, commission, taxes), which the
+  single-amount candidate shape cannot express.
+- **No learned aliases yet.** "Google  youtube premiu" and a statement's
+  "GOOGLE *YOUTUBE" only meet through the payee-affinity heuristic.

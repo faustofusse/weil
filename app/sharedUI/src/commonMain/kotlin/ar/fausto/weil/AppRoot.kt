@@ -190,6 +190,7 @@ fun RootScreen(
                                         ledgerState = ledgerState,
                                         documents = { graph.documents },
                                         onImportDocument = { navigate(ImportReviewRoute(it)) },
+                                        onNavigateToInbox = { navigate(InboxReviewRoute) },
                                         onNavigateToTree = { navigate(AccountsTreeRoute) },
                                         onNewTransaction = { kind -> navigate(TransactionQuickRoute(kind)) },
                                         onNavigateToProfile = { navigate(ProfileRoute) },
@@ -274,8 +275,20 @@ fun RootScreen(
                                 }
                                 entry<ImportReviewRoute> { route ->
                                     ImportReviewScreen(
-                                        document = route.document,
+                                        source = ReviewSource.Document(route.document),
                                         imports = graph.imports,
+                                        ingest = graph.ingest,
+                                        ledger = graph.ledger,
+                                        accounts = graph.accounts,
+                                        onDone = { pop() },
+                                        onNavigateBack = { pop() },
+                                    )
+                                }
+                                entry<InboxReviewRoute> {
+                                    ImportReviewScreen(
+                                        source = ReviewSource.Inbox,
+                                        imports = graph.imports,
+                                        ingest = graph.ingest,
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
                                         onDone = { pop() },

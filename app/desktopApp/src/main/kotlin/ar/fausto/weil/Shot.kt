@@ -18,6 +18,8 @@ import org.jetbrains.skia.Image
  *   ./gradlew :app:desktopApp:shot
  *   ./gradlew :app:desktopApp:shot -Pshot.out=/tmp/home.png -Pshot.seconds=6
  *   ./gradlew :app:desktopApp:shot -Pshot.route=import   (AI import review)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=inbox    (movements detected in
+ *     the seeded notifications/emails)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=account  (register of the seeded
  *       bank account, which holds both ARS and USD postings)
  *
@@ -76,6 +78,8 @@ fun main(args: Array<String>) {
                     "journal" -> JournalRoute
                     "tx-new" -> TransactionNewRoute()
                     "account" -> AccountDetailRoute("seed-asset-bank")
+                    "inbox" -> InboxReviewRoute
+                    "tx" -> TransactionDetailRoute("seed-tx-2")
                     else -> null
                 },
             )
