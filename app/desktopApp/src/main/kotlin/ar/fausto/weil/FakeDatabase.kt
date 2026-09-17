@@ -136,5 +136,13 @@ class FakeDatabase(
             "seed-tx-5", now - 2 * day, "Suscripción",
             listOf(Triple(bank, -1200L, "USD"), Triple(EXTERNAL_EXPENSE_ID, 1200L, "USD")),
         )
+        // Half-recorded transfer: the statement of the receiving account could
+        // not tell the payer was the user, so the far leg landed on a category.
+        // The import harness ships the other half of it, which is what makes
+        // the review screen's "otra mitad de un traspaso" banner show up.
+        tx(
+            "seed-tx-6", now - 2 * day, "Transferencia recibida",
+            listOf(Triple(bank, 20_000_000L, "ARS"), Triple(EXTERNAL_INCOME_ID, -20_000_000L, "ARS")),
+        )
     }
 }

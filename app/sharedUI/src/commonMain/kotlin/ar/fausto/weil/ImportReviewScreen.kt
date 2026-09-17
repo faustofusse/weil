@@ -80,6 +80,26 @@ import weil.app.sharedui.generated.resources.import_failed
 import weil.app.sharedui.generated.resources.import_found
 import weil.app.sharedui.generated.resources.import_found_one
 import weil.app.sharedui.generated.resources.import_items
+import weil.app.sharedui.generated.resources.import_associate_only
+import weil.app.sharedui.generated.resources.import_associated
+import weil.app.sharedui.generated.resources.import_associated_one
+import weil.app.sharedui.generated.resources.import_create_and_associate
+import weil.app.sharedui.generated.resources.import_match_already
+import weil.app.sharedui.generated.resources.import_match_associate
+import weil.app.sharedui.generated.resources.import_match_create
+import weil.app.sharedui.generated.resources.import_match_duplicate
+import weil.app.sharedui.generated.resources.import_match_maybe
+import weil.app.sharedui.generated.resources.import_match_mirror
+import weil.app.sharedui.generated.resources.import_match_will_associate
+import weil.app.sharedui.generated.resources.import_reason_account
+import weil.app.sharedui.generated.resources.import_reason_account_opposite
+import weil.app.sharedui.generated.resources.import_reason_already
+import weil.app.sharedui.generated.resources.import_reason_amount
+import weil.app.sharedui.generated.resources.import_reason_amount_close
+import weil.app.sharedui.generated.resources.import_reason_day
+import weil.app.sharedui.generated.resources.import_reason_day_near
+import weil.app.sharedui.generated.resources.import_reason_payee
+import weil.app.sharedui.generated.resources.import_reason_payee_similar
 import weil.app.sharedui.generated.resources.import_payee_label
 import weil.app.sharedui.generated.resources.picker_create
 import weil.app.sharedui.generated.resources.import_retry
@@ -106,7 +126,7 @@ private class SplitDraft(split: ImportSplit, val commodity: String) {
     val valid: Boolean get() = (amount?.minorUnits ?: 0L) != 0L && categoryId != null
 }
 
-private class CandidateDraft(candidate: ImportCandidate) {
+private class CandidateDraft(val candidate: ImportCandidate) {
     val date = candidate.date
     val direction = candidate.direction
     val commodity = candidate.commodity
@@ -143,12 +163,33 @@ private class CandidateDraft(candidate: ImportCandidate) {
         .map { SplitDraft(it, commodity) }
         .toMutableStateList()
 
+    /**
+     * What the matcher found for this row: the existing transaction it might
+     * already be (a duplicate of a row imported from another statement, or the
+     * other half of a transfer). Null when nothing comparable is in the ledger.
+     */
+    var suggestion by mutableStateOf<ScoredMatch?>(null)
+
+    /**
+     * The three-state decision. Null = create a new transaction; non-null =
+     * attach this event to that existing one instead. [include] off = skip.
+     */
+    var associateTo by mutableStateOf<ScoredMatch?>(null)
+
     val totalMinor: Long get() = splits.sumOf { it.amount?.minorUnits ?: 0L }
     val valid: Boolean get() =
         payee.isNotBlank() && splits.isNotEmpty() && splits.all { it.valid } && totalMinor != 0L &&
             (counterCommodity == null || (counterAmount?.minorUnits ?: 0L) != 0L)
 
     fun assetOr(fallback: String?): String? = accountId ?: fallback
+
+    /**
+     * Fingerprint of the movement as it will be saved, so a later import of an
+     * overlapping statement period recognizes it without scoring. Derived at
+     * write time because both the account fallback and the amount are editable.
+     */
+    fun eventKey(fallbackAsset: String?): String =
+        candidate.toEvent(null, assetOr(fallbackAsset), totalMinor).eventKey
 }
 
 /**
@@ -194,7 +235,10 @@ fun ImportReviewScreen(
     val scope = rememberCoroutineScope()
     val createdOne = stringResource(Res.string.import_created_one)
     val createdMany = stringResource(Res.string.import_created)
+    val associatedOne = stringResource(Res.string.import_associated_one)
+    val associatedMany = stringResource(Res.string.import_associated)
     val undoLabel = stringResource(Res.string.action_undo)
+    val matchPolicy = remember { MatchPolicy() }
 
     suspend fun reloadTree() {
         tree = accounts.tree()
@@ -210,6 +254,14 @@ fun ImportReviewScreen(
         try {
             reloadTree()
             val assets = tree.filter { it.account.type == AccountType.Asset }
+            // Matching runs against the local replica, so pull first: without
+            // this, rows another device wrote minutes ago are invisible and
+            // every one of them would be imported a second time.
+            try {
+                ledger.syncNow()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+            }
             val result = imports.analyze(document)
             analysis = result
             // The default in the bottom bar only covers rows the document
@@ -222,7 +274,25 @@ fun ImportReviewScreen(
                     ?: assets.singleOrNull()?.account?.id
                     ?: assets.firstOrNull()?.account?.id
             }
-            drafts = result.candidates.map { candidate ->
+            // Blocking step: one window query for the whole document instead
+            // of a lookup per candidate.
+            val facts = if (result.candidates.isEmpty()) {
+                emptyList()
+            } else {
+                val dates = result.candidates.map { it.date }
+                ledger.reconcileFacts(
+                    dates.min() - matchPolicy.windowMs,
+                    dates.max() + matchPolicy.windowMs,
+                )
+            }
+            // Batch-matched, not row-by-row: `matchAll` also makes sure two
+            // candidates never claim the same existing transaction.
+            val outcomes = matchAll(
+                result.candidates.map { it.toEvent(result.docId, assetId) },
+                facts,
+                matchPolicy,
+            )
+            drafts = result.candidates.mapIndexed { index, candidate ->
                 CandidateDraft(candidate).also { draft ->
                     // Fall back to the seeded "Otros" account — but only if it
                     // actually exists. Assigning the fixed id blind wrote
@@ -239,6 +309,23 @@ fun ImportReviewScreen(
                     // A single candidate has nothing to scan through — open it
                     // straight away instead of making the user tap to see it.
                     if (result.candidates.size == 1) draft.expanded = true
+
+                    // Confident matches default to associating; anything less
+                    // is only a suggestion the row displays. An event already
+                    // imported from another document defaults to skipped —
+                    // re-including it associates (idempotent) rather than
+                    // writing a second copy.
+                    when (val outcome = outcomes[index]) {
+                        is MatchOutcome.Confident -> {
+                            draft.suggestion = outcome.match
+                            draft.associateTo = outcome.match
+                            if (outcome.match.relation == MatchRelation.AlreadyImported) {
+                                draft.include = false
+                            }
+                        }
+                        is MatchOutcome.Ambiguous -> draft.suggestion = outcome.matches.first()
+                        MatchOutcome.None -> Unit
+                    }
                 }
             }.toMutableStateList()
         } catch (e: Throwable) {
@@ -248,7 +335,11 @@ fun ImportReviewScreen(
     }
 
     val rows = drafts
-    val included = rows?.count { it.include && it.valid && it.assetOr(assetId) != null } ?: 0
+    val creating = rows?.count {
+        it.include && it.associateTo == null && it.valid && it.assetOr(assetId) != null
+    } ?: 0
+    val associating = rows?.count { it.include && it.associateTo != null } ?: 0
+    val included = creating + associating
 
     /**
      * Splits worth walking: the ones still on the fallback category (or on
@@ -258,7 +349,9 @@ fun ImportReviewScreen(
      */
     fun chainQueue(): List<Pair<CandidateDraft, Int>> {
         val current = rows ?: return emptyList()
-        val all = current.filter { it.include }
+        // Rows being associated to an existing transaction need no category:
+        // nothing new is written for them.
+        val all = current.filter { it.include && it.associateTo == null }
             .flatMap { draft -> draft.splits.indices.map { draft to it } }
         val pending = all.filter { (draft, index) ->
             val category = draft.splits[index].categoryId
@@ -289,7 +382,30 @@ fun ImportReviewScreen(
         error = null
         scope.launch {
             try {
-                val entries = current.filter { it.include && it.valid }.mapNotNull { draft ->
+                // Rows the user chose to attach to a transaction that already
+                // records the movement: provenance always, plus (for the other
+                // half of a transfer) repointing the dangling category leg at
+                // this row's own account.
+                val associations = current.filter { it.include && it.associateTo != null }
+                    .map { draft ->
+                        val match = draft.associateTo!!
+                        val mirror = match.relation == MatchRelation.Mirror
+                        AssociateOp(
+                            transactionId = match.fact.transactionId,
+                            sources = docId?.let {
+                                listOf(
+                                    TransactionSource(
+                                        kind = EventSource.Document,
+                                        ref = it,
+                                        eventKey = draft.eventKey(fallbackAsset),
+                                    ),
+                                )
+                            }.orEmpty(),
+                            retargetPostingId = if (mirror) match.retargetPostingId else null,
+                            retargetAccountId = if (mirror) draft.assetOr(fallbackAsset) else null,
+                        )
+                    }
+                val entries = current.filter { it.include && it.associateTo == null && it.valid }.mapNotNull { draft ->
                     val asset = draft.assetOr(fallbackAsset) ?: return@mapNotNull null
                     // The asset leg is the payment's full total; each split is
                     // its own category leg. Expense: asset −total, category
@@ -329,9 +445,18 @@ fun ImportReviewScreen(
                         note = draft.note,
                         drafts = listOf(assetLeg) + splitLegs,
                         sourceDocumentId = docId,
+                        sources = docId?.let {
+                            listOf(
+                                TransactionSource(
+                                    kind = EventSource.Document,
+                                    ref = it,
+                                    eventKey = draft.eventKey(fallbackAsset),
+                                ),
+                            )
+                        }.orEmpty(),
                     )
                 }
-                if (entries.isEmpty()) return@launch
+                if (entries.isEmpty() && associations.isEmpty()) return@launch
                 // addAll validates inside one SQL transaction, so a single bad
                 // row would roll back the other forty with a message naming
                 // none of them. Check row by row first and say which one.
@@ -344,15 +469,23 @@ fun ImportReviewScreen(
                     }
                 }
                 val ids = ledger.addAll(entries)
+                val undos = ledger.associate(associations)
                 ledger.syncNow()
-                val message = if (ids.size == 1) {
-                    createdOne
-                } else {
-                    createdMany.replace("%1\$d", ids.size.toString())
+                val created = when {
+                    ids.isEmpty() -> null
+                    ids.size == 1 -> createdOne
+                    else -> createdMany.replace("%1\$d", ids.size.toString())
                 }
+                val attached = when {
+                    undos.isEmpty() -> null
+                    undos.size == 1 -> associatedOne
+                    else -> associatedMany.replace("%1\$d", undos.size.toString())
+                }
+                val message = listOfNotNull(created, attached).joinToString(" · ")
                 // Fires from Feedback's own scope, so it survives this pop.
                 Feedback.undoable(message, undoLabel) {
                     ids.forEach { ledger.delete(it) }
+                    ledger.revertAssociations(undos)
                     ledger.syncNow()
                 }
                 onDone()
@@ -429,7 +562,17 @@ fun ImportReviewScreen(
                                     color = MaterialTheme.colorScheme.onPrimary,
                                 )
                             } else {
-                                Text(stringResource(Res.string.import_create, included))
+                                Text(
+                                    when {
+                                        associating == 0 -> stringResource(Res.string.import_create, creating)
+                                        creating == 0 -> stringResource(Res.string.import_associate_only, associating)
+                                        else -> stringResource(
+                                            Res.string.import_create_and_associate,
+                                            creating,
+                                            associating,
+                                        )
+                                    },
+                                )
                             }
                         }
                     }
@@ -493,6 +636,10 @@ fun ImportReviewScreen(
                             },
                             onPickAccount = { picking = PickerTarget.RowAsset(draft) },
                             onToggleExpanded = { draft.expanded = !draft.expanded },
+                            onToggleAssociate = {
+                                draft.associateTo =
+                                    if (draft.associateTo == null) draft.suggestion else null
+                            },
                         )
                     }
                 }
@@ -659,6 +806,7 @@ private fun CandidateCard(
     onPickCategory: (splitIndex: Int) -> Unit,
     onPickAccount: () -> Unit,
     onToggleExpanded: () -> Unit,
+    onToggleAssociate: () -> Unit,
 ) {
     val accountPath = draft.accountId?.let { paths[it] }
     val accountName = draft.accountId?.let { names[it] } ?: fallbackAccountName
@@ -744,7 +892,16 @@ private fun CandidateCard(
                     modifier = Modifier.padding(start = 4.dp).size(20.dp),
                 )
             }
-            if (draft.expanded) {
+            draft.suggestion?.let { suggestion ->
+                MatchBanner(
+                    suggestion = suggestion,
+                    associating = draft.associateTo != null,
+                    onToggle = onToggleAssociate,
+                )
+            }
+            // Associating writes nothing new, so the editable fields would be
+            // lying about what happens on confirm.
+            if (draft.expanded && draft.associateTo == null) {
                 Column(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 12.dp, top = 4.dp)) {
                     OutlinedTextField(
                         value = draft.payee,
@@ -827,6 +984,109 @@ private fun CandidateCard(
         }
     }
 }
+
+/**
+ * The matcher's verdict for one row, and the switch between the two ways to
+ * resolve it. Always visible (not only when the card is expanded): whether a
+ * row is about to create a transaction or attach to one is the most important
+ * thing on it, and the reasons are what make the merge approvable at a glance
+ * instead of an opaque mutation.
+ */
+@Composable
+private fun MatchBanner(
+    suggestion: ScoredMatch,
+    associating: Boolean,
+    onToggle: () -> Unit,
+) {
+    val headline = when {
+        !associating && suggestion.relation != MatchRelation.AlreadyImported ->
+            stringResource(Res.string.import_match_maybe)
+        else -> when (suggestion.relation) {
+            MatchRelation.AlreadyImported -> stringResource(Res.string.import_match_already)
+            MatchRelation.Duplicate -> stringResource(Res.string.import_match_duplicate)
+            MatchRelation.Mirror -> stringResource(Res.string.import_match_mirror)
+        }
+    }
+    val target = stringResource(
+        Res.string.import_match_will_associate,
+        suggestion.fact.payee.ifBlank { "—" },
+    )
+    // Two reasons fit the row; the third was always being ellipsized away,
+    // and the two strongest signals are what the user is judging anyway.
+    val reasons = suggestion.reasons.take(2).map { reasonLabel(it) }
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = if (associating) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        },
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    headline,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (associating) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    target,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (reasons.isNotEmpty()) {
+                    Text(
+                        reasons.joinToString(", "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            TextButton(onClick = onToggle) {
+                Text(
+                    stringResource(
+                        if (associating) {
+                            Res.string.import_match_create
+                        } else {
+                            Res.string.import_match_associate
+                        },
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
+    }
+}
+
+/** [MatchReason] is an enum in sharedLogic precisely so the words live here. */
+@Composable
+private fun reasonLabel(reason: MatchReason): String = stringResource(
+    when (reason) {
+        MatchReason.AlreadyImported -> Res.string.import_reason_already
+        MatchReason.SameAmount -> Res.string.import_reason_amount
+        MatchReason.CloseAmount -> Res.string.import_reason_amount_close
+        MatchReason.SameDay -> Res.string.import_reason_day
+        MatchReason.NearDay -> Res.string.import_reason_day_near
+        MatchReason.SamePayee -> Res.string.import_reason_payee
+        MatchReason.SimilarPayee -> Res.string.import_reason_payee_similar
+        MatchReason.SameAccount -> Res.string.import_reason_account
+        MatchReason.OppositeAccount -> Res.string.import_reason_account_opposite
+    },
+)
 
 /** One editable split line: its own amount and category, in a row. */
 @Composable

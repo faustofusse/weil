@@ -135,6 +135,31 @@ data class NewTransaction(
     val note: String?,
     val drafts: List<DraftPosting>,
     val sourceDocumentId: String? = null,
+    /** Provenance rows written alongside the transaction (see `transaction_sources`). */
+    val sources: List<TransactionSource> = emptyList(),
+)
+
+/**
+ * Attaching an incoming event to a transaction that already records it.
+ *
+ * [retargetPostingId] completes a half-recorded transfer: the other document
+ * filed this movement under an expense/income category because it could not
+ * see that the counterparty was the user, and this repoints that leg at
+ * [retargetAccountId] — turning two half-wrong rows into one correct transfer.
+ */
+data class AssociateOp(
+    val transactionId: String,
+    val sources: List<TransactionSource>,
+    val retargetPostingId: String? = null,
+    val retargetAccountId: String? = null,
+)
+
+/** Everything needed to undo one [AssociateOp] from a Snackbar. */
+data class AssociationUndo(
+    val transactionId: String,
+    val sources: List<TransactionSource>,
+    val postingId: String? = null,
+    val previousAccountId: String? = null,
 )
 
 /** Editor-facing posting draft: blank amount = ledger-style elided posting. */

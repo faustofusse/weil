@@ -255,6 +255,26 @@
     <string name="import_split_add">Agregar ítem</string>
     <string name="import_split_merge">Unir en un solo ítem</string>
     <string name="import_split_remove">Quitar ítem</string>
+    <string name="import_match_duplicate">Ya está registrada</string>
+    <string name="import_match_mirror">Otra mitad de un traspaso</string>
+    <string name="import_match_already">Ya importada</string>
+    <string name="import_match_maybe">¿Ya está registrada?</string>
+    <string name="import_match_associate">Asociar</string>
+    <string name="import_match_create">Crear nueva</string>
+    <string name="import_match_will_associate">Se asociará a «%1$s»</string>
+    <string name="import_reason_amount">mismo importe</string>
+    <string name="import_reason_amount_close">importe parecido</string>
+    <string name="import_reason_day">mismo día</string>
+    <string name="import_reason_day_near">fecha cercana</string>
+    <string name="import_reason_payee">misma descripción</string>
+    <string name="import_reason_payee_similar">descripción parecida</string>
+    <string name="import_reason_account">misma cuenta</string>
+    <string name="import_reason_account_opposite">cuenta opuesta</string>
+    <string name="import_reason_already">ya importada antes</string>
+    <string name="import_create_and_associate">Crear %1$d y asociar %2$d</string>
+    <string name="import_associate_only">Asociar %1$d</string>
+    <string name="import_associated">%1$d transacciones asociadas</string>
+    <string name="import_associated_one">Transacción asociada</string>
     <string name="import_chain_start">Categorizar</string>
     <string name="import_chain_progress">%1$d de %2$d</string>
 

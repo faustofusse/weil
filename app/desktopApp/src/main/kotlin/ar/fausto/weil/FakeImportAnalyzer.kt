@@ -7,7 +7,9 @@ import kotlinx.coroutines.delay
  * headless screenshot harness: the review screen can be rendered without a
  * session, a network call or a Gemini bill. The delay keeps the "analyzing"
  * state on screen for a beat, like the real round trip. Carrefour carries
- * multiple splits so the harness exercises the itemized-receipt row too.
+ * multiple splits so the harness exercises the itemized-receipt row too, and
+ * the last two rows deliberately collide with `FakeDatabase`'s seeded ledger
+ * so the reconciliation banner (duplicate / other half of a transfer) renders.
  */
 class FakeImportAnalyzer : DocumentAnalyzer {
     override suspend fun analyze(document: PickedDocument): ImportAnalysis {
@@ -69,6 +71,32 @@ class FakeImportAnalyzer : DocumentAnalyzer {
                     direction = ImportDirection.Transfer,
                     splits = listOf(
                         ImportSplit(amountMinor = 111_192_41, categoryAccountId = null, categoryPath = null),
+                    ),
+                ),
+                // Same account, same sign, same day as the seeded
+                // "Supermercado Coto de la esquina" → a duplicate.
+                ImportCandidate(
+                    date = now,
+                    payee = "COTO CICSA 4821",
+                    note = null,
+                    commodity = "ARS",
+                    direction = ImportDirection.Expense,
+                    accountId = "seed-asset-bank",
+                    splits = listOf(
+                        ImportSplit(amountMinor = 12_345_00, categoryAccountId = null, categoryPath = null),
+                    ),
+                ),
+                // The money leaving the other account on the same day as the
+                // seeded half-recorded "Transferencia recibida" → a mirror.
+                ImportCandidate(
+                    date = now - 2 * day,
+                    payee = "Transferencia enviada",
+                    note = null,
+                    commodity = "ARS",
+                    direction = ImportDirection.Transfer,
+                    accountId = "seed-asset-cash",
+                    splits = listOf(
+                        ImportSplit(amountMinor = 200_000_00, categoryAccountId = null, categoryPath = null),
                     ),
                 ),
                 ImportCandidate(

@@ -51,7 +51,21 @@ const val SCHEMA_SQL =
     "body_html text," +
     "received_at integer not null);" +
     "create index if not exists idx_emails_received on emails(received_at desc);" +
-    "update emails set received_at = received_at * 1000 where received_at < 1000000000000;"
+    "update emails set received_at = received_at * 1000 where received_at < 1000000000000;" +
+    // Provenance, many-to-many: one economic event reaches the app through
+    // several doors (push notification, email receipt, statement row), and a
+    // later source attaches to the transaction an earlier one created instead
+    // of duplicating it. `event_key` is the source-independent fingerprint
+    // (see CandidateEvent.eventKey) that recognizes the same movement twice.
+    "create table if not exists transaction_sources(" +
+    "transaction_id text not null," +
+    "kind text not null," +
+    "ref text not null," +
+    "event_key text," +
+    "created_at integer not null," +
+    "primary key(transaction_id, kind, ref));" +
+    "create index if not exists idx_transaction_sources_ref on transaction_sources(kind, ref);" +
+    "create index if not exists idx_transaction_sources_event on transaction_sources(event_key);"
 
 /**
  * Bumped whenever [SCHEMA_SQL] or [migrateSchema] changes shape. Stamped into
@@ -60,7 +74,7 @@ const val SCHEMA_SQL =
  * (the Rust parser round trip for ~13 statements is real cost on every cold
  * start otherwise).
  */
-private const val SCHEMA_VERSION = 3L
+private const val SCHEMA_VERSION = 4L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -111,8 +125,29 @@ fun Database.migrateSchema() {
         // from the device, only by reprocessing the archived raw message.
         execute("alter table emails add column body_html text")
     }
+    backfillTransactionSources()
     seedDefaultAccounts()
     adoptOrphanSeedPostings()
+}
+
+/**
+ * Copies the legacy single-valued `source_*` columns into
+ * `transaction_sources`. Idempotent (`insert or ignore` on the natural key)
+ * and deterministic, so every device converges on the same rows; the columns
+ * keep being written for cheap provenance but nothing reads them.
+ */
+private fun Database.backfillTransactionSources() {
+    listOf(
+        "source_document_id" to EventSource.Document,
+        "source_notification_id" to EventSource.Notification,
+        "source_email_id" to EventSource.Email,
+    ).forEach { (column, source) ->
+        execute(
+            "insert or ignore into transaction_sources(transaction_id, kind, ref, created_at) " +
+                "select id, '${source.db}', $column, created_at from ledger_transactions " +
+                "where $column is not null and $column <> ''",
+        )
+    }
 }
 
 /** Fixed ids for the seeded default accounts; synced PKs dedupe fresh devices. */

@@ -27,12 +27,14 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         note: String?,
         drafts: List<DraftPosting>,
         sourceDocumentId: String? = null,
+        sources: List<TransactionSource> = emptyList(),
     ): String {
         val txId = Uuid.random().toString()
         val postings = resolvePostings(drafts).map { it.copy(transactionId = txId) }
         writeAtomically {
             insertTransaction(txId, date, payee, note, sourceDocumentId)
             insertPostings(postings)
+            insertSources(txId, sources)
         }
         emitChange()
         return txId
@@ -54,6 +56,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 val (entry, postings) = pair
                 insertTransaction(txId, entry.date, entry.payee, entry.note, entry.sourceDocumentId)
                 insertPostings(postings)
+                insertSources(txId, entry.sources)
             }
         }
         emitChange()
@@ -94,9 +97,153 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         writeAtomically {
             // postings first: cross-connection FK cascades are not enforced
             execute("delete from postings where transaction_id = :id", mapOf(":id" to id))
+            execute("delete from transaction_sources where transaction_id = :id", mapOf(":id" to id))
             execute("delete from ledger_transactions where id = :id", mapOf(":id" to id))
         }
         emitChange()
+    }
+
+    /**
+     * Attaches incoming events to transactions that already record them: adds
+     * the provenance rows and, for a half-recorded transfer, repoints the
+     * dangling category leg at the event's own account. One SQL transaction for
+     * the whole batch; the returned undos restore the previous state
+     * ([revertAssociations]).
+     */
+    suspend fun associate(ops: List<AssociateOp>): List<AssociationUndo> {
+        if (ops.isEmpty()) return emptyList()
+        // Read the accounts being repointed before the write, so undo can put
+        // them back exactly as they were.
+        val previous = ops.mapNotNull { it.retargetPostingId }.let { postingIds ->
+            if (postingIds.isEmpty()) {
+                emptyMap()
+            } else {
+                db.useForRead { d ->
+                    d.query(
+                        "select id, account_id from postings where id in (${quoteList(postingIds)})",
+                        null,
+                    ) { rows ->
+                        rows.filter { it.size >= 2 }.mapNotNull { row ->
+                            val id = row[0]?.toString() ?: return@mapNotNull null
+                            val accountId = row[1]?.toString() ?: return@mapNotNull null
+                            id to accountId
+                        }.toMap()
+                    }
+                }
+            }
+        }
+        writeAtomically {
+            for (op in ops) {
+                insertSources(op.transactionId, op.sources)
+                if (op.retargetPostingId != null && op.retargetAccountId != null) {
+                    execute(
+                        "update postings set account_id = :account where id = :id",
+                        mapOf(":account" to op.retargetAccountId, ":id" to op.retargetPostingId),
+                    )
+                }
+            }
+        }
+        emitChange()
+        return ops.map { op ->
+            AssociationUndo(
+                transactionId = op.transactionId,
+                sources = op.sources,
+                postingId = op.retargetPostingId?.takeIf { op.retargetAccountId != null },
+                previousAccountId = op.retargetPostingId?.let { previous[it] },
+            )
+        }
+    }
+
+    /** Undo for [associate]: drops the added sources and restores repointed legs. */
+    suspend fun revertAssociations(undos: List<AssociationUndo>) {
+        if (undos.isEmpty()) return
+        writeAtomically {
+            for (undo in undos) {
+                for (source in undo.sources) {
+                    execute(
+                        "delete from transaction_sources where transaction_id = :tx" +
+                            " and kind = :kind and ref = :ref",
+                        mapOf(
+                            ":tx" to undo.transactionId,
+                            ":kind" to source.kind.db,
+                            ":ref" to source.ref,
+                        ),
+                    )
+                }
+                if (undo.postingId != null && undo.previousAccountId != null) {
+                    execute(
+                        "update postings set account_id = :account where id = :id",
+                        mapOf(":account" to undo.previousAccountId, ":id" to undo.postingId),
+                    )
+                }
+            }
+        }
+        emitChange()
+    }
+
+    /**
+     * Blocking step of reconciliation: every transaction dated in
+     * [from]..[to] (epoch ms, inclusive) with its legs, each leg's account
+     * type, and the origins already attached. Deliberately one window query
+     * instead of a lookup per candidate — a statement asks about forty rows at
+     * once and they all share the same window.
+     */
+    suspend fun reconcileFacts(from: Long, to: Long): List<LedgerFact> = db.useForRead { d ->
+        val legs = d.query(
+            "select t.id, t.date, t.payee, p.id, p.account_id, a.type, p.amount_minor, p.commodity" +
+                " from ledger_transactions t" +
+                " join postings p on p.transaction_id = t.id" +
+                " left join accounts a on a.id = p.account_id" +
+                " where t.date >= :from and t.date <= :to",
+            mapOf(":from" to from, ":to" to to),
+        ) { rows ->
+            val acc = LinkedHashMap<String, Triple<Long, String, MutableList<FactLeg>>>()
+            for (row in rows) {
+                if (row.size < 8) continue
+                val txId = row[0]?.toString() ?: continue
+                val date = (row[1] as? Number)?.toLong() ?: continue
+                val payee = row[2]?.toString() ?: ""
+                val postingId = row[3]?.toString() ?: continue
+                val accountId = row[4]?.toString() ?: continue
+                val amount = (row[6] as? Number)?.toLong() ?: continue
+                val commodity = row[7]?.toString() ?: continue
+                acc.getOrPut(txId) { Triple(date, payee, mutableListOf()) }.third += FactLeg(
+                    postingId = postingId,
+                    accountId = accountId,
+                    type = AccountType.fromDb(row[5]?.toString()),
+                    amountMinor = amount,
+                    commodity = commodity,
+                )
+            }
+            acc
+        }
+        if (legs.isEmpty()) return@useForRead emptyList()
+        val sources = d.query(
+            "select transaction_id, kind, ref, event_key from transaction_sources" +
+                " where transaction_id in (${quoteList(legs.keys.toList())})",
+            null,
+        ) { rows ->
+            val keys = mutableMapOf<String, MutableSet<String>>()
+            val refs = mutableMapOf<String, MutableSet<String>>()
+            for (row in rows) {
+                if (row.size < 4) continue
+                val txId = row[0]?.toString() ?: continue
+                row[2]?.toString()?.let { refs.getOrPut(txId) { mutableSetOf() } += it }
+                row[3]?.toString()?.let { keys.getOrPut(txId) { mutableSetOf() } += it }
+            }
+            keys to refs
+        }
+        legs.map { (txId, value) ->
+            val (date, payee, factLegs) = value
+            LedgerFact(
+                transactionId = txId,
+                date = date,
+                payee = payee,
+                legs = factLegs,
+                eventKeys = sources.first[txId].orEmpty(),
+                sourceRefs = sources.second[txId].orEmpty(),
+            )
+        }
     }
 
 
@@ -117,6 +264,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         writeAtomically {
             val idList = quoteList(ids)
             execute("delete from postings where transaction_id in ($idList)", null)
+            execute("delete from transaction_sources where transaction_id in ($idList)", null)
             execute("delete from ledger_transactions where id in ($idList)", null)
         }
         emitChange()
@@ -360,6 +508,35 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 " values(${values.joinToString(", ")})",
             params,
         )
+    }
+
+    /**
+     * Provenance rows. `insert or ignore`: re-recording the same origin for the
+     * same transaction is a no-op, which keeps association idempotent.
+     */
+    private fun Database.insertSources(txId: String, sources: List<TransactionSource>) {
+        if (sources.isEmpty()) return
+        val now = epochMillis()
+        for (source in sources) {
+            val columns = mutableListOf("transaction_id", "kind", "ref", "created_at")
+            val values = mutableListOf(":tx", ":kind", ":ref", ":created_at")
+            val params = mutableMapOf<String, Any>(
+                ":tx" to txId,
+                ":kind" to source.kind.db,
+                ":ref" to source.ref,
+                ":created_at" to now,
+            )
+            source.eventKey?.takeIf { it.isNotBlank() }?.let {
+                columns += "event_key"
+                values += ":event_key"
+                params[":event_key"] = it
+            }
+            execute(
+                "insert or ignore into transaction_sources(${columns.joinToString(", ")})" +
+                    " values(${values.joinToString(", ")})",
+                params,
+            )
+        }
     }
 
     private fun Database.insertPostings(postings: List<Posting>) {
