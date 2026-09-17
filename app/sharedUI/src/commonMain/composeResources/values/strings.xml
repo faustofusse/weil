@@ -68,6 +68,9 @@
     <string name="editor_payee_label">Detalle / beneficiario</string>
     <string name="editor_date_label">Fecha (AAAA-MM-DD)</string>
     <string name="editor_date_pick">Elegir</string>
+    <string name="editor_time_label">Hora (HH:MM)</string>
+    <string name="editor_time_pick">Elegir</string>
+    <string name="editor_invalid_time">Hora inválida: %1$s</string>
     <string name="editor_note_label">Nota (opcional)</string>
     <string name="editor_add_split">+ Agregar Movimiento</string>
     <string name="editor_record">Registrar</string>

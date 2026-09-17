@@ -37,8 +37,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,11 +75,14 @@ import weil.app.sharedui.generated.resources.editor_date_pick
 import weil.app.sharedui.generated.resources.editor_deleted_payee_fallback
 import weil.app.sharedui.generated.resources.editor_edit_title
 import weil.app.sharedui.generated.resources.editor_invalid_date
+import weil.app.sharedui.generated.resources.editor_invalid_time
 import weil.app.sharedui.generated.resources.editor_new_title
 import weil.app.sharedui.generated.resources.editor_note_label
 import weil.app.sharedui.generated.resources.editor_off_by
 import weil.app.sharedui.generated.resources.editor_payee_label
 import weil.app.sharedui.generated.resources.editor_record
+import weil.app.sharedui.generated.resources.editor_time_label
+import weil.app.sharedui.generated.resources.editor_time_pick
 import weil.app.sharedui.generated.resources.editor_remove_posting
 import weil.app.sharedui.generated.resources.editor_transaction_deleted
 
@@ -96,6 +101,7 @@ fun TransactionEditScreen(
     onNavigateBack: () -> Unit,
 ) {
     var dateText by remember { mutableStateOf(todayInput()) }
+    var timeText by remember { mutableStateOf(nowTimeInput()) }
     var payee by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var drafts by remember {
@@ -104,6 +110,7 @@ fun TransactionEditScreen(
     var pickingFor by remember { mutableStateOf<Int?>(null) }
     var creatingAccountFor by remember { mutableStateOf<Int?>(null) }
     var pickingDate by remember { mutableStateOf(false) }
+    var pickingTime by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var paths by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -113,6 +120,7 @@ fun TransactionEditScreen(
     val deletedMessage = stringResource(Res.string.editor_transaction_deleted)
     val deletedPayee = stringResource(Res.string.editor_deleted_payee_fallback)
     val invalidDateMessage = stringResource(Res.string.editor_invalid_date, dateText)
+    val invalidTimeMessage = stringResource(Res.string.editor_invalid_time, timeText)
 
     suspend fun reloadTree() {
         paths = accountPaths(accounts)
@@ -126,6 +134,7 @@ fun TransactionEditScreen(
             try {
                 val stored = ledger.get(editId) ?: return@LaunchedEffect
                 dateText = dateInputOf(stored.date)
+                timeText = timeInputOf(stored.date)
                 payee = stored.payee
                 note = stored.note.orEmpty()
                 drafts = stored.postings.map {
@@ -241,9 +250,9 @@ fun TransactionEditScreen(
                     }
                     Button(
                         onClick = {
-                            val date = parseDateInput(dateText)
+                            val date = parseDateTimeInput(dateText, timeText)
                             if (date == null) {
-                                error = invalidDateMessage
+                                error = if (parseDateInput(dateText) == null) invalidDateMessage else invalidTimeMessage
                                 return@Button
                             }
                             busy = true
@@ -291,18 +300,35 @@ fun TransactionEditScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            OutlinedTextField(
-                value = dateText,
-                onValueChange = { dateText = it },
-                label = { Text(stringResource(Res.string.editor_date_label)) },
-                singleLine = true,
-                trailingIcon = {
-                    TextButton(onClick = { pickingDate = true }) {
-                        Text(stringResource(Res.string.editor_date_pick))
-                    }
-                },
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth(),
-            )
+            ) {
+                OutlinedTextField(
+                    value = dateText,
+                    onValueChange = { dateText = it },
+                    label = { Text(stringResource(Res.string.editor_date_label)) },
+                    singleLine = true,
+                    trailingIcon = {
+                        TextButton(onClick = { pickingDate = true }) {
+                            Text(stringResource(Res.string.editor_date_pick))
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = timeText,
+                    onValueChange = { timeText = it },
+                    label = { Text(stringResource(Res.string.editor_time_label)) },
+                    singleLine = true,
+                    trailingIcon = {
+                        TextButton(onClick = { pickingTime = true }) {
+                            Text(stringResource(Res.string.editor_time_pick))
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
@@ -350,6 +376,32 @@ fun TransactionEditScreen(
             },
         ) {
             DatePicker(state = pickerState)
+        }
+    }
+
+    if (pickingTime) {
+        val (initialHour, initialMinute) = parseTimeInput(timeText) ?: (0 to 0)
+        val pickerState = rememberTimePickerState(
+            initialHour = initialHour,
+            initialMinute = initialMinute,
+            is24Hour = true,
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickingTime = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        timeText = pickerState.hour.toString().padStart(2, '0') + ":" +
+                            pickerState.minute.toString().padStart(2, '0')
+                        pickingTime = false
+                    },
+                ) { Text(stringResource(Res.string.action_ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickingTime = false }) { Text(stringResource(Res.string.action_cancel)) }
+            },
+        ) {
+            TimePicker(state = pickerState)
         }
     }
 

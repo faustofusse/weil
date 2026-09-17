@@ -1,9 +1,11 @@
 package ar.fausto.weil
 
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.atStartOfDayIn
 import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 
 /**
@@ -89,6 +91,44 @@ fun parseDateInput(text: String): Long? {
     return try {
         LocalDate(year, month, day)
             .atStartOfDayIn(TimeZone.currentSystemDefault())
+            .toEpochMilliseconds()
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+}
+
+/** "HH:mm" (24h) for user-facing input of the transaction time. */
+fun timeInputOf(timestamp: Long): String {
+    val dt = Instant.fromEpochMilliseconds(timestamp)
+        .toLocalDateTime(TimeZone.currentSystemDefault())
+    return dt.hour.toString().padStart(2, '0') + ":" + dt.minute.toString().padStart(2, '0')
+}
+
+/** Current local time as "HH:mm", so a new transaction defaults to now. */
+fun nowTimeInput(): String = timeInputOf(epochMillis())
+
+/** Parses "HH:mm" to an hour/minute pair; null when malformed. */
+fun parseTimeInput(text: String): Pair<Int, Int>? {
+    val parts = text.trim().split(':')
+    if (parts.size != 2) return null
+    val hour = parts[0].toIntOrNull() ?: return null
+    val minute = parts[1].toIntOrNull() ?: return null
+    if (hour !in 0..23 || minute !in 0..59) return null
+    return hour to minute
+}
+
+/** Combines a "YYYY-MM-DD" date and an "HH:mm" time into epoch ms; null when either is malformed. */
+fun parseDateTimeInput(dateText: String, timeText: String): Long? {
+    val dateParts = dateText.trim().split('-')
+    if (dateParts.size != 3) return null
+    val year = dateParts[0].toIntOrNull() ?: return null
+    val month = dateParts[1].toIntOrNull() ?: return null
+    val day = dateParts[2].toIntOrNull() ?: return null
+    if (year !in 1..9999 || month !in 1..12 || day !in 1..31) return null
+    val (hour, minute) = parseTimeInput(timeText) ?: return null
+    return try {
+        LocalDateTime(year, month, day, hour, minute)
+            .toInstant(TimeZone.currentSystemDefault())
             .toEpochMilliseconds()
     } catch (_: IllegalArgumentException) {
         null
