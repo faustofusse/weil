@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -100,6 +101,9 @@ import weil.app.sharedui.generated.resources.profile_sync_chain_title
 import weil.app.sharedui.generated.resources.profile_title
 import weil.app.sharedui.generated.resources.profile_wa_code_hint
 import weil.app.sharedui.generated.resources.profile_wa_expired
+import weil.app.sharedui.generated.resources.profile_wa_hide_qr
+import weil.app.sharedui.generated.resources.profile_wa_open
+import weil.app.sharedui.generated.resources.profile_wa_show_qr
 import weil.app.sharedui.generated.resources.profile_wa_link
 import weil.app.sharedui.generated.resources.profile_wa_linked_none
 import weil.app.sharedui.generated.resources.profile_wa_new_code
@@ -475,9 +479,10 @@ private fun WhatsappSection(state: WhatsappState) {
 }
 
 /**
- * The pending code: a QR of the `wa.me` deep link (scan it with another phone)
- * plus the literal text to type, because the phone holding the number is very
- * often the phone showing this screen.
+ * The pending code. The common case by far is that the number being linked
+ * lives on *this* phone, so the primary action opens WhatsApp with the message
+ * already written; the QR (for linking a number on another device) is one tap
+ * away instead of taking over the card.
  */
 @Composable
 private fun WhatsappCodeCard(
@@ -494,8 +499,14 @@ private fun WhatsappCodeCard(
         }
     }
     val remainingSeconds = ((code.expiresAt - now) / 1000).coerceAtLeast(0)
-    val totalSeconds = ((code.expiresAt - now) / 1000).coerceAtLeast(1)
+    // Captured once: the window only shrinks, so measuring it every frame
+    // would pin the progress bar at 100%.
+    val totalSeconds = remember(code.code) {
+        ((code.expiresAt - epochMillis()) / 1000).coerceAtLeast(1)
+    }
     val expired = remainingSeconds <= 0
+    var showQr by remember(code.code) { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -514,34 +525,54 @@ private fun WhatsappCodeCard(
         }
         val link = code.link
         if (link != null) {
-            // White backing is deliberate: scanners need the contrast.
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color.White,
+            Button(
+                onClick = { uriHandler.openUri(link) },
                 modifier = Modifier
-                    .widthIn(max = 240.dp)
-                    .fillMaxWidth(0.72f)
-                    .aspectRatio(1f),
+                    .fillMaxWidth()
+                    .height(48.dp),
             ) {
-                Image(
-                    painter = rememberQrCodePainter(link) {
-                        colors {
-                            dark = QrBrush.solid(Color.Black)
-                            light = QrBrush.solid(Color.White)
-                        }
-                        background { fill = SolidColor(Color.White) }
-                    },
-                    contentDescription = stringResource(Res.string.profile_wa_qr_content),
-                    modifier = Modifier.fillMaxSize().padding(14.dp),
+                Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(Res.string.profile_wa_open), maxLines = 1)
+            }
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = { showQr = !showQr }) {
+                Text(
+                    stringResource(
+                        if (showQr) Res.string.profile_wa_hide_qr else Res.string.profile_wa_show_qr,
+                    ),
                 )
             }
-            Spacer(Modifier.height(12.dp))
-            Text(
-                stringResource(Res.string.profile_wa_scan_hint, code.number ?: ""),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
+            if (showQr) {
+                // White backing is deliberate: scanners need the contrast.
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    modifier = Modifier
+                        .widthIn(max = 240.dp)
+                        .fillMaxWidth(0.72f)
+                        .aspectRatio(1f),
+                ) {
+                    Image(
+                        painter = rememberQrCodePainter(link) {
+                            colors {
+                                dark = QrBrush.solid(Color.Black)
+                                light = QrBrush.solid(Color.White)
+                            }
+                            background { fill = SolidColor(Color.White) }
+                        },
+                        contentDescription = stringResource(Res.string.profile_wa_qr_content),
+                        modifier = Modifier.fillMaxSize().padding(14.dp),
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    stringResource(Res.string.profile_wa_scan_hint, code.number ?: ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
         } else {
             Text(
                 stringResource(Res.string.profile_wa_number_missing),
@@ -550,7 +581,9 @@ private fun WhatsappCodeCard(
                 textAlign = TextAlign.Center,
             )
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
+        // The literal message stays visible as the fallback for every case the
+        // deep link cannot cover (another phone, a desktop session).
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHighest,

@@ -163,6 +163,9 @@
     <string name="profile_wa_linked_none">Todavía no hay ningún número vinculado.</string>
     <string name="profile_wa_link">Vincular número</string>
     <string name="profile_wa_unlink">Desvincular</string>
+    <string name="profile_wa_open">Abrir WhatsApp</string>
+    <string name="profile_wa_show_qr">Vincular otro teléfono con QR</string>
+    <string name="profile_wa_hide_qr">Ocultar QR</string>
     <string name="profile_wa_qr_content">Código QR para abrir el chat con el mensaje listo</string>
     <string name="profile_wa_scan_hint">Escaneá el QR desde el teléfono del número, o escribile a +%1$s.</string>
     <string name="profile_wa_number_missing">Falta configurar el número del bot en el worker.</string>
