@@ -129,7 +129,7 @@ fun TransactionEditScreen(
                 payee = stored.payee
                 note = stored.note.orEmpty()
                 drafts = stored.postings.map {
-                    DraftPosting(it.accountId, formatMinorUnits(it.amountMinor), it.commodity)
+                    DraftPosting(it.accountId, rawAmountText(it.amountMinor), it.commodity)
                 }
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -455,7 +455,7 @@ private fun PostingRow(
         ) {
             OutlinedTextField(
                 value = draft.amountText,
-                onValueChange = onAmount,
+                onValueChange = { onAmount(sanitizeAmountInput(it)) },
                 label = {
                     Text(
                         stringResource(
@@ -468,6 +468,17 @@ private fun PostingRow(
                     )
                 },
                 singleLine = true,
+                visualTransformation = AmountVisualTransformation,
+                // The iOS decimal pad has no minus key, so signing a posting
+                // needs an explicit affordance.
+                trailingIcon = {
+                    TextButton(onClick = { onAmount(toggleAmountSign(draft.amountText)) }) {
+                        Text(
+                            "±",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.weight(1f),
             )

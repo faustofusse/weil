@@ -273,9 +273,10 @@ fun TransactionQuickScreen(
             Spacer(Modifier.height(4.dp))
             OutlinedTextField(
                 value = amountText,
-                onValueChange = { amountText = it },
+                onValueChange = { amountText = sanitizeAmountInput(it, allowNegative = false) },
                 label = { Text(stringResource(Res.string.quick_amount_label)) },
                 prefix = { Text("${Money.DEFAULT_COMMODITY} ") },
+                visualTransformation = AmountVisualTransformation,
                 singleLine = true,
                 textStyle = MaterialTheme.typography.headlineMedium.copy(textAlign = TextAlign.End),
                 isError = amountText.isNotBlank() && !amountValid,

@@ -125,7 +125,7 @@ import weil.app.sharedui.generated.resources.inbox_title
  * of one candidate shares the same currency.
  */
 private class SplitDraft(split: ImportSplit, val commodity: String) {
-    var amountText by mutableStateOf(formatMinorUnits(split.amountMinor))
+    var amountText by mutableStateOf(rawAmountText(split.amountMinor))
     var categoryId by mutableStateOf(split.categoryAccountId)
     val amount: Money? get() = Money.parse(amountText, commodity)
     val valid: Boolean get() = (amount?.minorUnits ?: 0L) != 0L && categoryId != null
@@ -175,7 +175,7 @@ private class CandidateDraft(
      */
     val counterCommodity = candidate.counterCommodity
     var counterAmountText by mutableStateOf(
-        candidate.counterAmountMinor?.let { formatMinorUnits(it) } ?: "",
+        candidate.counterAmountMinor?.let { rawAmountText(it) } ?: "",
     )
     val counterAmount: Money?
         get() = counterCommodity?.let { Money.parse(counterAmountText, it) }
@@ -961,7 +961,7 @@ private fun CandidateCard(
                         // An exchange: the other side is a different amount in
                         // a different currency, and that is the whole point.
                         Text(
-                            "→ ${draft.counterAmountText} ${draft.counterCommodity}",
+                            "→ ${draft.counterAmount?.format() ?: draft.counterAmountText} ${draft.counterCommodity}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.tertiary,
                         )
@@ -1016,7 +1016,8 @@ private fun CandidateCard(
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = draft.counterAmountText,
-                            onValueChange = { draft.counterAmountText = it },
+                            onValueChange = { draft.counterAmountText = sanitizeAmountInput(it) },
+                            visualTransformation = AmountVisualTransformation,
                             label = {
                                 Text(
                                     stringResource(
@@ -1220,10 +1221,11 @@ private fun SplitRow(
     Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
             value = split.amountText,
-            onValueChange = { split.amountText = it },
+            onValueChange = { split.amountText = sanitizeAmountInput(it) },
             label = { Text(stringResource(Res.string.import_amount_label)) },
             singleLine = true,
             isError = split.amount == null,
+            visualTransformation = AmountVisualTransformation,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.weight(0.4f),
         )
