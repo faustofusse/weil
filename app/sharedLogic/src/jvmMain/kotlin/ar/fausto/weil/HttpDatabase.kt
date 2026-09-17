@@ -47,9 +47,29 @@ class HttpDatabase(
     private var schemaReady = false
     private val schemaLock = Any()
 
+    /**
+     * Hrana stream continuation. Every request used to end with a `close`
+     * step, which made each statement its own implicit transaction: the
+     * `begin immediate` of [TransactionsRepository.writeAtomically] was rolled
+     * back the instant its stream closed, the inserts autocommitted one by one
+     * and `commit` then failed with "cannot commit - no transaction is
+     * active". While a transaction is open the stream is kept alive instead by
+     * threading the single-use `baton` (and the sticky `base_url` the server
+     * pins the stream to) through the following requests.
+     */
+    private var baton: String? = null
+    private var streamUrl: URI? = null
+    private var inTransaction = false
+
     override fun sync() = Unit
 
-    override fun close() = Unit
+    override fun close() {
+        if (baton != null) {
+            // Best effort: hand the stream back so the server can drop it now
+            // instead of on idle timeout.
+            runCatching { send(emptyList(), keepStream = false) }
+        }
+    }
 
     override fun execute(sql: String, params: Map<String, Any>?) {
         ensureSchema()
@@ -91,15 +111,29 @@ class HttpDatabase(
         }
     }
 
-    /** Sends one `execute` + `close` request pair; returns the `execute`
-     * step's `result` object, or null for statements with no result set. */
-    private fun pipeline(sql: String, params: Map<String, Any>?): JsonObject? =
-        send(listOf(executeRequest(sql, params))).firstOrNull()
+    /** Sends one `execute` step; returns its `result` object, or null for
+     * statements with no result set. The stream is closed afterwards unless a
+     * transaction is (or has just become) active. */
+    private fun pipeline(sql: String, params: Map<String, Any>?): JsonObject? {
+        val verb = sql.trimStart().substringBefore(' ').lowercase()
+        val opens = verb == "begin"
+        val closes = verb == "commit" || verb == "rollback" || verb == "end"
+        val result = try {
+            send(listOf(executeRequest(sql, params)), keepStream = opens || (inTransaction && !closes))
+        } catch (t: Throwable) {
+            // A failed step invalidates the stream (and its baton).
+            resetStream()
+            throw t
+        }
+        if (opens) inTransaction = true
+        if (closes) inTransaction = false
+        return result.firstOrNull()
+    }
 
     /** Runs several statements in a single pipeline request. */
     private fun pipelineBatch(statements: List<String>) {
         if (statements.isEmpty()) return
-        send(statements.map { executeRequest(it, null) })
+        send(statements.map { executeRequest(it, null) }, keepStream = false)
     }
 
     private fun executeRequest(sql: String, params: Map<String, Any>?): JsonObject = buildJsonObject {
@@ -119,16 +153,18 @@ class HttpDatabase(
         })
     }
 
-    /** POSTs the requests (plus a trailing `close`) and returns each execute
-     * step's `result` object, in order. */
-    private fun send(requests: List<JsonObject>): List<JsonObject?> {
+    /** POSTs the requests (plus a trailing `close` unless the stream must stay
+     * open for an in-flight transaction) and returns each execute step's
+     * `result` object, in order. */
+    private fun send(requests: List<JsonObject>, keepStream: Boolean): List<JsonObject?> {
         val body = buildJsonObject {
+            baton?.let { put("baton", it) }
             put("requests", buildJsonArray {
                 requests.forEach { add(it) }
-                add(buildJsonObject { put("type", "close") })
+                if (!keepStream) add(buildJsonObject { put("type", "close") })
             })
         }
-        val request = HttpRequest.newBuilder(pipelineUrl)
+        val request = HttpRequest.newBuilder(streamUrl ?: pipelineUrl)
             .header("Authorization", "Bearer $authToken")
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
@@ -137,7 +173,19 @@ class HttpDatabase(
         if (response.statusCode() >= 400) {
             throw RuntimeException("turso http ${response.statusCode()}: ${response.body()}")
         }
-        val results = json.parseToJsonElement(response.body()).jsonObject["results"]?.jsonArray.orEmpty()
+        val root = json.parseToJsonElement(response.body()).jsonObject
+        if (keepStream) {
+            // Batons are single-use: the next request on this stream must send
+            // the one that just came back, to the base_url it names.
+            baton = root["baton"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.content
+            root["base_url"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.content?.let {
+                streamUrl = URI.create(it.trimEnd('/') + "/v2/pipeline")
+            }
+            if (baton == null) resetStream()
+        } else {
+            resetStream()
+        }
+        val results = root["results"]?.jsonArray.orEmpty()
         // Drop the trailing close step; check every execute step for errors.
         return results.take(requests.size).map { step ->
             val obj = step.jsonObject
@@ -150,6 +198,12 @@ class HttpDatabase(
             }
             obj["response"]?.jsonObject?.get("result")?.jsonObject
         }
+    }
+
+    private fun resetStream() {
+        baton = null
+        streamUrl = null
+        inTransaction = false
     }
 
     private fun encodeValue(value: Any): JsonElement = buildJsonObject {
