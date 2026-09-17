@@ -354,9 +354,29 @@ const TABLE_RULES: string[] = [
   'If a column names the account or card a row belongs to, use it for "account"; otherwise leave it null and the',
   'app applies the account the user picked.',
   '',
+  'CSV PAYEES:',
+  'Exports often fill the description column with a placeholder instead of a merchant: "Varios", "default item",',
+  '"VAR", "Bank Transfer", "Pago", "Compra", an order number ("Order_474107709"), or nothing at all. A placeholder is',
+  'not a payee — naming dozens of rows "Varios" makes them indistinguishable. When the description is generic, take',
+  'the payee from the most specific other column on that row (the counterparty or payer name, the sub-unit, the',
+  'merchant inside a longer sentence: "Compra en Carrefour - Suc. 525" is Carrefour, "Reserva en El Poli de Cramer"',
+  'is El Poli de Cramer).',
+  'A payer/counterparty column names whoever PAID. On an incoming row that is the counterparty, so use it. On an',
+  'OUTGOING row it is the account holder themselves — the same name or business will repeat across many outgoing',
+  'rows — and the holder is never the payee of their own payment. Detect that name (it is the one that recurs on',
+  'money-out rows, often a business name) and do not emit it as a payee on ANY row.',
+  'Some rows simply do not name a counterparty: the description is a placeholder and the only name is the holder\'s.',
+  'Do not guess a merchant and do not fall back to the holder. Write a short factual description of the movement',
+  'itself, in the language the rest of the file uses, from the type and method columns: an incoming bank transfer',
+  'with no sender becomes "Transferencia recibida", a QR payment with no merchant becomes "Pago con QR", a wallet',
+  'debit becomes "Pago con dinero en cuenta".',
+  'Small recurring credits with no counterparty and no description are usually the interest or yield the account',
+  'itself pays — call them that ("Rendimientos") rather than inventing a merchant.',
+  '',
 ];
 
-function prompt(
+/** Exported for the `scripts/try-csv.ts` harness. */
+export function prompt(
   accounts: PostableAccount[],
   history: PayeeMemory[] = [],
   kind: 'document' | 'table' = 'document'
@@ -516,6 +536,15 @@ export async function geminiJson<T>(
       `https://gateway.ai.cloudflare.com/v1/${env.ACCOUNT_ID}/${env.AI_GATEWAY}/google-ai-studio/${path}`,
       { method: 'POST', headers, body }
     );
+    // 524 is Cloudflare's own timeout, not the model's: a long generation (a
+    // 135-row CSV is minutes of output tokens) outlives the gateway's budget
+    // while Google is still streaming. Retry direct, where there is no such
+    // cap, exactly like a gateway configuration error.
+    if (res.status === 524) {
+      console.log('gemini: gateway timed out (524), retrying direct');
+      viaGateway = false;
+      return direct();
+    }
     if (res.ok || !(await res.clone().text()).includes('AiGatewayError')) return res;
     viaGateway = false;
     return direct();
@@ -542,7 +571,8 @@ export async function geminiJson<T>(
   return JSON.parse(text) as T;
 }
 
-async function callGemini(
+/** Exported for the `scripts/try-csv.ts` harness. */
+export async function callGemini(
   env: ImportEnv,
   document: { mimeType: string; bytes: Uint8Array },
   promptText: string
@@ -641,8 +671,23 @@ export async function handleAnalyze(
     return [] as PayeeMemory[];
   });
 
+  // A CSV is pure output tokens: no page to read, but one JSON object per row,
+  // and a year-long export runs for minutes on the heavy models. The lite one
+  // goes first here for the same reason the chat path does it, with the others
+  // behind it as fallbacks.
+  const models = env.GEMINI_MODELS.split(',').map((m) => m.trim()).filter(Boolean);
+  const callEnv: ImportEnv = isTextual(mimeType)
+    ? {
+        ...env,
+        GEMINI_MODELS: [
+          ...models.filter((m) => m.includes('lite')),
+          ...models.filter((m) => !m.includes('lite')),
+        ].join(','),
+      }
+    : env;
+
   const raw = await callGemini(
-    env,
+    callEnv,
     { mimeType, bytes },
     prompt(accounts, history, isTextual(mimeType) ? 'table' : 'document')
   );
