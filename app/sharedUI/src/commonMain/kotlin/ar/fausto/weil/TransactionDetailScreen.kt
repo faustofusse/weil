@@ -53,6 +53,7 @@ import weil.app.sharedui.generated.resources.txn_source_document
 import weil.app.sharedui.generated.resources.txn_source_email
 import weil.app.sharedui.generated.resources.txn_source_manual
 import weil.app.sharedui.generated.resources.txn_source_notification
+import weil.app.sharedui.generated.resources.txn_source_whatsapp
 import weil.app.sharedui.generated.resources.txn_sources_title
 
 /** Nombre visible de cada puerta de entrada; `EventSource` vive sin traducir. */
@@ -62,6 +63,7 @@ private fun sourceLabel(kind: EventSource): String = stringResource(
         EventSource.Document -> Res.string.txn_source_document
         EventSource.Notification -> Res.string.txn_source_notification
         EventSource.Email -> Res.string.txn_source_email
+        EventSource.WhatsApp -> Res.string.txn_source_whatsapp
         EventSource.Manual -> Res.string.txn_source_manual
     },
 )

@@ -1,0 +1,40 @@
+app = "weil-wa-bridge"
+primary_region = "iad" # the finance Turso group lives in aws-us-east-1, and every Signal decrypt hits it
+
+[build]
+dockerfile = "Dockerfile"
+
+[env]
+PORT = "8080"
+WEBHOOK_URL = "https://api.finance.fausto.ar/whatsapp/inbound"
+
+# Deliberately no [http_service] and no public IP: nothing on the internet
+# needs to reach the bridge. Replies ride the webhook response, and /pair,
+# /send and /health are admin endpoints reached over the private network
+# (`fly proxy 8080 -a weil-wa-bridge`). Not being routable is the cheapest
+# possible protection for a process that holds a WhatsApp session.
+
+# Exactly one machine, always. Two machines would mean two whatsmeow clients
+# on the SAME device session (the store is remote), which makes WhatsApp
+# invalidate the pairing. `fly deploy` defaults to two for HA, hence the
+# explicit count, and "immediate" replaces in place instead of running an
+# overlapping second instance during a rollout.
+[deploy]
+strategy = "immediate"
+
+[processes]
+app = ""
+
+[[vm]]
+size = "shared-cpu-1x"
+memory = "256mb"
+count = 1
+
+[checks.health]
+type = "http"
+port = 8080
+method = "GET"
+path = "/health"
+interval = "30s"
+timeout = "5s"
+grace_period = "15s"

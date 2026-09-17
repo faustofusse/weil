@@ -98,6 +98,18 @@ import weil.app.sharedui.generated.resources.profile_sign_out_title
 import weil.app.sharedui.generated.resources.profile_sync_chain_subtitle
 import weil.app.sharedui.generated.resources.profile_sync_chain_title
 import weil.app.sharedui.generated.resources.profile_title
+import weil.app.sharedui.generated.resources.profile_wa_code_hint
+import weil.app.sharedui.generated.resources.profile_wa_expired
+import weil.app.sharedui.generated.resources.profile_wa_link
+import weil.app.sharedui.generated.resources.profile_wa_linked_none
+import weil.app.sharedui.generated.resources.profile_wa_new_code
+import weil.app.sharedui.generated.resources.profile_wa_number_missing
+import weil.app.sharedui.generated.resources.profile_wa_qr_content
+import weil.app.sharedui.generated.resources.profile_wa_scan_hint
+import weil.app.sharedui.generated.resources.profile_wa_sent
+import weil.app.sharedui.generated.resources.profile_wa_subtitle
+import weil.app.sharedui.generated.resources.profile_wa_title
+import weil.app.sharedui.generated.resources.profile_wa_unlink
 
 /**
  * Profile: the contact email and the sync chain, each on its own tonal card,
@@ -108,6 +120,7 @@ import weil.app.sharedui.generated.resources.profile_title
 fun ProfileScreen(
     chain: ChainRepository,
     chainState: ChainState,
+    whatsappState: WhatsappState,
     onNavigateBack: () -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -135,6 +148,8 @@ fun ProfileScreen(
             AccountEmailSection(chain)
             Spacer(Modifier.height(16.dp))
             ChainSection(chainState)
+            Spacer(Modifier.height(16.dp))
+            WhatsappSection(whatsappState)
             Spacer(Modifier.height(24.dp))
             SignOutSection(onClick = { confirmSignOut = true })
         }
@@ -382,6 +397,199 @@ private fun ChainSection(state: ChainState) {
                 TextButton(onClick = { revoking = null }) { Text(cancelLabel) }
             },
         )
+    }
+}
+
+/**
+ * WhatsApp linking. The user never types a phone number here: the worker hands
+ * out a short code and the number proves itself by *sending* it, which is both
+ * simpler and safer than verifying a number typed into the app.
+ */
+@Composable
+private fun WhatsappSection(state: WhatsappState) {
+    if (!state.loaded) {
+        LaunchedEffect(Unit) { state.refresh() }
+    }
+    val numbers = state.numbers
+    SectionCard(
+        title = stringResource(Res.string.profile_wa_title),
+        icon = Icons.Filled.Chat,
+        subtitle = stringResource(Res.string.profile_wa_subtitle),
+        trailing = { if (numbers.isNotEmpty()) ValuePill(numbers.size.toString()) },
+    ) {
+        state.error?.let { ErrorBanner(it, modifier = Modifier.padding(bottom = 12.dp)) }
+
+        val code = state.code
+        if (code != null && numbers.isEmpty()) {
+            WhatsappCodeCard(
+                code = code,
+                onCancel = { state.cancelLink() },
+                onRestart = { state.startLink() },
+                onDone = { state.refresh() },
+            )
+        } else if (numbers.isEmpty()) {
+            Text(
+                stringResource(Res.string.profile_wa_linked_none),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            Button(
+                onClick = { state.startLink() },
+                enabled = !state.busy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(Res.string.profile_wa_link), maxLines = 1)
+            }
+        }
+
+        numbers.forEachIndexed { index, number ->
+            if (index > 0) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 50.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            ) {
+                Text(
+                    "+${number.number}",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { state.unlink(number) }, enabled = !state.busy) {
+                    Text(
+                        stringResource(Res.string.profile_wa_unlink),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The pending code: a QR of the `wa.me` deep link (scan it with another phone)
+ * plus the literal text to type, because the phone holding the number is very
+ * often the phone showing this screen.
+ */
+@Composable
+private fun WhatsappCodeCard(
+    code: WhatsappLinkCode,
+    onCancel: () -> Unit,
+    onRestart: () -> Unit,
+    onDone: () -> Unit,
+) {
+    var now by remember { mutableStateOf(epochMillis()) }
+    LaunchedEffect(code.code) {
+        while (true) {
+            now = epochMillis()
+            delay(1000)
+        }
+    }
+    val remainingSeconds = ((code.expiresAt - now) / 1000).coerceAtLeast(0)
+    val totalSeconds = ((code.expiresAt - now) / 1000).coerceAtLeast(1)
+    val expired = remainingSeconds <= 0
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (expired) {
+            Text(
+                stringResource(Res.string.profile_wa_expired),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = onRestart, modifier = Modifier.padding(top = 12.dp)) {
+                Text(stringResource(Res.string.profile_wa_new_code))
+            }
+            return@Column
+        }
+        val link = code.link
+        if (link != null) {
+            // White backing is deliberate: scanners need the contrast.
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White,
+                modifier = Modifier
+                    .widthIn(max = 240.dp)
+                    .fillMaxWidth(0.72f)
+                    .aspectRatio(1f),
+            ) {
+                Image(
+                    painter = rememberQrCodePainter(link) {
+                        colors {
+                            dark = QrBrush.solid(Color.Black)
+                            light = QrBrush.solid(Color.White)
+                        }
+                        background { fill = SolidColor(Color.White) }
+                    },
+                    contentDescription = stringResource(Res.string.profile_wa_qr_content),
+                    modifier = Modifier.fillMaxSize().padding(14.dp),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                stringResource(Res.string.profile_wa_scan_hint, code.number ?: ""),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        } else {
+            Text(
+                stringResource(Res.string.profile_wa_number_missing),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ) {
+            Text(
+                "vincular ${code.code}",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            stringResource(Res.string.profile_wa_code_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(
+            progress = { (remainingSeconds.toFloat() / totalSeconds.toFloat()).coerceIn(0f, 1f) },
+            modifier = Modifier
+                .fillMaxWidth(0.6f)
+                .height(4.dp)
+                .clip(CircleShape),
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            stringResource(Res.string.login_expires_in, remainingSeconds),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.Center) {
+            TextButton(onClick = onCancel) { Text(stringResource(Res.string.action_cancel)) }
+            Spacer(Modifier.width(8.dp))
+            // Nothing pushes the link back to the app, so the user says when
+            // the message went out and we re-read the list.
+            TextButton(onClick = onDone) { Text(stringResource(Res.string.profile_wa_sent)) }
+        }
     }
 }
 

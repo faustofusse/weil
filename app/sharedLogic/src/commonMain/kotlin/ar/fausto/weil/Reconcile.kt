@@ -16,6 +16,7 @@ enum class EventSource(val db: String) {
     Document("document"),
     Notification("notification"),
     Email("email"),
+    WhatsApp("whatsapp"),
     Manual("manual");
 
     companion object {

@@ -27,6 +27,10 @@
     "FORWARD_TO": "faustofusse@gmail.com",
     "ACCOUNT_ID": "f12da7851e4dd1d107a80417a1d4cbbd",
     "AI_GATEWAY": "finance",
-    "GEMINI_MODELS": "gemini-3.5-flash,gemini-3.6-flash,gemini-3.5-flash-lite"
+    "GEMINI_MODELS": "gemini-3.5-flash,gemini-3.6-flash,gemini-3.5-flash-lite",
+    // wa-bridge (app/wa-bridge): the WhatsApp socket cannot live on Workers.
+    // BRIDGE_SECRET is a secret (wrangler secret put BRIDGE_SECRET).
+    "BRIDGE_URL": "https://weil-wa-bridge.fly.dev",
+    "WHATSAPP_NUMBER": "5491178265131"
   }
 }

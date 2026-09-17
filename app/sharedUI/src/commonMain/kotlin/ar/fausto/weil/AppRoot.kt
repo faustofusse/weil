@@ -137,6 +137,7 @@ fun RootScreen(
                     val emailsState = remember(loggedIn) { EmailsState(graph.emails) }
                     val notificationsState = remember(loggedIn) { NotificationsState(graph.notifications) }
                     val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
+                    val whatsappState = remember(loggedIn) { WhatsappState(graph.whatsapp) }
                     val snackbarHostState = remember(loggedIn) { SnackbarHostState() }
                     val backStack = remember(loggedIn) {
                         mutableStateListOf<Any>(if (loggedIn) HomeRoute else LoginRoute).apply {
@@ -319,6 +320,7 @@ fun RootScreen(
                                     ProfileScreen(
                                         chain = graph.chain,
                                         chainState = chainState,
+                                        whatsappState = whatsappState,
                                         onNavigateBack = { pop() },
                                         onSignOut = { scope.launch { graph.auth.signOut() } },
                                     )

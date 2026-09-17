@@ -6,6 +6,7 @@
 import { createClient, type Client } from '@libsql/client';
 import { parseEmail } from './email';
 import { authenticate, handleAnalyze, handleDocument, json } from './import';
+import { handleInbound, handleLink, handleLinkStatus, handleUnlink } from './whatsapp';
 
 interface Env {
   AUTH_DB: D1Database;
@@ -18,6 +19,9 @@ interface Env {
   AI_GATEWAY: string;
   GEMINI_MODELS: string;
   GEMINI_API_KEY: string;
+  BRIDGE_SECRET: string;
+  BRIDGE_URL?: string;
+  WHATSAPP_NUMBER?: string;
 }
 
 
@@ -100,6 +104,24 @@ export default {
       }
 
       return json({ error: 'not found' }, 404);
+    }
+
+    // ---- whatsapp ----
+    // The bridge authenticates with the shared secret, not a session cookie:
+    // it speaks for a phone number, and the number is resolved to a user here.
+    if (request.method === 'POST' && url.pathname === '/whatsapp/inbound') {
+      return handleInbound(request, env, (user) =>
+        platformClient(env, user.turso_db_name, user.turso_db_hostname)
+      );
+    }
+
+    if (url.pathname === '/whatsapp/link') {
+      const user = await authenticate(request, env);
+      if (user instanceof Response) return user;
+      if (request.method === 'POST') return handleLink(env, user);
+      if (request.method === 'GET') return handleLinkStatus(env, user);
+      if (request.method === 'DELETE') return handleUnlink(request, env, user);
+      return json({ error: 'method not allowed' }, 405);
     }
 
     if (request.method === 'POST' && url.pathname === '/mp/webhook') {

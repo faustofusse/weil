@@ -51,6 +51,10 @@
           # NDK clang from $ANDROID_NDK_ROOT.
           pkgs.rustup
           pkgs.cargo-ndk
+          # Go + flyctl for app/wa-bridge, the WhatsApp socket that cannot
+          # live on Cloudflare (see its README). whatsmeow needs go >= 1.26.
+          pkgs.go
+          pkgs.flyctl
         ];
 
         avdName = "pixel";

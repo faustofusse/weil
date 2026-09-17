@@ -89,7 +89,7 @@ interface PostableAccount {
  * account, and excluding them hid real categories ("Comida" the moment it grew
  * a "Comida:Verduras" child).
  */
-async function loadAccounts(
+export async function loadAccounts(
   queryUserDb: (sql: string) => Promise<Array<Record<string, unknown>>>
 ): Promise<PostableAccount[]> {
   const rows = await queryUserDb('select id, name, parent_id, type from accounts');
@@ -319,19 +319,16 @@ interface GeminiCandidateTx {
  * generateContent through the account's AI Gateway when it exists, falling
  * back to the Google API directly (same request shape, same key header).
  */
-async function callGemini(env: ImportEnv, mimeType: string, base64: string, promptText: string): Promise<GeminiCandidateTx[]> {
+export async function geminiJson<T>(
+  env: ImportEnv,
+  parts: Array<Record<string, unknown>>,
+  responseSchema: unknown
+): Promise<T> {
   const body = JSON.stringify({
-    contents: [
-      {
-        parts: [
-          { inline_data: { mime_type: mimeType, data: base64 } },
-          { text: promptText },
-        ],
-      },
-    ],
+    contents: [{ parts }],
     generationConfig: {
       responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
+      responseSchema,
       temperature: 0.1,
     },
   });
@@ -373,12 +370,20 @@ async function callGemini(env: ImportEnv, mimeType: string, base64: string, prom
   };
   const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
   if (!text) throw new Error('gemini: empty response');
-  const parsed = JSON.parse(text) as { transactions?: GeminiCandidateTx[] };
+  return JSON.parse(text) as T;
+}
+
+async function callGemini(env: ImportEnv, mimeType: string, base64: string, promptText: string): Promise<GeminiCandidateTx[]> {
+  const parsed = await geminiJson<{ transactions?: GeminiCandidateTx[] }>(
+    env,
+    [{ inline_data: { mime_type: mimeType, data: base64 } }, { text: promptText }],
+    RESPONSE_SCHEMA
+  );
   return parsed.transactions ?? [];
 }
 
 /** "1234.56" → 123456 minor units; null when unparseable. */
-function toMinor(amount: string): number | null {
+export function toMinor(amount: string): number | null {
   const m = /^\s*(\d+)(?:[.,](\d{1,2}))?\s*$/.exec(amount.replace(/[\s,](?=\d{3}\b)/g, ''));
   if (!m) return null;
   const frac = (m[2] ?? '').padEnd(2, '0');

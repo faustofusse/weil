@@ -20,6 +20,8 @@ import org.jetbrains.skia.Image
  *   ./gradlew :app:desktopApp:shot -Pshot.route=import   (AI import review)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=inbox    (movements detected in
  *     the seeded notifications/emails)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=profile  (profile, incl. the
+ *     WhatsApp linking card)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=account  (register of the seeded
  *       bank account, which holds both ARS and USD postings)
  *
@@ -80,6 +82,10 @@ fun main(args: Array<String>) {
                     "account" -> AccountDetailRoute("seed-asset-bank")
                     "inbox" -> InboxReviewRoute
                     "tx" -> TransactionDetailRoute("seed-tx-2")
+                    // Chain and WhatsApp sections call the worker, which the
+                    // sandboxed session cannot reach: both render their error
+                    // state here, the layout is still what ships.
+                    "profile" -> ProfileRoute
                     else -> null
                 },
             )
