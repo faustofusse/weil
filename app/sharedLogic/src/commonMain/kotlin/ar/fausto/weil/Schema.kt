@@ -73,8 +73,13 @@ const val SCHEMA_SQL =
  * already-migrated database can skip straight past the DDL/pragma replay
  * (the Rust parser round trip for ~13 statements is real cost on every cold
  * start otherwise).
+ *
+ * Forgetting this is silent on the device that introduced the change (its own
+ * database was migrated while the version still differed) and fatal on every
+ * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
+ * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 4L
+private const val SCHEMA_VERSION = 5L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
