@@ -26,13 +26,14 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         payee: String,
         note: String?,
         drafts: List<DraftPosting>,
+        timeKnown: Boolean = true,
         sourceDocumentId: String? = null,
         sources: List<TransactionSource> = emptyList(),
     ): String {
         val txId = Uuid.random().toString()
         val postings = resolvePostings(drafts).map { it.copy(transactionId = txId) }
         writeAtomically {
-            insertTransaction(txId, date, payee, note, sourceDocumentId)
+            insertTransaction(txId, date, payee, note, timeKnown, sourceDocumentId)
             insertPostings(postings)
             insertSources(txId, sources)
         }
@@ -54,7 +55,14 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         writeAtomically {
             for ((txId, pair) in prepared) {
                 val (entry, postings) = pair
-                insertTransaction(txId, entry.date, entry.payee, entry.note, entry.sourceDocumentId)
+                insertTransaction(
+                    txId,
+                    entry.date,
+                    entry.payee,
+                    entry.note,
+                    entry.timeKnown,
+                    entry.sourceDocumentId,
+                )
                 insertPostings(postings)
                 insertSources(txId, entry.sources)
             }
@@ -69,20 +77,22 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         payee: String,
         note: String?,
         drafts: List<DraftPosting>,
+        timeKnown: Boolean = true,
     ) {
         val postings = resolvePostings(drafts).map { it.copy(transactionId = id) }
         writeAtomically {
             execute(
                 if (note.isNullOrBlank()) {
-                    "update ledger_transactions set date = :date, payee = :payee, note = null" +
-                        " where id = :id"
+                    "update ledger_transactions set date = :date, payee = :payee, note = null," +
+                        " time_known = :time_known where id = :id"
                 } else {
-                    "update ledger_transactions set date = :date, payee = :payee, note = :note" +
-                        " where id = :id"
+                    "update ledger_transactions set date = :date, payee = :payee, note = :note," +
+                        " time_known = :time_known where id = :id"
                 },
                 buildMap {
                     put(":date", date)
                     put(":payee", payee.trim())
+                    put(":time_known", if (timeKnown) 1L else 0L)
                     put(":id", id)
                     if (!note.isNullOrBlank()) put(":note", note.trim())
                 },
@@ -310,12 +320,13 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     suspend fun page(limit: Int = LIST_PAGE_SIZE, before: LedgerCursor? = null): List<Transaction> =
         db.useForRead { d ->
             val txs = d.query(
-                "select t.id, t.date, t.payee, t.note, t.created_at from ledger_transactions t" +
+                "select t.id, t.date, t.payee, t.note, t.created_at, t.time_known" +
+                    " from ledger_transactions t" +
                     (if (before == null) "" else " where $TX_CURSOR_FILTER") +
                     " order by t.date desc, t.id desc limit $limit",
                 cursorParams(before),
             ) { rows ->
-                rows.filter { it.size >= 5 }.map { row ->
+                rows.filter { it.size >= 6 }.map { row ->
                     Transaction(
                         id = row[0]?.toString() ?: "",
                         date = (row[1] as? Number)?.toLong() ?: 0L,
@@ -323,6 +334,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                         note = row[3]?.toString(),
                         createdAt = (row[4] as? Number)?.toLong() ?: 0L,
                         postings = emptyList(),
+                        timeKnown = isTimeKnown(row[5]),
                     )
                 }.toList()
             }
@@ -360,10 +372,11 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     suspend fun get(id: String): Transaction? = db.useForRead { d ->
         val safe = quoteList(listOf(id))
         val tx = d.query(
-            "select id, date, payee, note, created_at from ledger_transactions where id in ($safe)",
+            "select id, date, payee, note, created_at, time_known from ledger_transactions" +
+                " where id in ($safe)",
             null,
         ) { rows ->
-            rows.filter { it.size >= 5 }.map { row ->
+            rows.filter { it.size >= 6 }.map { row ->
                 Transaction(
                     id = row[0]?.toString() ?: "",
                     date = (row[1] as? Number)?.toLong() ?: 0L,
@@ -371,6 +384,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                     note = row[3]?.toString(),
                     createdAt = (row[4] as? Number)?.toLong() ?: 0L,
                     postings = emptyList(),
+                    timeKnown = isTimeKnown(row[5]),
                 )
             }.firstOrNull()
         } ?: return@useForRead null
@@ -412,14 +426,14 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         return db.useForRead { d ->
             val entries = d.query(
                 "select p.id, p.transaction_id, p.account_id, p.amount_minor, p.commodity," +
-                    " t.date, t.payee" +
+                    " t.date, t.payee, t.time_known" +
                     " from postings p join ledger_transactions t on p.transaction_id = t.id" +
                     " where p.account_id in ($idList)" +
                     (if (before == null) "" else " and ($TX_CURSOR_FILTER)") +
                     " order by t.date desc, t.id desc limit $limit",
                 cursorParams(before),
             ) { rows ->
-                rows.filter { it.size >= 7 }.mapNotNull { row ->
+                rows.filter { it.size >= 8 }.mapNotNull { row ->
                     val id = row[0]?.toString() ?: return@mapNotNull null
                     val transactionId = row[1]?.toString() ?: return@mapNotNull null
                     val accountId = row[2]?.toString() ?: return@mapNotNull null
@@ -428,7 +442,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                     val date = (row[5] as? Number)?.toLong() ?: 0L
                     val payee = row[6]?.toString() ?: ""
                     Posting(id, transactionId, accountId, amount, commodity) to
-                        (date to payee)
+                        Triple(date, payee, isTimeKnown(row[7]))
                 }.toList()
             }
 
@@ -439,6 +453,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             val oldest = entries.lastOrNull()?.let { (posting, meta) ->
                 LedgerCursor(meta.first, posting.transactionId)
             }
+
             val opening = if (oldest == null) {
                 emptyMap()
             } else {
@@ -465,7 +480,13 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 balanceAfter[posting.id] = next
             }
             entries.map { (posting, meta) ->
-                RegisterEntry(posting, meta.first, meta.second, Money(balanceAfter.getValue(posting.id), posting.commodity))
+                RegisterEntry(
+                    posting = posting,
+                    date = meta.first,
+                    payee = meta.second,
+                    balanceAfter = Money(balanceAfter.getValue(posting.id), posting.commodity),
+                    timeKnown = meta.third,
+                )
             }
         }
     }
@@ -518,15 +539,17 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         date: Long,
         payee: String,
         note: String?,
+        timeKnown: Boolean,
         sourceDocumentId: String?,
     ) {
-        val columns = mutableListOf("id", "date", "payee", "created_at")
-        val values = mutableListOf(":id", ":date", ":payee", ":created_at")
+        val columns = mutableListOf("id", "date", "payee", "created_at", "time_known")
+        val values = mutableListOf(":id", ":date", ":payee", ":created_at", ":time_known")
         val params = mutableMapOf<String, Any>(
             ":id" to txId,
             ":date" to date,
             ":payee" to payee.trim(),
             ":created_at" to epochMillis(),
+            ":time_known" to if (timeKnown) 1L else 0L,
         )
         if (!note.isNullOrBlank()) {
             columns += "note"
@@ -592,6 +615,9 @@ class TransactionsRepository(private val db: DatabaseProvider) {
 
     private companion object {
         const val TX_CURSOR_FILTER = "(t.date < :date or (t.date = :date and t.id < :tid))"
+
+        /** Null (a row written before the column existed) means a real time. */
+        fun isTimeKnown(value: Any?): Boolean = ((value as? Number)?.toLong() ?: 1L) != 0L
 
         fun cursorParams(before: LedgerCursor?): Map<String, Any>? =
             if (before == null) {

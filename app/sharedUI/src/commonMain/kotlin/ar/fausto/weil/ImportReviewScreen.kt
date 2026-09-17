@@ -153,7 +153,14 @@ private class CandidateDraft(
     /** Headline of the originating message, shown instead of a page number. */
     val sourceTitle: String? = null,
 ) {
-    val date = candidate.date
+    /**
+     * A document states a day, so its candidates are dated at local midnight
+     * here rather than at the noon-UTC placeholder the wire carries — and
+     * [timeKnown] then keeps the editor and the registers from printing an
+     * hour nobody wrote down.
+     */
+    val date = candidate.day?.let { parseDateInput(it) } ?: candidate.date
+    val timeKnown = candidate.day == null
     val direction = candidate.direction
     val commodity = candidate.commodity
     var include by mutableStateOf(true)
@@ -493,6 +500,7 @@ fun ImportReviewScreen(
                         date = draft.date,
                         payee = draft.payee.trim(),
                         note = draft.note,
+                        timeKnown = draft.timeKnown,
                         drafts = listOf(assetLeg) + splitLegs,
                         sourceDocumentId = docId,
                         sources = draft.provenance(fallbackAsset),

@@ -288,11 +288,16 @@ private fun RegisterRowView(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                timeShort(entry.date),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // Imported statement rows only know their day (the register is
+            // already grouped by day headers), so the secondary line is
+            // dropped entirely rather than showing a made-up hour.
+            if (entry.timeKnown) {
+                Text(
+                    timeShort(entry.date),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
             Text(

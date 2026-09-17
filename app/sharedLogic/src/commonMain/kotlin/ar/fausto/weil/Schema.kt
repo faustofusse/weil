@@ -79,7 +79,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 5L
+private const val SCHEMA_VERSION = 6L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -142,6 +142,20 @@ fun Database.migrateSchema() {
         // Provenance of AI-imported transactions: the R2 content hash of the
         // analyzed document (see the worker's /import/analyze).
         addColumn("alter table ledger_transactions add column source_document_id text")
+    }
+    if ("time_known" !in txColumns) {
+        // A statement row states a day, not a moment: `date` still holds a
+        // timestamp (local midnight) but the time half of it is made up, so
+        // the UI must not print it. Manual entries and notification/email
+        // ingest carry a real clock time and keep the default 1.
+        addColumn("alter table ledger_transactions add column time_known integer not null default 1")
+        // Rows already imported from a document were stamped noon UTC by the
+        // worker (09:00 in ART), which is exactly the phantom time this
+        // column exists to hide. Runs only on the open that adds the column,
+        // so a time the user set by hand afterwards is never demoted.
+        execute(
+            "update ledger_transactions set time_known = 0 where source_document_id is not null",
+        )
     }
     val emailColumns = query("pragma table_info(emails)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()

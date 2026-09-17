@@ -98,6 +98,13 @@ data class ImportSplit(
  */
 data class ImportCandidate(
     val date: Long,
+    /**
+     * "YYYY-MM-DD" when the origin stated a day and no time (every statement
+     * row): the UI resolves it in the device's zone and records the
+     * transaction with `timeKnown = false`, so no invented hour is ever shown.
+     * Null for origins that carry a real clock time (a push alert, an email).
+     */
+    val day: String? = null,
     val payee: String,
     val note: String?,
     val commodity: String,
@@ -144,6 +151,7 @@ private data class WireSplit(
 @Serializable
 private data class WireCandidate(
     val date: Long,
+    val day: String? = null,
     val payee: String,
     val note: String? = null,
     val commodity: String,
@@ -214,6 +222,7 @@ class ImportRepository(
             candidates = body.transactions.map {
                 ImportCandidate(
                     date = it.date,
+                    day = it.day,
                     payee = it.payee,
                     note = it.note,
                     commodity = it.commodity,

@@ -82,6 +82,7 @@ import weil.app.sharedui.generated.resources.editor_off_by
 import weil.app.sharedui.generated.resources.editor_payee_label
 import weil.app.sharedui.generated.resources.editor_record
 import weil.app.sharedui.generated.resources.editor_time_label
+import weil.app.sharedui.generated.resources.editor_time_none
 import weil.app.sharedui.generated.resources.editor_time_pick
 import weil.app.sharedui.generated.resources.editor_remove_posting
 import weil.app.sharedui.generated.resources.editor_transaction_deleted
@@ -134,7 +135,10 @@ fun TransactionEditScreen(
             try {
                 val stored = ledger.get(editId) ?: return@LaunchedEffect
                 dateText = dateInputOf(stored.date)
-                timeText = timeInputOf(stored.date)
+                // A row imported from a statement knows its day only; leaving
+                // the field empty says so, and typing a time is what promotes
+                // it to a real moment.
+                timeText = if (stored.timeKnown) timeInputOf(stored.date) else ""
                 payee = stored.payee
                 note = stored.note.orEmpty()
                 drafts = stored.postings.map {
@@ -186,6 +190,7 @@ fun TransactionEditScreen(
                                                 stored?.payee.orEmpty().ifBlank { deletedPayee },
                                                 stored?.note,
                                                 draftsBackup,
+                                                timeKnown = stored?.timeKnown ?: true,
                                             )
                                         }
                                     } catch (e: Throwable) {
@@ -250,7 +255,15 @@ fun TransactionEditScreen(
                     }
                     Button(
                         onClick = {
-                            val date = parseDateTimeInput(dateText, timeText)
+                            // An empty time is a deliberate state, not an
+                            // error: the transaction is dated to the day and
+                            // stored at local midnight with timeKnown = false.
+                            val timeKnown = timeText.isNotBlank()
+                            val date = if (timeKnown) {
+                                parseDateTimeInput(dateText, timeText)
+                            } else {
+                                parseDateInput(dateText)
+                            }
                             if (date == null) {
                                 error = if (parseDateInput(dateText) == null) invalidDateMessage else invalidTimeMessage
                                 return@Button
@@ -260,9 +273,22 @@ fun TransactionEditScreen(
                             scope.launch {
                                 try {
                                     if (editId == null) {
-                                        ledger.add(date, payee, note.ifBlank { null }, drafts)
+                                        ledger.add(
+                                            date,
+                                            payee,
+                                            note.ifBlank { null },
+                                            drafts,
+                                            timeKnown = timeKnown,
+                                        )
                                     } else {
-                                        ledger.update(editId, date, payee, note.ifBlank { null }, drafts)
+                                        ledger.update(
+                                            editId,
+                                            date,
+                                            payee,
+                                            note.ifBlank { null },
+                                            drafts,
+                                            timeKnown = timeKnown,
+                                        )
                                     }
                                     onSaved()
                                 } catch (e: Throwable) {
@@ -320,6 +346,7 @@ fun TransactionEditScreen(
                     value = timeText,
                     onValueChange = { timeText = it },
                     label = { Text(stringResource(Res.string.editor_time_label)) },
+                    placeholder = { Text(stringResource(Res.string.editor_time_none)) },
                     singleLine = true,
                     trailingIcon = {
                         TextButton(onClick = { pickingTime = true }) {
@@ -380,7 +407,11 @@ fun TransactionEditScreen(
     }
 
     if (pickingTime) {
-        val (initialHour, initialMinute) = parseTimeInput(timeText) ?: (0 to 0)
+        // Empty field (a day-only row): the picker opens at now, the same
+        // default a brand-new transaction gets.
+        val (initialHour, initialMinute) = parseTimeInput(timeText)
+            ?: parseTimeInput(nowTimeInput())
+            ?: (0 to 0)
         val pickerState = rememberTimePickerState(
             initialHour = initialHour,
             initialMinute = initialMinute,

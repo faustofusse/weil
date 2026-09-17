@@ -125,6 +125,12 @@ data class Transaction(
     val note: String?,
     val createdAt: Long,
     val postings: List<Posting>,
+    /**
+     * False when only the day is known (a statement row states a date, not a
+     * moment): [date] then sits at local midnight and callers must render the
+     * day alone, never the time.
+     */
+    val timeKnown: Boolean = true,
 )
 
 /** One row in an account's register: the posting plus its running balance. */
@@ -133,6 +139,8 @@ data class RegisterEntry(
     val date: Long,
     val payee: String,
     val balanceAfter: Money,
+    /** See [Transaction.timeKnown]. */
+    val timeKnown: Boolean = true,
 )
 
 /** One transaction to create, used by batch writes (see `addAll`). */
@@ -141,6 +149,8 @@ data class NewTransaction(
     val payee: String,
     val note: String?,
     val drafts: List<DraftPosting>,
+    /** See [Transaction.timeKnown]. */
+    val timeKnown: Boolean = true,
     val sourceDocumentId: String? = null,
     /** Provenance rows written alongside the transaction (see `transaction_sources`). */
     val sources: List<TransactionSource> = emptyList(),

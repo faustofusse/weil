@@ -93,10 +93,23 @@ class FakeDatabase(
 
         val now = System.currentTimeMillis()
         val day = 24 * 60 * 60 * 1000L
-        fun tx(id: String, date: Long, payee: String, legs: List<Triple<String, Long, String>>) {
+        fun tx(
+            id: String,
+            date: Long,
+            payee: String,
+            legs: List<Triple<String, Long, String>>,
+            timeKnown: Boolean = true,
+        ) {
             execute(
-                "insert into ledger_transactions(id, date, payee, note, created_at) values (:id, :date, :payee, null, :created)",
-                mapOf(":id" to id, ":date" to date, ":payee" to payee, ":created" to date),
+                "insert into ledger_transactions(id, date, payee, note, created_at, time_known)" +
+                    " values (:id, :date, :payee, null, :created, :time_known)",
+                mapOf(
+                    ":id" to id,
+                    ":date" to date,
+                    ":payee" to payee,
+                    ":created" to date,
+                    ":time_known" to if (timeKnown) 1L else 0L,
+                ),
             )
             legs.forEachIndexed { i, (account, amount, commodity) ->
                 execute(
@@ -132,9 +145,16 @@ class FakeDatabase(
             "seed-tx-4", now - day - 3600_000, "Retiro cajero",
             listOf(Triple(bank, -2000000L, "ARS"), Triple(cash, 2000000L, "ARS")),
         )
+        // Imported from a statement: the document stated a day and no time, so
+        // this row is dated at local midnight with time_known = 0 — the
+        // harness's coverage of registers/detail that must print no hour.
         tx(
-            "seed-tx-5", now - 2 * day, "Suscripción",
+            "seed-tx-5",
+            java.time.LocalDate.now().minusDays(2)
+                .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            "Suscripción",
             listOf(Triple(bank, -1200L, "USD"), Triple(EXTERNAL_EXPENSE_ID, 1200L, "USD")),
+            timeKnown = false,
         )
         // Half-recorded transfer: the statement of the receiving account could
         // not tell the payer was the user, so the far leg landed on a category.

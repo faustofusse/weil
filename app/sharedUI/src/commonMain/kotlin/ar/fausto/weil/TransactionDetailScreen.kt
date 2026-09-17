@@ -159,6 +159,7 @@ fun TransactionDetailScreen(
                                             stored?.payee.orEmpty().ifBlank { deletedPayee },
                                             stored?.note,
                                             draftsBackup,
+                                            timeKnown = stored?.timeKnown ?: true,
                                         )
                                     }
                                 } catch (e: Throwable) {
@@ -221,9 +222,10 @@ fun TransactionDetailScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     val dayText = dayLabel(dayGroup(transaction.date))
-                    val timeText = timeShort(transaction.date)
+                    // Only the day is known for rows imported from a document.
+                    val timeText = if (transaction.timeKnown) " " + timeShort(transaction.date) else ""
                     Text(
-                        "$dayText $timeText",
+                        dayText + timeText,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

@@ -399,6 +399,18 @@ function toEpochMs(date: string): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+/**
+ * The normalized "YYYY-MM-DD" the model reported, null if malformed. A
+ * document states a day, never a moment, so this is the honest half of the
+ * date: the client resolves it in the device's own zone and marks the
+ * transaction as time-unknown. `date` above stays in the payload for clients
+ * that predate this field, but it encodes a noon-UTC time nobody wrote down.
+ */
+function toDay(date: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
 export async function sha256HexOf(bytes: Uint8Array | ArrayBuffer): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -485,6 +497,7 @@ export async function handleAnalyze(
     return [
       {
         date,
+        day: toDay(t.date),
         payee: t.payee.trim(),
         note: t.note?.trim() || null,
         commodity,

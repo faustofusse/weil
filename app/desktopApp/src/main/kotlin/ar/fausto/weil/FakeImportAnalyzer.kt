@@ -21,6 +21,7 @@ class FakeImportAnalyzer : DocumentAnalyzer {
             candidates = listOf(
                 ImportCandidate(
                     date = now - day,
+                    day = dateInputOf(now - day),
                     payee = "Carrefour",
                     note = "Compra semanal",
                     commodity = "ARS",
@@ -33,6 +34,7 @@ class FakeImportAnalyzer : DocumentAnalyzer {
                 ),
                 ImportCandidate(
                     date = now - 2 * day,
+                    day = dateInputOf(now - 2 * day),
                     payee = "Netflix",
                     note = null,
                     commodity = "USD",
@@ -43,6 +45,7 @@ class FakeImportAnalyzer : DocumentAnalyzer {
                 ),
                 ImportCandidate(
                     date = now - 3 * day,
+                    day = dateInputOf(now - 3 * day),
                     payee = "Sueldo",
                     note = null,
                     commodity = "ARS",
@@ -53,6 +56,7 @@ class FakeImportAnalyzer : DocumentAnalyzer {
                 ),
                 ImportCandidate(
                     date = now - 3 * day,
+                    day = dateInputOf(now - 3 * day),
                     payee = "Compra de dolares",
                     note = "Compraste u\$s 730,00 a \$ 1.520,00",
                     commodity = "ARS",
@@ -65,6 +69,7 @@ class FakeImportAnalyzer : DocumentAnalyzer {
                 ),
                 ImportCandidate(
                     date = now - 3 * day,
+                    day = dateInputOf(now - 3 * day),
                     payee = "Pago tarjeta de credito visa",
                     note = "Deb. automatico",
                     commodity = "ARS",
@@ -77,6 +82,7 @@ class FakeImportAnalyzer : DocumentAnalyzer {
                 // "Supermercado Coto de la esquina" → a duplicate.
                 ImportCandidate(
                     date = now,
+                    day = dateInputOf(now),
                     payee = "COTO CICSA 4821",
                     note = null,
                     commodity = "ARS",
@@ -90,6 +96,7 @@ class FakeImportAnalyzer : DocumentAnalyzer {
                 // seeded half-recorded "Transferencia recibida" → a mirror.
                 ImportCandidate(
                     date = now - 2 * day,
+                    day = dateInputOf(now - 2 * day),
                     payee = "Transferencia enviada",
                     note = null,
                     commodity = "ARS",
@@ -101,6 +108,7 @@ class FakeImportAnalyzer : DocumentAnalyzer {
                 ),
                 ImportCandidate(
                     date = now - 4 * day,
+                    day = dateInputOf(now - 4 * day),
                     payee = "YPF",
                     note = "Nafta",
                     commodity = "ARS",
