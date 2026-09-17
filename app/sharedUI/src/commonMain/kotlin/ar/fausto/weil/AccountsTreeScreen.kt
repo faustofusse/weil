@@ -41,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -70,6 +71,7 @@ import weil.app.sharedui.generated.resources.account_choose_parent
 import weil.app.sharedui.generated.resources.account_collapse
 import weil.app.sharedui.generated.resources.account_delete_message
 import weil.app.sharedui.generated.resources.account_expand
+import weil.app.sharedui.generated.resources.account_in_net_worth_toggle
 import weil.app.sharedui.generated.resources.account_includes_subaccounts
 import weil.app.sharedui.generated.resources.account_move_to_root
 import weil.app.sharedui.generated.resources.account_move_under
@@ -518,6 +520,19 @@ internal fun AccountActionsSheet(
                         moving = true
                     },
                 )
+                if (account.type == AccountType.Asset || account.type == AccountType.Liability) {
+                    ListItem(
+                        colors = itemColors,
+                        leadingContent = { Icon(Icons.Filled.Tune, contentDescription = null) },
+                        headlineContent = { Text(stringResource(Res.string.account_in_net_worth_toggle)) },
+                        trailingContent = {
+                            Switch(
+                                checked = account.inNetWorth,
+                                onCheckedChange = { checked -> state.setInNetWorth(account.id, checked) },
+                            )
+                        },
+                    )
+                }
                 ListItem(
                     colors = itemColors,
                     leadingContent = {

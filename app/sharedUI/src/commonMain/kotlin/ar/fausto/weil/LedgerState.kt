@@ -139,6 +139,10 @@ class LedgerState(
     fun deleteAccount(id: String) =
         mutate { accounts.delete(id) }
 
+    /** Only meaningful for Asset/Liability; see [excludedFromNetWorth]. */
+    fun setInNetWorth(id: String, included: Boolean) =
+        mutate { accounts.setInNetWorth(id, included) }
+
     fun toggleExpanded(id: String) {
         expandedIds = if (id in expandedIds) expandedIds - id else expandedIds + id
     }
@@ -166,6 +170,48 @@ class LedgerState(
             }
             tree.forEach { post(it) }
             return result
+        }
+
+        /**
+         * Ids excluded from the Home net-worth sum: a node's own
+         * [Account.inNetWorth] flag, or any ancestor's — excluding a parent
+         * cascades to every descendant regardless of what they're
+         * individually set to.
+         */
+        fun excludedFromNetWorth(tree: List<AccountNode>): Set<String> {
+            val result = mutableSetOf<String>()
+            fun walk(node: AccountNode, ancestorExcluded: Boolean) {
+                val excluded = ancestorExcluded || !node.account.inNetWorth
+                if (excluded) result += node.account.id
+                node.children.forEach { walk(it, excluded) }
+            }
+            tree.forEach { walk(it, false) }
+            return result
+        }
+
+        /**
+         * Net worth per commodity: sums each Asset/Liability node's own
+         * postings (not the subtree rollup, since an excluded child must
+         * drop out even when its parent is counted), skipping any id in
+         * [excludedFromNetWorth].
+         */
+        fun netWorth(
+            tree: List<AccountNode>,
+            leafTotals: Map<String, Map<String, Long>>,
+        ): Map<String, Long> {
+            val excluded = excludedFromNetWorth(tree)
+            val acc = mutableMapOf<String, Long>()
+            fun walk(node: AccountNode) {
+                if (node.account.id in excluded) return
+                if (node.account.type == AccountType.Asset || node.account.type == AccountType.Liability) {
+                    for ((c, v) in leafTotals[node.account.id].orEmpty()) {
+                        acc[c] = (acc[c] ?: 0L) + v
+                    }
+                }
+                node.children.forEach { walk(it) }
+            }
+            tree.forEach { walk(it) }
+            return acc
         }
     }
 }

@@ -15,7 +15,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
     /** One flat query turned into a node tree with colon-joined paths. */
     suspend fun tree(): List<AccountNode> = db.useForRead { d ->
         val all = d.query(
-            "select id, name, parent_id, type from accounts order by lower(name), id",
+            "select id, name, parent_id, type, in_net_worth from accounts order by lower(name), id",
             null,
         ) { rows ->
             rows.mapNotNull { row ->
@@ -27,6 +27,8 @@ class AccountsRepository(private val db: DatabaseProvider) {
                     name = name,
                     parentId = row[2]?.toString(),
                     type = type,
+                    // null only mid-migration on a lagging replica; treat as included.
+                    inNetWorth = (row.getOrNull(4) as? Number)?.toLong() != 0L,
                 )
             }.toList()
         }
@@ -69,6 +71,16 @@ class AccountsRepository(private val db: DatabaseProvider) {
         }
         d.sync()
         id
+    }
+
+    /** Only meaningful for Asset/Liability; excluding a node cascades to its
+     *  subtree in the UI regardless of the descendants' own stored flag. */
+    suspend fun setInNetWorth(id: String, included: Boolean) = db.use { d ->
+        d.execute(
+            "update accounts set in_net_worth = :v where id = :id",
+            mapOf(":v" to (if (included) 1L else 0L), ":id" to id),
+        )
+        d.sync()
     }
 
     suspend fun rename(id: String, name: String) = db.use { d ->
@@ -140,7 +152,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
 
     private fun fetch(d: Database, id: String): Account? =
         d.query(
-            "select id, name, parent_id, type from accounts where id = :id",
+            "select id, name, parent_id, type, in_net_worth from accounts where id = :id",
             mapOf(":id" to id),
         ) { rows ->
             rows.filter { it.size >= 4 }
@@ -151,6 +163,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
                             name = row[1]?.toString() ?: "",
                             parentId = row[2]?.toString(),
                             type = type,
+                            inNetWorth = (row.getOrNull(4) as? Number)?.toLong() != 0L,
                         )
                     }
                 }

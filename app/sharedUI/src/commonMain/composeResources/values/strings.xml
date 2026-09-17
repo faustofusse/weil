@@ -59,6 +59,13 @@
     <string name="account_subaccounts_many">%1$d subcuentas</string>
     <string name="account_actions">Acciones de la cuenta</string>
     <string name="account_includes_subaccounts">subtotal</string>
+    <string name="account_in_net_worth_toggle">Contar en el patrimonio</string>
+
+    <!-- Net worth picker -->
+    <string name="net_worth_picker_title">Patrimonio</string>
+    <string name="net_worth_picker_hint">Elegí qué cuentas suman al patrimonio. Excluir una cuenta excluye también sus subcuentas.</string>
+    <string name="net_worth_picker_action">Elegir cuentas</string>
+    <string name="net_worth_excluded_by_parent">Excluida junto con su cuenta padre</string>
 
     <!-- Transaction editor (full) -->
     <string name="editor_new_title">Nueva transacción</string>
@@ -151,6 +158,18 @@
     <string name="profile_sign_out">Cerrar sesión</string>
     <string name="profile_sync_chain_title">Cadena de sincronización</string>
     <string name="profile_sync_chain_subtitle">Tus dispositivos comparten una cuenta y su base de datos. Cada dispositivo inicia sesión con su propio passkey.</string>
+    <string name="profile_wa_title">WhatsApp</string>
+    <string name="profile_wa_subtitle">Mandá «panadería 300» al bot y se carga el gasto solo. El número se vincula enviando un código, no hace falta escribirlo acá.</string>
+    <string name="profile_wa_linked_none">Todavía no hay ningún número vinculado.</string>
+    <string name="profile_wa_link">Vincular número</string>
+    <string name="profile_wa_unlink">Desvincular</string>
+    <string name="profile_wa_qr_content">Código QR para abrir el chat con el mensaje listo</string>
+    <string name="profile_wa_scan_hint">Escaneá el QR desde el teléfono del número, o escribile a +%1$s.</string>
+    <string name="profile_wa_number_missing">Falta configurar el número del bot en el worker.</string>
+    <string name="profile_wa_code_hint">Mandá ese mensaje tal cual desde el número que querés vincular.</string>
+    <string name="profile_wa_sent">Ya lo mandé</string>
+    <string name="profile_wa_expired">El código venció.</string>
+    <string name="profile_wa_new_code">Generar otro</string>
     <string name="profile_add_device">Agregar dispositivo</string>
     <string name="profile_approve_device">Aprobar dispositivo</string>
     <string name="profile_no_devices">Todavía no hay dispositivos — usá Agregar dispositivo acá, o vinculá un dispositivo nuevo desde su pantalla de inicio de sesión.</string>
@@ -237,6 +256,7 @@
     <string name="txn_source_document">Documento importado</string>
     <string name="txn_source_notification">Notificación</string>
     <string name="txn_source_email">Mail</string>
+    <string name="txn_source_whatsapp">WhatsApp</string>
     <string name="txn_source_manual">Carga manual</string>
 
     <!-- Document import -->

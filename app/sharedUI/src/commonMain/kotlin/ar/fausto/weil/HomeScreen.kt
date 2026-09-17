@@ -1,7 +1,10 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package ar.fausto.weil
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -310,13 +313,22 @@ private fun OverflowItem(
  */
 @Composable
 private fun NetWorthCard(state: LedgerState) {
-    val lines = netWorthOf(state).entries.sortedByDescending { abs(it.value) }
+    val lines = LedgerState.netWorth(state.tree, state.leafTotals).entries.sortedByDescending { abs(it.value) }
+    var pickerOpen by remember { mutableStateOf(false) }
     // No card here on purpose: this is the top of the page, not one section
     // among others, so it sits straight on the screen background instead of
     // competing with the tonal cards below it for "boxed" attention.
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // Long-press opens the net-worth picker: no visible button, this
+            // is a settings affordance and the hero shouldn't advertise it.
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+                onLongClick = { pickerOpen = true },
+            )
             // start inset matches SectionHeader's, so "Patrimonio", "Cuentas"
             // and "Movimientos" all start on the same vertical edge.
             .padding(top = 20.dp, bottom = 4.dp, start = 4.dp),
@@ -373,19 +385,9 @@ private fun NetWorthCard(state: LedgerState) {
         }
         state.error?.let { ErrorBanner(it, modifier = Modifier.padding(top = 14.dp)) }
     }
-}
-
-private fun netWorthOf(state: LedgerState): Map<String, Long> {
-    val acc = mutableMapOf<String, Long>()
-    for (root in state.tree) {
-        if (root.account.type != AccountType.Asset && root.account.type != AccountType.Liability) {
-            continue
-        }
-        for ((c, v) in state.totals[root.account.id].orEmpty()) {
-            acc[c] = (acc[c] ?: 0L) + v
-        }
+    if (pickerOpen) {
+        NetWorthPickerSheet(state = state, onDismiss = { pickerOpen = false })
     }
-    return acc
 }
 
 /**

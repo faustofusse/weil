@@ -123,6 +123,13 @@ fun Database.migrateSchema() {
     if ("type" !in columns) {
         addColumn("alter table accounts add column type text not null default 'asset'")
     }
+    if ("in_net_worth" !in columns) {
+        // Per-account opt-out from the Home net-worth sum; only meaningful
+        // for Asset/Liability accounts, and cascades to descendants (an
+        // excluded parent's children are never counted either, regardless
+        // of their own flag) — see LedgerState.excludedFromNetWorth.
+        addColumn("alter table accounts add column in_net_worth integer not null default 1")
+    }
     val txColumns = query("pragma table_info(ledger_transactions)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
     }

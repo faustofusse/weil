@@ -55,6 +55,12 @@ object Icons {
             "M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z",
         )
 
+        /** Material "chat" — stands in for WhatsApp, whose mark is trademarked. */
+        val Chat: ImageVector = materialIcon(
+            "Chat",
+            "M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z",
+        )
+
         val Logout: ImageVector = materialIcon(
             "Logout",
             "M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z",
@@ -135,6 +141,12 @@ object Icons {
             "QrScan",
             "M3 3h7v2H5v5H3V3zm11 0h7v7h-2V5h-5V3zM3 14h2v5h5v2H3v-7zm16 0h2v7h-7v-2h5v-5z" +
                 "M7 7h3v3H7V7zm7 7h3v3h-3v-3zm-7 0h3v3H7v-3zm7-7h3v3h-3V7z",
+        )
+
+        /** Material "tune": sliders, used as the net-worth picker affordance. */
+        val Tune: ImageVector = materialIcon(
+            "Tune",
+            "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z",
         )
 
         val AccountTree: ImageVector = materialIcon(

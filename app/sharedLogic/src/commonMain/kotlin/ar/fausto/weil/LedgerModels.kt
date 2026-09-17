@@ -22,6 +22,13 @@ data class Account(
     val name: String,
     val parentId: String?,
     val type: AccountType,
+    /**
+     * Whether this account's own balance counts toward Home's net-worth sum.
+     * Only meaningful for Asset/Liability; other types are never summed
+     * regardless of this flag. Excluding a parent cascades to every
+     * descendant — see [LedgerState.excludedFromNetWorth].
+     */
+    val inNetWorth: Boolean = true,
 )
 
 /** Node of the in-memory account tree; [path] is the colon-joined chain to it. */
