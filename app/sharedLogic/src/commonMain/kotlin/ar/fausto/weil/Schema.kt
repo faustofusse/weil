@@ -98,15 +98,30 @@ fun Database.applySchemaIfNeeded() {
  * accounts tables. `alter table` is not idempotent in SQLite, so the columns
  * are checked via pragma before altering; runs after [SCHEMA_SQL] on open.
  */
+/**
+ * Runs an `alter table ... add column`, tolerating a column that is already
+ * there. On an embedded replica the `pragma table_info` guard reads the *local*
+ * copy, which on a freshly created replica is still empty/stale, while the
+ * `alter` is forwarded to the primary — where the column usually exists
+ * already. The primary answers "duplicate column name", which is a no-op for us.
+ */
+private fun Database.addColumn(sql: String) {
+    try {
+        execute(sql)
+    } catch (e: Exception) {
+        if ("duplicate column name" !in (e.message ?: "")) throw e
+    }
+}
+
 fun Database.migrateSchema() {
     val columns = query("pragma table_info(accounts)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
     }
     if ("parent_id" !in columns) {
-        execute("alter table accounts add column parent_id text")
+        addColumn("alter table accounts add column parent_id text")
     }
     if ("type" !in columns) {
-        execute("alter table accounts add column type text not null default 'asset'")
+        addColumn("alter table accounts add column type text not null default 'asset'")
     }
     val txColumns = query("pragma table_info(ledger_transactions)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
@@ -114,7 +129,7 @@ fun Database.migrateSchema() {
     if ("source_document_id" !in txColumns) {
         // Provenance of AI-imported transactions: the R2 content hash of the
         // analyzed document (see the worker's /import/analyze).
-        execute("alter table ledger_transactions add column source_document_id text")
+        addColumn("alter table ledger_transactions add column source_document_id text")
     }
     val emailColumns = query("pragma table_info(emails)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
@@ -123,7 +138,7 @@ fun Database.migrateSchema() {
         // Sanitized HTML body (see the worker's email ingest). Null for rows
         // ingested before the MIME parser landed — those cannot be backfilled
         // from the device, only by reprocessing the archived raw message.
-        execute("alter table emails add column body_html text")
+        addColumn("alter table emails add column body_html text")
     }
     backfillTransactionSources()
     seedDefaultAccounts()
