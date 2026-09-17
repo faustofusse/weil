@@ -31,7 +31,10 @@ class AndroidDocumentPicker(private val activity: Activity) : DocumentPicker {
                 if (cont.isActive) cont.resume(result)
             }
             cont.invokeOnCancellation { launcher.unregister() }
-            launcher.launch(IMPORTABLE_MIME_TYPES.toTypedArray())
+            // The aliases are only for the *filter*: a CSV written by a
+            // spreadsheet app is often advertised under a legacy type, and a
+            // filter of exactly "text/csv" greys it out in the picker.
+            launcher.launch((IMPORTABLE_MIME_TYPES + CSV_MIME_ALIASES).distinct().toTypedArray())
         } ?: return null
         return activity.readDocument(uri)
     }
@@ -44,7 +47,7 @@ class AndroidDocumentPicker(private val activity: Activity) : DocumentPicker {
 internal fun Context.readDocument(uri: Uri): PickedDocument? {
     if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
     val resolver = contentResolver
-    val mime = resolver.getType(uri)?.lowercase()?.substringBefore(';')?.trim() ?: return null
+    val reported = resolver.getType(uri)?.lowercase()?.substringBefore(';')?.trim() ?: return null
     val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
     if (bytes.isEmpty()) return null
     val name = runCatching {
@@ -52,11 +55,20 @@ internal fun Context.readDocument(uri: Uri): PickedDocument? {
             if (cursor.moveToFirst()) cursor.getString(0) else null
         }
     }.getOrNull()
+    // Providers describe a CSV in half a dozen ways (and generic file managers
+    // fall back to text/plain or octet-stream); the extension is the reliable
+    // signal, and the worker only knows one spelling.
+    val looksLikeCsv = name?.endsWith(".csv", ignoreCase = true) == true
+    val mime = when {
+        reported in CSV_MIME_ALIASES -> "text/csv"
+        looksLikeCsv && (reported == "text/plain" || reported == "application/octet-stream") -> "text/csv"
+        else -> reported
+    }
     return PickedDocument(bytes = bytes, mimeType = mime, name = name)
 }
 
 /**
- * Pulls the image/PDF out of an ACTION_SEND intent and offers it to the UI.
+ * Pulls the image/PDF/CSV out of an ACTION_SEND intent and offers it to the UI.
  * Returns true when the intent carried an importable document.
  */
 fun Context.handleSharedDocument(intent: Intent?): Boolean {

@@ -31,6 +31,7 @@ class JvmDocumentPicker : DocumentPicker {
             "webp" -> "image/webp"
             "heic" -> "image/heic"
             "heif" -> "image/heif"
+            "csv" -> "text/csv"
             else -> null
         }
 }

@@ -34,7 +34,7 @@ final class DocumentPickerManager: NSObject, DocumentPicker, UIDocumentPickerDel
     private func runPicker() async throws -> PickedDocument? {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
-            let types: [UTType] = [.pdf, .jpeg, .png, .webP, .heic, .heif]
+            let types: [UTType] = [.pdf, .jpeg, .png, .webP, .heic, .heif, .commaSeparatedText]
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
             picker.delegate = self
             picker.allowsMultipleSelection = false
@@ -78,6 +78,12 @@ final class DocumentPickerManager: NSObject, DocumentPicker, UIDocumentPickerDel
     }
 
     private static func mimeType(for url: URL) -> String {
+        // A .csv can resolve to a spreadsheet UTI whose preferred MIME type is
+        // not text/csv (the only spelling the worker accepts), so the
+        // extension wins for this one.
+        if url.pathExtension.lowercased() == "csv" {
+            return "text/csv"
+        }
         let type = UTType(filenameExtension: url.pathExtension)
         if let mime = type?.preferredMIMEType {
             return mime

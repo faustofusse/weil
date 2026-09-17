@@ -296,6 +296,7 @@
     <string name="import_include">Incluir esta transacción</string>
     <string name="import_source_image">Imagen</string>
     <string name="import_source_pdf">PDF</string>
+    <string name="import_source_csv">CSV</string>
     <string name="import_items">%1$d ítems</string>
     <string name="import_split_add">Agregar ítem</string>
     <string name="import_split_merge">Unir en un solo ítem</string>

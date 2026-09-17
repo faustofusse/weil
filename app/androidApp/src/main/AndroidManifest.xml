@@ -31,8 +31,10 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Share target: receipts (images) and statements (PDF) sent
-                 from other apps land in the AI import review screen. -->
+            <!-- Share target: receipts (images), statements (PDF) and CSV
+                 exports sent from other apps land in the AI import review
+                 screen. The CSV aliases are what spreadsheet and file apps
+                 actually attach; readDocument normalizes them to text/csv. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
 
@@ -40,6 +42,8 @@
 
                 <data android:mimeType="image/*" />
                 <data android:mimeType="application/pdf" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/comma-separated-values" />
             </intent-filter>
         </activity>
 

@@ -105,6 +105,7 @@ import weil.app.sharedui.generated.resources.import_section_review
 import weil.app.sharedui.generated.resources.import_payee_label
 import weil.app.sharedui.generated.resources.picker_create
 import weil.app.sharedui.generated.resources.import_retry
+import weil.app.sharedui.generated.resources.import_source_csv
 import weil.app.sharedui.generated.resources.import_source_pdf
 import weil.app.sharedui.generated.resources.import_source_image
 import weil.app.sharedui.generated.resources.import_split_add
@@ -574,6 +575,8 @@ fun ImportReviewScreen(
                             when {
                                 source is ReviewSource.Document && source.document.isPdf ->
                                     Res.string.import_source_pdf
+                                source is ReviewSource.Document && source.document.isCsv ->
+                                    Res.string.import_source_csv
                                 source is ReviewSource.Document -> Res.string.import_source_image
                                 else -> Res.string.inbox_source
                             },

@@ -30,7 +30,39 @@ const ALLOWED_TYPES = new Set([
   'image/webp',
   'image/heic',
   'image/heif',
+  'text/csv',
 ]);
+
+/**
+ * Text is sent to the model as a text part rather than base64 `inline_data`:
+ * no 33% inflation, and the model reads a table instead of an opaque blob.
+ */
+function isTextual(mimeType: string): boolean {
+  return mimeType.startsWith('text/');
+}
+
+/** Enough for a multi-year export; a statement CSV is a few dozen kB. */
+const MAX_TEXT_CHARS = 200_000;
+
+/**
+ * Argentine bank exports are routinely windows-1252, not UTF-8, and decoding
+ * those as UTF-8 turns every "Descripción" into replacement characters. Strict
+ * UTF-8 first (the common case, and it fails loudly on anything else), then
+ * cp1252, then a manual latin-1 map if the runtime lacks that encoding.
+ */
+export function decodeText(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    try {
+      return new TextDecoder('windows-1252').decode(bytes);
+    } catch {
+      let out = '';
+      for (const b of bytes) out += String.fromCharCode(b);
+      return out;
+    }
+  }
+}
 
 /**
  * Cookie-based auth, mirroring the auth worker's requireAuth: the app sends
@@ -275,14 +307,70 @@ export async function loadPayeeHistory(
   return out.slice(0, maxPayees).map(({ payee, path, count }) => ({ payee, path, count }));
 }
 
-function prompt(accounts: PostableAccount[], history: PayeeMemory[] = []): string {
+/**
+ * Layout rules for *rendered* statements: repeated per-product detail
+ * sections, summary blocks, donuts, per-account amount columns. None of it
+ * applies to a CSV export, where every data row is exactly one movement.
+ */
+const STATEMENT_RULES: string[] = [
+  '',
+  'STATEMENTS — avoiding duplicates and noise:',
+  'A statement prints the SAME movement several times: once in the main account-movements table and again in',
+  'per-product detail sections ("Tarjeta de débito - Compras", "Pagos", "Pago anterior y devoluciones", "Detalle").',
+  'Emit each economic event exactly ONCE. Prefer the row from the main movements table; skip a later section\'s row',
+  'when it repeats the same date/amount/description. A credit-card "Consumos del mes" row is NOT a duplicate of the',
+  'account\'s "Pago de tarjeta de credito" row: the purchases and the payment of the card bill are different events.',
+  'Never emit anything from: spending-breakdown charts or donuts ("Así usaste tu dinero"), product summaries',
+  '("Resumen de tus productos", limits, rates, points), installment projections ("Cuotas a vencer", "Próximas cuotas"),',
+  'minimum-payment / financing plans, totals rows ("Total", "Saldo total", "Consumos totales", "Monto total"),',
+  'opening/closing balances ("Saldo Inicial", "Saldo anterior") or legal/informational pages ("Legales", "Alicuotas").',
+  'Tax and fee rows that really were charged ("Impuesto ley 25.413", "IVA", "IIBB percep", "Impuesto de sellos",',
+  '"Pago interes por saldo", maintenance fees) ARE real transactions — keep them.',
+  '',
+  'STATEMENTS — which account a row belongs to:',
+  'When the movements table has one amount column per account (e.g. "Cuenta sueldo en pesos" and "Cuenta Corriente',
+  'en pesos"), the column carrying the amount names the account; the "Saldo en cuenta" / running-balance column is',
+  'not an amount. A section heading also names the account for every row under it ("Movimientos en dólares",',
+  '"Caja de Ahorro en dólares", "Consumos de ... | Tarjeta terminada en 1500"). Rows under a credit-card consumption',
+  'section belong to that card (a liability), not to a bank account.',
+  '',
+];
+
+/** The CSV counterpart: column semantics instead of page layout. */
+const TABLE_RULES: string[] = [
+  '',
+  'CSV COLUMNS:',
+  'The first non-empty line is usually the header; use it to find the date, description, amount and (when present)',
+  'currency, balance and account columns. Exports often carry preamble lines above the header — skip them.',
+  'Emit exactly one transaction per data row, in file order.',
+  'Two rows with the same date, description and amount are NOT a duplicate: the movement really happened twice,',
+  'so emit both. Skip only non-movement rows: repeated headers, blank lines, and total / closing-balance footers.',
+  'Never read a running-balance column as an amount. The amount is the column that changes the balance; when there',
+  'are separate debit and credit columns, the populated one carries the amount and its column decides direction.',
+  'A negative amount, a "D" / "Debito" marker or a debit column means "expense"; a positive amount, "C" / "Credito"',
+  'or a credit column means "income" — unless both sides are accounts the user owns, which makes it a "transfer".',
+  'Amounts use Argentine formatting: "." groups thousands and "," is the decimal separator ("1.234,56" = 1234.56).',
+  'Always output amounts as positive decimals with "." as the decimal separator; "direction" carries the sign.',
+  'If a column names the account or card a row belongs to, use it for "account"; otherwise leave it null and the',
+  'app applies the account the user picked.',
+  '',
+];
+
+function prompt(
+  accounts: PostableAccount[],
+  history: PayeeMemory[] = [],
+  kind: 'document' | 'table' = 'document'
+): string {
   const expense = accounts.filter((c) => c.type === 'expense').map((c) => c.path);
   const income = accounts.filter((c) => c.type === 'income').map((c) => c.path);
   const own = accounts.filter((c) => c.type === 'asset' || c.type === 'liability').map((c) => c.path);
+  const table = kind === 'table';
   return [
-    'You extract financial transactions from a document (receipt, invoice, or bank/card statement, possibly multi-page).',
-    'Return every distinct transaction you can see. For bank or card statements, emit one entry per statement row;',
-    'ignore running balance columns, subtotals, opening/closing balances and summary rows.',
+    table
+      ? 'You extract financial transactions from a CSV export of a bank, card or wallet account.'
+      : 'You extract financial transactions from a document (receipt, invoice, or bank/card statement, possibly multi-page).',
+    table ? '' : 'Return every distinct transaction you can see. For bank or card statements, emit one entry per statement row;',
+    table ? '' : 'ignore running balance columns, subtotals, opening/closing balances and summary rows.',
     'Use debit/credit columns or signs to decide direction: debits/charges are "expense", credits/deposits are "income",',
     'unless both sides of the movement are accounts the user owns, in which case it is a "transfer".',
     'Amounts are always positive decimals. Assume currency ARS unless the document explicitly states another currency for that amount.',
@@ -295,27 +383,7 @@ function prompt(accounts: PostableAccount[], history: PayeeMemory[] = []): strin
     'Do not split a payment just because it lists many similar items (e.g. ten grocery items all under "Comida"); one',
     'split covering the whole amount is correct there. The split amounts must sum exactly to the payment\'s total.',
     'For bank/card statements, each row is its own transaction with a single split — never merge multiple rows into one.',
-    '',
-    'STATEMENTS — avoiding duplicates and noise:',
-    'A statement prints the SAME movement several times: once in the main account-movements table and again in',
-    'per-product detail sections ("Tarjeta de débito - Compras", "Pagos", "Pago anterior y devoluciones", "Detalle").',
-    'Emit each economic event exactly ONCE. Prefer the row from the main movements table; skip a later section\'s row',
-    'when it repeats the same date/amount/description. A credit-card "Consumos del mes" row is NOT a duplicate of the',
-    'account\'s "Pago de tarjeta de credito" row: the purchases and the payment of the card bill are different events.',
-    'Never emit anything from: spending-breakdown charts or donuts ("Así usaste tu dinero"), product summaries',
-    '("Resumen de tus productos", limits, rates, points), installment projections ("Cuotas a vencer", "Próximas cuotas"),',
-    'minimum-payment / financing plans, totals rows ("Total", "Saldo total", "Consumos totales", "Monto total"),',
-    'opening/closing balances ("Saldo Inicial", "Saldo anterior") or legal/informational pages ("Legales", "Alicuotas").',
-    'Tax and fee rows that really were charged ("Impuesto ley 25.413", "IVA", "IIBB percep", "Impuesto de sellos",',
-    '"Pago interes por saldo", maintenance fees) ARE real transactions — keep them.',
-    '',
-    'STATEMENTS — which account a row belongs to:',
-    'When the movements table has one amount column per account (e.g. "Cuenta sueldo en pesos" and "Cuenta Corriente',
-    'en pesos"), the column carrying the amount names the account; the "Saldo en cuenta" / running-balance column is',
-    'not an amount. A section heading also names the account for every row under it ("Movimientos en dólares",',
-    '"Caja de Ahorro en dólares", "Consumos de ... | Tarjeta terminada en 1500"). Rows under a credit-card consumption',
-    'section belong to that card (a liability), not to a bank account.',
-    '',
+    ...(table ? TABLE_RULES : STATEMENT_RULES),
     'TRANSFERS (direction "transfer"): both legs are accounts the user owns, so nothing was spent or earned.',
     'Typical statement cases: paying the credit card from the bank account ("Pago de tarjeta de credito",',
     '"Pago tarjeta de credito visa"), buying or selling foreign currency ("Debito por compra de dolares" paired with',
@@ -474,10 +542,17 @@ export async function geminiJson<T>(
   return JSON.parse(text) as T;
 }
 
-async function callGemini(env: ImportEnv, mimeType: string, base64: string, promptText: string): Promise<GeminiCandidateTx[]> {
+async function callGemini(
+  env: ImportEnv,
+  document: { mimeType: string; bytes: Uint8Array },
+  promptText: string
+): Promise<GeminiCandidateTx[]> {
+  const part = isTextual(document.mimeType)
+    ? { text: `--- FILE CONTENTS ---\n${decodeText(document.bytes).slice(0, MAX_TEXT_CHARS)}` }
+    : { inline_data: { mime_type: document.mimeType, data: base64Of(document.bytes) } };
   const parsed = await geminiJson<{ transactions?: GeminiCandidateTx[] }>(
     env,
-    [{ inline_data: { mime_type: mimeType, data: base64 } }, { text: promptText }],
+    [part, { text: promptText }],
     RESPONSE_SCHEMA
   );
   return parsed.transactions ?? [];
@@ -566,7 +641,11 @@ export async function handleAnalyze(
     return [] as PayeeMemory[];
   });
 
-  const raw = await callGemini(env, mimeType, base64Of(bytes), prompt(accounts, history));
+  const raw = await callGemini(
+    env,
+    { mimeType, bytes },
+    prompt(accounts, history, isTextual(mimeType) ? 'table' : 'document')
+  );
 
   const byPath = new Map(accounts.map((c) => [c.path.toLowerCase(), c]));
   const transactions = raw.flatMap((t) => {

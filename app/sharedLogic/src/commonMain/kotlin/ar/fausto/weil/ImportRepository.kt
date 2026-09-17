@@ -26,6 +26,8 @@ data class PickedDocument(
     val name: String?,
 ) {
     val isPdf: Boolean get() = mimeType == "application/pdf"
+    val isCsv: Boolean get() = mimeType == "text/csv"
+    val isImage: Boolean get() = mimeType.startsWith("image/")
 
     // ByteArray uses identity equality; the content-based override keeps
     // recomposition keyed on the actual document.
@@ -53,6 +55,21 @@ val IMPORTABLE_MIME_TYPES = listOf(
     "image/webp",
     "image/heic",
     "image/heif",
+    "text/csv",
+)
+
+/**
+ * What providers hand back for a `.csv`: SAF asks the app that wrote the file,
+ * and spreadsheet apps routinely answer with a legacy alias or `text/plain`.
+ * Normalized to `text/csv` on the way in, which is the only spelling the
+ * worker (and [IMPORTABLE_MIME_TYPES]) knows.
+ */
+val CSV_MIME_ALIASES = setOf(
+    "text/csv",
+    "text/comma-separated-values",
+    "text/x-csv",
+    "application/csv",
+    "application/x-csv",
 )
 
 /**
