@@ -3,6 +3,7 @@ CLAUDE.md
 .direnv
 .envrc
 *.pem
+AuthKey_*.p8
 *.iml
 .kotlin
 .gradle
