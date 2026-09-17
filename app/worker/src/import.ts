@@ -186,7 +186,96 @@ const RESPONSE_SCHEMA = {
   required: ['transactions'],
 } as const;
 
-function prompt(accounts: PostableAccount[]): string {
+/** One payee the user categorized before, with the category they chose. */
+export interface PayeeMemory {
+  payee: string;
+  path: string;
+  count: number;
+}
+
+/** Group key: case/spacing/reference-number insensitive, so "ANOMALY*4821"
+ *  and "Anomaly 4821" are one payee. */
+function payeeKey(payee: string): string {
+  return payee
+    .toLowerCase()
+    .replace(/[*#]/g, ' ')
+    .replace(/\b\d{3,}\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The user's own past categorizations: payee → the expense/income account they
+ * actually posted it to. This is the only feedback loop the importer has —
+ * without it every import re-guesses opaque merchant strings ("Anomaly") from
+ * scratch, ignoring that the user already filed the August ones under a
+ * category. Best-effort: a failure here must never fail the import.
+ *
+ * Only categories the user has *kept* count, and the winner per payee is the
+ * most-used one, so a single misfiled row does not teach the wrong answer.
+ */
+export async function loadPayeeHistory(
+  queryUserDb: (sql: string) => Promise<Array<Record<string, unknown>>>,
+  accounts: PostableAccount[],
+  opts: { days?: number; maxPayees?: number } = {}
+): Promise<PayeeMemory[]> {
+  const days = opts.days ?? 365;
+  const maxPayees = opts.maxPayees ?? 150;
+  const since = Date.now() - days * 86_400_000;
+  const categories = new Map(
+    accounts.filter((a) => a.type === 'expense' || a.type === 'income').map((a) => [a.id, a])
+  );
+  if (categories.size === 0) return [];
+
+  // No bind parameters in queryUserDb; `since` is a locally computed number.
+  const rows = await queryUserDb(
+    `select t.payee as payee, p.account_id as account_id, count(*) as n, max(t.date) as last_date
+     from ledger_transactions t
+     join postings p on p.transaction_id = t.id
+     where t.payee is not null and t.payee <> '' and t.date >= ${Math.floor(since)}
+     group by t.payee, p.account_id`
+  );
+
+  // payee key -> category id -> {count, last}
+  const byPayee = new Map<
+    string,
+    { label: string; last: number; total: number; perCategory: Map<string, number> }
+  >();
+  for (const r of rows) {
+    const account = categories.get(String(r.account_id));
+    if (!account) continue; // asset/liability leg of the same transaction
+    const payee = String(r.payee ?? '').trim();
+    const key = payeeKey(payee);
+    if (!key) continue;
+    const n = Number(r.n) || 1;
+    const last = Number(r.last_date) || 0;
+    const entry = byPayee.get(key) ?? { label: payee, last: 0, total: 0, perCategory: new Map() };
+    entry.perCategory.set(account.id, (entry.perCategory.get(account.id) ?? 0) + n);
+    entry.total += n;
+    if (last >= entry.last) {
+      entry.last = last;
+      entry.label = payee; // display the most recent spelling
+    }
+    byPayee.set(key, entry);
+  }
+
+  const out: Array<PayeeMemory & { last: number }> = [];
+  for (const entry of byPayee.values()) {
+    let winner: { id: string; n: number } | null = null;
+    for (const [id, n] of entry.perCategory) {
+      if (!winner || n > winner.n) winner = { id, n };
+    }
+    const account = winner && categories.get(winner.id);
+    if (!account || !winner) continue;
+    out.push({ payee: entry.label, path: account.path, count: winner.n, last: entry.last });
+  }
+  // Frequent first, recent as the tiebreak: the cap should drop one-offs, not
+  // the payee that shows up on every statement.
+  out.sort((a, b) => b.count - a.count || b.last - a.last);
+  return out.slice(0, maxPayees).map(({ payee, path, count }) => ({ payee, path, count }));
+}
+
+function prompt(accounts: PostableAccount[], history: PayeeMemory[] = []): string {
   const expense = accounts.filter((c) => c.type === 'expense').map((c) => c.path);
   const income = accounts.filter((c) => c.type === 'income').map((c) => c.path);
   const own = accounts.filter((c) => c.type === 'asset' || c.type === 'liability').map((c) => c.path);
@@ -291,6 +380,18 @@ function prompt(accounts: PostableAccount[]): string {
           'account for every row on it, and a card slip names the card. Match on the brand or bank name even when the',
           'wording differs. Use null only when the document gives no usable hint.',
         ].join(' ')
+      : '',
+    history.length > 0
+      ? [
+          '',
+          'THE USER\'S OWN PAST CATEGORIZATIONS (payee → category they chose before, most frequent first).',
+          'These beat your own guess: when a row\'s payee is the same merchant as one of these — exact, or clearly the',
+          'same name with different casing, spacing, reference numbers or a bank prefix — use that category verbatim.',
+          'Opaque or ambiguous descriptors are exactly what this list is for. Ignore an entry only when the document',
+          'itself contradicts it (a different direction, or text naming a clearly different purpose).',
+          ...history.map((h) => `- ${h.payee} → ${h.path}`),
+          '',
+        ].join('\n')
       : '',
     'If the document contains no transactions, return an empty list.',
   ]
@@ -460,8 +561,12 @@ export async function handleAnalyze(
     }),
     env.DOCS.put(key, bytes, { httpMetadata: { contentType: mimeType } }),
   ]);
+  const history = await loadPayeeHistory(queryUserDb, accounts).catch((e) => {
+    console.error('loadPayeeHistory failed (continuing without):', e);
+    return [] as PayeeMemory[];
+  });
 
-  const raw = await callGemini(env, mimeType, base64Of(bytes), prompt(accounts));
+  const raw = await callGemini(env, mimeType, base64Of(bytes), prompt(accounts, history));
 
   const byPath = new Map(accounts.map((c) => [c.path.toLowerCase(), c]));
   const transactions = raw.flatMap((t) => {
