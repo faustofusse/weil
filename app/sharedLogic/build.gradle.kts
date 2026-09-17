@@ -13,12 +13,18 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
-    swiftPMDependencies {
-        swiftPackage(
-            url = url("https://github.com/tursodatabase/libsql-swift"),
-            version = from("0.3.2"),
-            products = listOf(product("Libsql")),
-        )
+    // New Turso sync engine (same C ABI/commit as the Android jniLibs .so):
+    // headers are shared with Android, the per-target Rust staticlib lives in
+    // src/iosMain/nativeLibs/<target>/libturso_sync_sdk_kit.a.
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.compilations.getByName("main").cinterops.create("turso") {
+            defFile(project.file("src/nativeInterop/cinterop/turso.def"))
+            includeDirs(project.file("src/androidMain/turso-headers"))
+            extraOpts(
+                "-libraryPath",
+                project.file("src/iosMain/nativeLibs/${target.targetName}").absolutePath,
+            )
+        }
     }
 
     jvm()

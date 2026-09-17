@@ -26,3 +26,6 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+
+# iOS Turso staticlibs (~170 MB each) — build with scripts/build-turso-ios.sh
+app/sharedLogic/src/iosMain/nativeLibs/*/*.a

@@ -12,7 +12,7 @@ fun MainViewController() = ComposeUIViewController {
             documentPicker = { IosBridges.documentPicker },
             dbContext = DbDispatcher,
             dbFactory = { userId, url, token ->
-                IOSDatabase(path = defaultDatabasePath(userId), url = url, authToken = token)
+                IosTursoDatabase(path = tursoDatabasePath(userId), url = url, authToken = token)
             },
         )
     }

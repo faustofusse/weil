@@ -1,0 +1,11 @@
+headers = turso.h turso_sync.h
+headerFilter = turso.h turso_sync.h
+package = turso
+
+# The Rust staticlib (libturso_sync_sdk_kit.a, built from the turso monorepo —
+# see src/androidMain/jniLibs/README.md, same commit/headers as Android) is
+# embedded into the klib, so the final framework link picks it up.
+staticLibraries = libturso_sync_sdk_kit.a
+
+# Dependencies of the Rust std/crypto stack on Apple platforms.
+linkerOpts = -lc++ -framework Security -framework CoreFoundation -framework SystemConfiguration
