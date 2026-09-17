@@ -255,6 +255,8 @@
     <string name="import_split_add">Agregar ítem</string>
     <string name="import_split_merge">Unir en un solo ítem</string>
     <string name="import_split_remove">Quitar ítem</string>
+    <string name="import_section_review">Para revisar · %1$d</string>
+    <string name="import_section_matched">Ya registradas · %1$d</string>
     <string name="import_match_duplicate">Ya está registrada</string>
     <string name="import_match_mirror">Otra mitad de un traspaso</string>
     <string name="import_match_already">Ya importada</string>

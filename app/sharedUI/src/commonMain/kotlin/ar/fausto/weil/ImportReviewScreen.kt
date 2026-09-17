@@ -100,6 +100,8 @@ import weil.app.sharedui.generated.resources.import_reason_day
 import weil.app.sharedui.generated.resources.import_reason_day_near
 import weil.app.sharedui.generated.resources.import_reason_payee
 import weil.app.sharedui.generated.resources.import_reason_payee_similar
+import weil.app.sharedui.generated.resources.import_section_matched
+import weil.app.sharedui.generated.resources.import_section_review
 import weil.app.sharedui.generated.resources.import_payee_label
 import weil.app.sharedui.generated.resources.picker_create
 import weil.app.sharedui.generated.resources.import_retry
@@ -232,6 +234,10 @@ fun ImportReviewScreen(
     // natural type and follows the sheet's chips, so inline creation makes an
     // account of the type the user is actually looking at.
     var categoryType by remember { mutableStateOf<AccountType?>(null) }
+    // Resolved rows collapse into a count: on a statement that is already in
+    // the ledger they are almost all of it, and scrolling past thirty cards
+    // that need nothing to reach the four that do is the whole problem.
+    var matchedExpanded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val createdOne = stringResource(Res.string.import_created_one)
     val createdMany = stringResource(Res.string.import_created)
@@ -328,6 +334,9 @@ fun ImportReviewScreen(
                     }
                 }
             }.toMutableStateList()
+            // Nothing left to decide (a whole statement re-imported) would
+            // otherwise render as an empty screen with one collapsed header.
+            matchedExpanded = drafts?.none { it.associateTo == null } == true
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             error = e.message ?: e.toString()
@@ -623,24 +632,49 @@ fun ImportReviewScreen(
                             }
                         }
                     }
-                    items(rows) { draft ->
-                        CandidateCard(
-                            draft = draft,
-                            paths = paths,
-                            names = names,
-                            fallbackAccountPath = assetId?.let { paths[it] },
-                            fallbackAccountName = assetId?.let { names[it] },
-                            onPickCategory = { index ->
-                                categoryType = null
-                                picking = PickerTarget.Category(draft, index)
-                            },
-                            onPickAccount = { picking = PickerTarget.RowAsset(draft) },
-                            onToggleExpanded = { draft.expanded = !draft.expanded },
-                            onToggleAssociate = {
-                                draft.associateTo =
-                                    if (draft.associateTo == null) draft.suggestion else null
-                            },
-                        )
+                    // Two groups, document order inside each: rows that still
+                    // need a decision (new ones, and the maybes the matcher
+                    // would not resolve on its own) come first; the ones it
+                    // already resolved sit behind one collapsed header. The
+                    // split is derived from live state, so answering a row
+                    // moves it out of the way immediately.
+                    val toReview = rows.filter { it.associateTo == null }
+                    val matched = rows.filter { it.associateTo != null }
+
+                    @Composable
+                    fun card(draft: CandidateDraft) = CandidateCard(
+                        draft = draft,
+                        paths = paths,
+                        names = names,
+                        fallbackAccountPath = assetId?.let { paths[it] },
+                        fallbackAccountName = assetId?.let { names[it] },
+                        onPickCategory = { index ->
+                            categoryType = null
+                            picking = PickerTarget.Category(draft, index)
+                        },
+                        onPickAccount = { picking = PickerTarget.RowAsset(draft) },
+                        onToggleExpanded = { draft.expanded = !draft.expanded },
+                        onToggleAssociate = {
+                            draft.associateTo =
+                                if (draft.associateTo == null) draft.suggestion else null
+                        },
+                    )
+
+                    if (toReview.isNotEmpty() && matched.isNotEmpty()) {
+                        item {
+                            GroupHeader(stringResource(Res.string.import_section_review, toReview.size))
+                        }
+                    }
+                    items(toReview) { draft -> card(draft) }
+                    if (matched.isNotEmpty()) {
+                        item {
+                            GroupHeader(
+                                text = stringResource(Res.string.import_section_matched, matched.size),
+                                expanded = matchedExpanded,
+                                onClick = { matchedExpanded = !matchedExpanded },
+                            )
+                        }
+                        if (matchedExpanded) items(matched) { draft -> card(draft) }
                     }
                 }
             }
@@ -985,12 +1019,43 @@ private fun CandidateCard(
     }
 }
 
+/** Group label; tappable (with a chevron) when it folds a group away. */
+@Composable
+private fun GroupHeader(
+    text: String,
+    expanded: Boolean? = null,
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick))
+            .padding(top = 4.dp, bottom = 2.dp),
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (expanded != null) {
+            Icon(
+                if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
 /**
  * The matcher's verdict for one row, and the switch between the two ways to
- * resolve it. Always visible (not only when the card is expanded): whether a
- * row is about to create a transaction or attach to one is the most important
- * thing on it, and the reasons are what make the merge approvable at a glance
- * instead of an opaque mutation.
+ * resolve it. The reasons are what make a merge approvable at a glance instead
+ * of an opaque mutation — but only while the row is still a question: once it
+ * is resolved (and filed under the collapsed "ya registradas" group, which
+ * already says so) the banner shrinks to the target plus the way out.
  */
 @Composable
 private fun MatchBanner(
@@ -1013,13 +1078,13 @@ private fun MatchBanner(
     )
     // Two reasons fit the row; the third was always being ellipsized away,
     // and the two strongest signals are what the user is judging anyway.
-    val reasons = suggestion.reasons.take(2).map { reasonLabel(it) }
+    val reasons = if (associating) emptyList() else suggestion.reasons.take(2).map { reasonLabel(it) }
     Surface(
         shape = MaterialTheme.shapes.small,
         color = if (associating) {
-            MaterialTheme.colorScheme.secondaryContainer
+            MaterialTheme.colorScheme.surfaceContainerHigh
         } else {
-            MaterialTheme.colorScheme.surfaceContainerHighest
+            MaterialTheme.colorScheme.secondaryContainer
         },
         modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
     ) {
@@ -1028,17 +1093,17 @@ private fun MatchBanner(
             modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         ) {
             Column(Modifier.weight(1f)) {
-                Text(
-                    headline,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (associating) {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // A resolved row is one line: the group header carries the
+                // "why" for all of them.
+                if (!associating) {
+                    Text(
+                        headline,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     target,
                     style = MaterialTheme.typography.labelSmall,
