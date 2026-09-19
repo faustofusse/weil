@@ -254,6 +254,8 @@
 
     <!-- Pago con QR (handoff a la billetera) -->
     <string name="home_pay_qr">Pagar con QR</string>
+    <string name="qr_pay_handoff_failed">No se pudo abrir Mercado Pago. Guardamos el QR en la nota del movimiento.</string>
+    <string name="qr_pay_no_wallet">No hay billetera disponible en este dispositivo. Guardamos el QR en la nota del movimiento.</string>
 
     <!-- Movimientos detectados en notificaciones y mails -->
     <string name="inbox_menu">Detectar movimientos</string>

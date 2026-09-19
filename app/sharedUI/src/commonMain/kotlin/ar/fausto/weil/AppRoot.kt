@@ -75,6 +75,8 @@ import weil.app.sharedui.generated.resources.login_qr_unavailable
 import weil.app.sharedui.generated.resources.login_scan_invite
 import weil.app.sharedui.generated.resources.login_show_request_qr
 import weil.app.sharedui.generated.resources.login_subtitle
+import weil.app.sharedui.generated.resources.qr_pay_handoff_failed
+import weil.app.sharedui.generated.resources.qr_pay_no_wallet
 
 /** Transition specs copied from the old finance app's NavDisplay setup. */
 private val slideIn = { full: Int -> (full * 0.4f).toInt() }
@@ -232,6 +234,10 @@ fun RootScreen(
                                     )
                                 }
                                 entry<QrPayRoute> { route ->
+                                    // Captured here so the failure path (a
+                                    // callback, not composition) can use them.
+                                    val handoffFailed = stringResource(Res.string.qr_pay_handoff_failed)
+                                    val noWallet = stringResource(Res.string.qr_pay_no_wallet)
                                     TransactionQuickScreen(
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
@@ -243,8 +249,29 @@ fun RootScreen(
                                         // result callback from the wallet. An
                                         // abandoned payment leaves an ordinary
                                         // transaction, one tap to delete.
-                                        onSaved = {
-                                            graph.wallet?.payWithMercadoPago(route.raw)
+                                        onSaved = { id ->
+                                            val wallet = graph.wallet
+                                            val opened = wallet?.payWithMercadoPago(route.raw) == true
+                                            // A handoff that fails in a shop is
+                                            // only debuggable if the payload
+                                            // outlives the back stack: park it
+                                            // on the transaction's note (visible
+                                            // in the journal) and in one synced
+                                            // settings row.
+                                            scope.launch {
+                                                runCatching {
+                                                    graph.settings.set(
+                                                        QR_PAY_LAST_KEY,
+                                                        "${epochMillis()}|${if (opened) "ok" else "fail"}|${route.raw}",
+                                                    )
+                                                }
+                                                if (!opened) {
+                                                    runCatching { graph.ledger.setNote(id, "QR: ${route.raw}") }
+                                                }
+                                            }
+                                            if (!opened) {
+                                                Feedback.show(if (wallet == null) noWallet else handoffFailed)
+                                            }
                                             pop()
                                         },
                                         onNavigateBack = { pop() },

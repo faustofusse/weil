@@ -103,6 +103,21 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         emitChange()
     }
 
+    /** Replaces just the note, leaving date/payee/postings alone. */
+    suspend fun setNote(id: String, note: String?) {
+        writeAtomically {
+            if (note.isNullOrBlank()) {
+                execute("update ledger_transactions set note = null where id = :id", mapOf(":id" to id))
+            } else {
+                execute(
+                    "update ledger_transactions set note = :note where id = :id",
+                    mapOf(":note" to note.trim(), ":id" to id),
+                )
+            }
+        }
+        emitChange()
+    }
+
     suspend fun delete(id: String) {
         writeAtomically {
             // postings first: cross-connection FK cascades are not enforced

@@ -86,7 +86,8 @@ fun TransactionQuickScreen(
     accounts: AccountsRepository,
     settings: SettingsRepository,
     kind: TxnKind,
-    onSaved: () -> Unit,
+    /** Receives the id of the transaction just written. */
+    onSaved: (id: String) -> Unit,
     onNavigateBack: () -> Unit,
     /** Seeds the amount field (QR pay); the user can still edit it. */
     prefillAmount: String? = null,
@@ -202,8 +203,8 @@ fun TransactionQuickScreen(
                     DraftPosting(from, formatMinorUnits(-amount.minorUnits)),
                     DraftPosting(to, formatMinorUnits(amount.minorUnits)),
                 )
-                ledger.add(epochMillis(), description.trim().ifBlank { kindLabel }, null, drafts)
-                onSaved()
+                val id = ledger.add(epochMillis(), description.trim().ifBlank { kindLabel }, null, drafts)
+                onSaved(id)
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()
