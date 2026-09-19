@@ -29,9 +29,12 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         timeKnown: Boolean = true,
         sourceDocumentId: String? = null,
         sources: List<TransactionSource> = emptyList(),
+        /** Only the QR placeholder writes zero-amount postings; see [resolvePostings]. */
+        allowZeroAmounts: Boolean = false,
     ): String {
         val txId = Uuid.random().toString()
-        val postings = resolvePostings(drafts).map { it.copy(transactionId = txId) }
+        val postings = resolvePostings(drafts, allowZero = allowZeroAmounts)
+            .map { it.copy(transactionId = txId) }
         writeAtomically {
             insertTransaction(txId, date, payee, note, timeKnown, sourceDocumentId)
             insertPostings(postings)

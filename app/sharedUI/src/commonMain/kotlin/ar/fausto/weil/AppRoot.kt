@@ -199,26 +199,31 @@ fun RootScreen(
                                         onImportDocument = { navigate(ImportReviewRoute(it)) },
                                         onNavigateToInbox = { navigate(InboxReviewRoute) },
                                         scanner = { graph.scanner },
-                                        // Straight to the wallet: nothing is
-                                        // written here. MP's own push lands
-                                        // seconds later with the real amount and
-                                        // merchant, and Ingest.kt already
-                                        // recognizes it — so the ledger entry
-                                        // comes from the movement that actually
-                                        // happened, not from one we guessed
-                                        // before the user even paid.
+                                        // Hand off first — the user is standing
+                                        // at a counter — then write the row from
+                                        // the coroutine. The amount is a
+                                        // placeholder (the QR has none); the
+                                        // wallet's push completes it later.
+                                        // Nothing is recorded when the wallet
+                                        // never opened: no handoff, no payment.
                                         onPayWithQr = { qr ->
                                             val wallet = graph.wallet
                                             val opened = wallet?.payWithMercadoPago(qr.raw) == true
-                                            // The payload outlives the handoff in
-                                            // one synced row, so a failure in a
-                                            // shop is still debuggable at home.
                                             scope.launch {
+                                                // The payload outlives the
+                                                // handoff in one synced row, so a
+                                                // failure in a shop is still
+                                                // debuggable at home.
                                                 runCatching {
                                                     graph.settings.set(
                                                         QR_PAY_LAST_KEY,
                                                         "${epochMillis()}|${if (opened) "ok" else "fail"}|${qr.raw}",
                                                     )
+                                                }
+                                                if (opened) {
+                                                    runCatching { graph.qrPayments.record(qr) }
+                                                        .onSuccess { ledgerState.refresh() }
+                                                        .onFailure { Feedback.show(it.message ?: it.toString()) }
                                                 }
                                             }
                                             if (!opened) {

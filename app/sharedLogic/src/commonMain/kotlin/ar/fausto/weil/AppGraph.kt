@@ -50,6 +50,9 @@ class AppGraph(
     /** Linking a phone number so messages to the bot become transactions. */
     val whatsapp = WhatsappRepository(store)
 
+    /** Placeholder ledger entries for QRs paid in a wallet app. */
+    val qrPayments = QrPayments(accounts, settings, ledger)
+
     /** Movements recognized in captured notifications and email receipts. */
     val ingest = IngestRepository(notifications, emails, accounts, ledger)
     val scanner: QrScanner? get() = qrScannerProvider()

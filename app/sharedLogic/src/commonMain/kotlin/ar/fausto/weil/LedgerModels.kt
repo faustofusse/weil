@@ -210,12 +210,19 @@ class LedgerValidationException(message: String) : Exception(message)
 fun resolvePostings(
     drafts: List<DraftPosting>,
     seedTransactionId: String? = null,
-): List<Posting> = buildValidated(drafts, seedTransactionId).first
+    allowZero: Boolean = false,
+): List<Posting> = buildValidated(drafts, seedTransactionId, allowZero).first
 
 @OptIn(ExperimentalUuidApi::class)
 private fun buildValidated(
     drafts: List<DraftPosting>,
     seedTransactionId: String?,
+    /**
+     * A zero amount is a typo in hand entry — except for a QR payment, where
+     * the purchase is known and the figure genuinely isn't yet (the QR carries
+     * no amount; the wallet's push brings it). Callers opt in explicitly.
+     */
+    allowZero: Boolean = false,
 ): Pair<List<Posting>, Map<String, Long>> {
     if (drafts.size < 2) throw LedgerValidationException("a transaction needs at least two postings")
     if (drafts.count { it.amountText.isBlank() } > 1) {
@@ -237,7 +244,7 @@ private fun buildValidated(
         }
         val money = Money.parse(amountText, draft.commodity)
             ?: throw LedgerValidationException("invalid amount: '$amountText'")
-        if (money.minorUnits == 0L) throw LedgerValidationException("amounts cannot be zero")
+        if (money.minorUnits == 0L && !allowZero) throw LedgerValidationException("amounts cannot be zero")
         residuals[money.commodity] = (residuals[money.commodity] ?: 0L) + money.minorUnits
         resolved += Posting(
             id = Uuid.random().toString(),

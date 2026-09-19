@@ -5,10 +5,10 @@
 Scan a merchant QR in Weil and land on Mercado Pago's payment confirmation
 screen. One scan, no camera in MP.
 
-The expense is *not* recorded here: MP's push notification arrives right after
-the payment and the existing «Detectar movimientos» flow turns it into the
-ledger entry. So the app never guesses an amount, and there is exactly one
-record of each payment.
+The transaction is recorded immediately, with the merchant from the QR and an
+amount of **0,00** — the QR doesn't carry one. The row says "this purchase
+happened, the figure is coming"; MP's push notification brings the figure, and
+completing the placeholder from it is the next phase.
 
 ## Why this is possible
 
@@ -37,24 +37,27 @@ paths. Confirmed live on device that the intent is accepted from an external uid
 ```
 Home overflow → «Pagar con QR»
   → QrScanner.scan()                    (existing, Google code scanner)
-  → EmvcoQr.parse(raw)                  (new, pure Kotlin — only to log/report)
+  → EmvcoQr.parse(raw)                  (new, pure Kotlin)
   → WalletLauncher.payWithMercadoPago(raw) → MP opens on confirm screen
-  → that's it. Weil writes nothing.
+  → QrPayments.record(qr)               (placeholder row, in the background)
 ```
 
-**The app records nothing on this path.** The ledger entry comes from MP's own
-push notification, which lands seconds after the payment and which `Ingest.kt`
-already recognizes (`mp.paid.to`, `mp.paid.amount.to`, `mp.paid.approved`), so
-it surfaces in «Detectar movimientos» with the real amount and merchant.
+The handoff goes first because the user is standing at a counter; the write
+follows from the coroutine and nothing blocks it. Nothing is recorded when the
+wallet never opened — no handoff, no payment.
 
-That is strictly better than recording up front, and the live test is what
-showed why: MP's QRs carry no amount (see below), so recording first means
-asking the user to type a number *before* seeing it, then storing a guess for a
-payment that may never happen. Waiting costs nothing — the notification is the
-movement that actually occurred.
+The row is: payee = tag 59 (or «Pago con QR»), default asset account → default
+category, amount = tag 54 **or zero**, and a `transaction_sources` row with
+`kind='qr'` and the payload as `ref`. That last one is the handle the next
+phase uses to find this transaction when MP's push arrives — `Ingest.kt`
+already recognizes those pushes (`mp.paid.to`, `mp.paid.amount.to`,
+`mp.paid.approved`).
 
-The parse survives only to describe what was scanned; nothing downstream
-depends on it.
+Zero is deliberate, not a degenerate case. A transaction must balance and its
+postings must name accounts, so the shape has to be complete from the start;
+0,00 in the journal is also the most visible possible reminder that a figure is
+missing. `resolvePostings` rejects zero amounts (a typo, in hand entry), so the
+exemption is an explicit `allowZero` flag that only this path passes.
 
 ## Work
 
@@ -118,7 +121,8 @@ Package visibility is already covered by the existing `QUERY_ALL_PACKAGES`.
 ### 4. No route, no screen
 
 The scan callback calls the wallet directly; there is nothing to navigate to.
-Every attempt (success or failure) writes `qr_pay.last` in `settings`
+`QrPayments` (sharedLogic) writes the placeholder row afterwards. Every attempt
+(success or failure) writes `qr_pay.last` in `settings`
 (`<epochMs>|ok|fail|<payload>`) so a handoff that fails in a shop is still
 diagnosable at home, and a failure shows a Snackbar.
 
@@ -148,7 +152,11 @@ scanner-dependent affordances.
 | `app/sharedLogic/src/androidMain/.../AndroidWalletLauncher.kt` | new, Android impl |
 | `app/sharedLogic/.../AppGraph.kt` | `wallet` provider (null off Android) |
 | `app/androidApp/.../WeilApplication.kt` | build the launcher |
-| `app/sharedUI/.../AppRoot.kt` | scan callback → wallet + `qr_pay.last` |
+| `app/sharedLogic/.../QrPayments.kt` | new, the placeholder row |
+| `app/sharedLogic/.../Reconcile.kt` | `EventSource.Qr` |
+| `app/sharedLogic/.../LedgerModels.kt` | `resolvePostings(allowZero)` |
+| `app/sharedLogic/.../TransactionsRepository.kt` | `add(allowZeroAmounts)` |
+| `app/sharedUI/.../AppRoot.kt` | scan callback → wallet + record + `qr_pay.last` |
 | `app/sharedUI/.../HomeScreen.kt` | overflow item + scan callback |
 | `.../composeResources/values/strings.xml` | three strings |
 
@@ -189,10 +197,12 @@ payment.
 
 ## Explicit non-goals (phase 2+)
 
-- Recognizing the push as *this* scan's payment specifically. Today the push
-  is reviewed like any other detected movement; linking it back to the scan
-  (to attach the merchant name from tag 59, say) would need the payload kept
-  as pending state.
+- **Completing the placeholder from MP's push.** The row sits at 0,00 until
+  the user edits it, and the push is currently offered as a *new* movement in
+  «Detectar movimientos» — accepting it would double-count. The matcher needs
+  a QR tier: find the recent `kind='qr'` transaction on the same account and
+  rewrite its postings instead of inserting. Note `CandidateEvent.eventKey`
+  fingerprints the amount, so it cannot be the key here.
 - Pending / provisional transaction state.
 - MCC → category mapping (parsed and dropped for now).
 - iOS (`LSApplicationQueriesSchemes` + `UIApplication.openURL`).
@@ -204,9 +214,9 @@ payment.
 | Risk | Handling |
 |---|---|
 | Undocumented deep link; MP can change it | Three-step fallback chain, never crashes; worst case the user scans in MP as today |
-| Duplicate transaction once the push arrives | Gone: the push *is* the record, the app writes nothing on scan |
-| Abandoned payment leaves a phantom transaction | Gone for the same reason — no payment, no push, no row |
-| The push never arrives (notification access off) | The payment is simply unrecorded, as before this feature; «Detectar movimientos» has nothing to offer |
+| Duplicate once the push arrives | Real today: the push is offered as a new movement next to the 0,00 row. The QR tier of the matcher is the fix, and the `kind='qr'` source row is already written for it |
+| Abandoned payment leaves a 0,00 row | Ordinary transaction, one-tap delete; and 0,00 doesn't move any balance |
+| The push never arrives (notification access off) | The row stays at 0,00 until the user edits it — still better than no record |
 | MP app lock adds a biometric prompt | Unavoidable, MP's own security layer |
 | `Barcode.rawValue` is null for non-UTF8 payloads | Treat null as a cancelled scan; EMVCo is ASCII so it shouldn't bite |
 | Re-encoding corrupts the payload | Pass the scanner's string through untouched; only `Uri.encode` for transport |
