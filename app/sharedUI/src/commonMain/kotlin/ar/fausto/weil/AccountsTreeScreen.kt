@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,6 +71,9 @@ import weil.app.sharedui.generated.resources.account_actions
 import weil.app.sharedui.generated.resources.account_add_title
 import weil.app.sharedui.generated.resources.account_choose_parent
 import weil.app.sharedui.generated.resources.account_collapse
+import weil.app.sharedui.generated.resources.account_commodity_any
+import weil.app.sharedui.generated.resources.account_commodity_hint
+import weil.app.sharedui.generated.resources.account_commodity_label
 import weil.app.sharedui.generated.resources.account_default_badge
 import weil.app.sharedui.generated.resources.account_default_hint
 import weil.app.sharedui.generated.resources.account_delete_message
@@ -416,6 +420,11 @@ internal fun NodeRowView(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
+                    // Two accounts may share a name when their currencies
+                    // differ, so this is not decoration: without it the tree
+                    // shows two identical rows and the long-press sheet acts
+                    // on whichever one the user guessed.
+                    CommodityBadge(node.account.commodity)
                     // The account new transactions of this type preselect.
                     if (state.defaultAccounts[node.account.type] == node.account.id) {
                         Spacer(Modifier.width(6.dp))
@@ -505,6 +514,7 @@ internal fun AccountActionsSheet(
     var sheetOpen by remember { mutableStateOf(true) }
     var renaming by remember { mutableStateOf(false) }
     var pickingIcon by remember { mutableStateOf(false) }
+    var pickingCommodity by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf(account.name) }
     val deleteMessage = stringResource(Res.string.account_delete_message, account.name.censored())
@@ -592,6 +602,20 @@ internal fun AccountActionsSheet(
                     )
                 }
                 if (account.type == AccountType.Asset || account.type == AccountType.Liability) {
+                    // Categories never hold a currency: an expense is
+                    // whatever the account it was paid from holds.
+                    ListItem(
+                        colors = itemColors,
+                        leadingContent = { Icon(Icons.Filled.Tune, contentDescription = null) },
+                        headlineContent = { Text(stringResource(Res.string.account_commodity_label)) },
+                        supportingContent = {
+                            Text(account.commodity ?: stringResource(Res.string.account_commodity_any))
+                        },
+                        modifier = Modifier.clickable {
+                            sheetOpen = false
+                            pickingCommodity = true
+                        },
+                    )
                     ListItem(
                         colors = itemColors,
                         leadingContent = { Icon(Icons.Filled.Tune, contentDescription = null) },
@@ -623,7 +647,16 @@ internal fun AccountActionsSheet(
                         // Failures surface through state.error like every mutation.
                         state.deleteAccount(account.id)
                         Feedback.undoable(deleteMessage, undoLabel) {
-                            state.addAccount(account.name, account.type, account.parentId)
+                            // Restores the currency too: without it the undo
+                            // recreates a namesake that now collides with its
+                            // own sibling.
+                            state.addAccount(
+                                account.name,
+                                account.type,
+                                account.parentId,
+                                account.icon,
+                                account.commodity,
+                            )
                         }
                         onDismiss()
                         onDeleted()
@@ -631,6 +664,16 @@ internal fun AccountActionsSheet(
                 )
             }
         }
+    }
+    if (pickingCommodity) {
+        CommodityPickerDialog(
+            selected = account.commodity,
+            onDismiss = onDismiss,
+            onPick = {
+                state.setCommodity(account.id, it)
+                onDismiss()
+            },
+        )
     }
     if (pickingIcon) {
         IconPickerDialog(
@@ -786,3 +829,82 @@ internal fun TypeDropdown(
 
 // Account creation now lives in its own screen, AccountAddScreen.kt — see
 // AccountAddRoute.
+
+/**
+ * The account's declared currency, as a quiet pill next to its name. Drawn
+ * only when there is one: an undeclared account is the common case and a
+ * badge on every row would be noise.
+ *
+ * This is what makes same-named accounts legible — "Santander" in pesos and
+ * "Santander" in dollares are two rows that differ in nothing else.
+ */
+@Composable
+internal fun CommodityBadge(commodity: String?) {
+    if (commodity.isNullOrBlank()) return
+    Spacer(Modifier.width(6.dp))
+    Box(
+        modifier = Modifier
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant,
+                RoundedCornerShape(4.dp),
+            )
+            .padding(horizontal = 4.dp, vertical = 1.dp),
+    ) {
+        Text(
+            commodity,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * Currency for an asset/liability account, with "cualquiera" (null) as a
+ * first-class choice rather than an empty state: not declaring one is a valid
+ * answer, and it is what every pre-existing account holds.
+ */
+@Composable
+internal fun CommodityPickerDialog(
+    selected: String?,
+    onDismiss: () -> Unit,
+    onPick: (String?) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(Res.string.account_commodity_label)) },
+        text = {
+            Column {
+                Text(
+                    stringResource(Res.string.account_commodity_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                val options: List<String?> = listOf<String?>(null) + QUICK_COMMODITIES
+                options.forEach { option ->
+                    ListItem(
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        headlineContent = {
+                            Text(option ?: stringResource(Res.string.account_commodity_any))
+                        },
+                        trailingContent = {
+                            if (option == selected) {
+                                Icon(
+                                    Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        },
+                        modifier = Modifier.clickable { onPick(option) },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
+        },
+    )
+}

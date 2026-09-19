@@ -529,6 +529,12 @@ private fun decodeBase64Utf8(raw: String): String {
  * a peso account, a dollar account and two cards), so the commodity has to
  * agree and the winner has to be alone. Guessing wrong here files a charge
  * against the wrong account, which is worse than asking.
+ *
+ * An account that *declares* a commodity is filtered on it outright, which is
+ * what lets two same-named accounts coexist: "Santander" in ARS and
+ * "Santander" in USD tie on every name token, and only the money tells them
+ * apart. Accounts that declare nothing stay in the running (scored by the
+ * old name heuristic) so this keeps working on trees predating the column.
  */
 fun resolveAccountHint(
     hints: List<String>,
@@ -538,14 +544,22 @@ fun resolveAccountHint(
     if (hints.isEmpty()) return null
     val wanted = hints.flatMap { normalizePayee(it).split(' ') }.filter { it.length >= 3 }.toSet()
     if (wanted.isEmpty()) return null
+    val wantedCommodity = commodity.trim().uppercase()
     val scored = accounts
         .filter { it.type == AccountType.Asset || it.type == AccountType.Liability }
+        // A declared currency is a hard filter, not a tiebreak: a USD account
+        // cannot be where a peso charge landed, however well the name matches.
+        .filter { it.commodity == null || it.commodity == wantedCommodity }
         .map { account ->
             val tokens = normalizePayee(account.name).split(' ').filter { it.length >= 3 }.toSet()
             var score = tokens.count { it in wanted } * 10
-            // "Santander Dolares" versus "Santander Pesos": the amount's
-            // currency is the tiebreak the name alone cannot give.
-            val currencyWord = if (commodity == "USD") "dolar" else "peso"
+            // A surviving declared match beats an undeclared namesake: the
+            // user said so, the heuristic below only guessed.
+            if (account.commodity == wantedCommodity) score += 5
+            // "Santander Dolares" versus "Santander Pesos" on trees that
+            // never declared a currency: the amount's is the only tiebreak
+            // the name alone cannot give.
+            val currencyWord = if (wantedCommodity == "USD") "dolar" else "peso"
             if (tokens.any { it.startsWith(currencyWord) }) score += 3
             account.id to score
         }

@@ -259,6 +259,10 @@ interface PostableAccountLike {
   id: string;
   path: string;
   type: 'expense' | 'income' | 'asset' | 'liability';
+  /** Declared currency of an asset/liability account, null when unrestricted. */
+  commodity?: string | null;
+  /** Path, decorated with the currency when a namesake shares it (see withLabels). */
+  label?: string;
 }
 
 interface ParsedMessage {
@@ -307,7 +311,7 @@ async function interpret(
   timestamp: number
 ): Promise<ParsedMessage | null> {
   const paths = (type: PostableAccountLike['type']) =>
-    accounts.filter((a) => a.type === type).map((a) => a.path);
+    accounts.filter((a) => a.type === type).map((a) => a.label || a.path);
   const expense = paths('expense');
   const income = paths('income');
   const own = [...paths('asset'), ...paths('liability')];
@@ -412,10 +416,25 @@ async function createTransaction(
     return 'No pude leer el monto. Probá con «panadería 300».';
   }
   const commodity = (parsed.commodity || 'ARS').trim().toUpperCase();
-  const byPath = new Map(accounts.map((a) => [a.path.toLowerCase(), a]));
+  const byLabel = new Map(accounts.map((a) => [(a.label || a.path).toLowerCase(), a]));
+  const byPath = new Map<string, PostableAccountLike[]>();
+  for (const a of accounts) {
+    const key = a.path.toLowerCase();
+    byPath.set(key, [...(byPath.get(key) ?? []), a]);
+  }
+  // Same resolution as the document importer: label first, then a bare path
+  // when it names exactly one account or when the currency picks one of the
+  // namesakes. Still ambiguous means "no pick", which falls through to the
+  // default account rather than guessing.
   const pick = (path: string | null | undefined, types: PostableAccountLike['type'][]) => {
-    const hit = path ? byPath.get(path.trim().toLowerCase()) : undefined;
-    return hit && types.includes(hit.type) ? hit : null;
+    const key = path?.trim().toLowerCase();
+    if (!key) return null;
+    const sharing = byPath.get(key) ?? [];
+    const hit =
+      byLabel.get(key) ??
+      (sharing.length <= 1 ? sharing[0] : sharing.filter((a) => a.commodity === commodity)[0]);
+    const ambiguous = !byLabel.get(key) && sharing.length > 1 && sharing.filter((a) => a.commodity === commodity).length !== 1;
+    return hit && !ambiguous && types.includes(hit.type) ? hit : null;
   };
 
   const own = pick(parsed.account, ['asset', 'liability']) ?? (await defaultAssetAccount(db, accounts));

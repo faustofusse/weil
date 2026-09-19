@@ -159,6 +159,21 @@ object Icons {
             "M5 12h14",
         )
 
+        // Direction arrows for the movement kinds: out of the wallet and
+        // into it. Diagonals, not the plain up/down pair, so "gasto" and
+        // "ingreso" stay legible at 16.dp where a chevron would not.
+        val ArrowDownLeft: ImageVector = lineIcon(
+            "ArrowDownLeft",
+            "M17 7L7 17",
+            "M16 17H7V8",
+        )
+
+        val ArrowUpRight: ImageVector = lineIcon(
+            "ArrowUpRight",
+            "M7 17L17 7",
+            "M8 7h9v9",
+        )
+
         val Close: ImageVector = lineIcon(
             "Close",
             "M6 6l12 12",

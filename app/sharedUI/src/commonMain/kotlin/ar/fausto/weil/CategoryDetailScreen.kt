@@ -88,6 +88,11 @@ fun CategoryDetailScreen(
     var loadingMore by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(true) }
     var editing by remember { mutableStateOf(false) }
+    // The subcategory a long press is editing, separate from [editing]
+    // (which is always this category, the one in the top bar): the two
+    // dialogs are opened from different rows and must not fight over one
+    // flag, or a long press on a child would reopen the parent instead.
+    var editingChild by remember { mutableStateOf<Account?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -213,6 +218,7 @@ fun CategoryDetailScreen(
                             onClick = {
                                 selectedChild = if (selected) null else child.account.id
                             },
+                            onLongClick = { editingChild = child.account },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -267,6 +273,13 @@ fun CategoryDetailScreen(
                 onDismiss = { editing = false },
             )
         }
+    }
+    editingChild?.let { child ->
+        CategoryDialog(
+            state = ledgerState,
+            account = child,
+            onDismiss = { editingChild = null },
+        )
     }
 }
 

@@ -1,8 +1,5 @@
 package ar.fausto.weil
 
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -76,12 +73,6 @@ internal fun MovementRow(
                 maxLines = 1,
             )
         }
-        Icon(
-            Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier.padding(start = 6.dp).size(20.dp),
-        )
     }
 }
 

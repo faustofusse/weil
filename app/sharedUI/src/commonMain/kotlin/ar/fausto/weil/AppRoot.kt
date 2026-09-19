@@ -519,6 +519,13 @@ fun RootScreen(
                                 accounts = graph.accounts,
                                 settings = graph.settings,
                                 onDismiss = { creating = false },
+                                // "Ver más" hands the same intent to the full
+                                // editor, which is where a date, a note or a
+                                // third posting live.
+                                onMore = {
+                                    creating = false
+                                    navigate(TransactionNewRoute())
+                                },
                                 onSaved = {
                                     creating = false
                                     // Whatever root is behind the panel shows

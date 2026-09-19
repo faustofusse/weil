@@ -1,7 +1,7 @@
 package ar.fausto.weil
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -46,6 +46,8 @@ internal fun AppListRow(
     titleColor: Color = Color.Unspecified,
     /** Overridden only to mark selection; the default is the shared tint. */
     container: Color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.10f),
+    /** Rename/icon/color/parent, the same gesture everywhere a row edits. */
+    onLongClick: (() -> Unit)? = null,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
@@ -59,7 +61,7 @@ internal fun AppListRow(
             // a fourth grey. An outline would have been a fifth edge on a
             // page that already has four card shapes.
             .background(container)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         // Filled disc, not an outline: on the tinted row an outline read as a

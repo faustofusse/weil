@@ -184,8 +184,20 @@ private fun CategoryRow(
         // target of the two, and a tinted circle next to default-ink text
         // reads as decoration rather than as the category's identity.
         titleColor = paint.ink,
-        subtitle = total.takeIf { it.isNotEmpty() }?.let { formatTotals(it) },
+        // A zero rather than no line at all, same as the subcategory rows:
+        // an empty category is a real answer ("nothing was spent here"), and
+        // omitting the line made that row shorter than its neighbours, which
+        // read as a rendering glitch instead of as information.
+        subtitle = if (total.isEmpty()) {
+            formatMoney(0L, account.commodity ?: Money.DEFAULT_COMMODITY)
+        } else {
+            formatTotals(total)
+        },
         onClick = onOpen,
+        // Same gesture as the subcategory rows one screen in, for the same
+        // edit: a long press works everywhere a pencil does, not just where
+        // there happens to be room to draw one.
+        onLongClick = onEdit,
     ) {
         // Rename/icon/color/parent, without having to enter the category
         // first — tidying up is a pass over the whole list.

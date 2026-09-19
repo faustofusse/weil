@@ -69,6 +69,7 @@ import weil.app.sharedui.generated.resources.editor_amount_auto
 import weil.app.sharedui.generated.resources.editor_balanced
 import weil.app.sharedui.generated.resources.editor_choose_account
 import weil.app.sharedui.generated.resources.editor_choose_account_title
+import weil.app.sharedui.generated.resources.account_commodity_mismatch
 import weil.app.sharedui.generated.resources.editor_commodity_label
 import weil.app.sharedui.generated.resources.editor_date_label
 import weil.app.sharedui.generated.resources.editor_date_pick
@@ -368,6 +369,9 @@ fun TransactionEditScreen(
                     index = index,
                     draft = draft,
                     paths = paths,
+                    accountCommodity = accountTree.flatMap { it.selfAndDescendants }
+                        .firstOrNull { it.account.id == draft.accountId }
+                        ?.account?.commodity,
                     onAccount = { pickingFor = index },
                     onAmount = { amount -> drafts = drafts.copyAt(index) { copy(amountText = amount) } },
                     onCommodity = { ccy -> drafts = drafts.copyAt(index) { copy(commodity = ccy) } },
@@ -448,7 +452,15 @@ fun TransactionEditScreen(
             },
             onDismiss = { pickingFor = null },
         ) { picked ->
-            drafts = drafts.copyAt(index) { copy(accountId = picked.account.id) }
+            drafts = drafts.copyAt(index) {
+                // An account that declares a currency sets the row's; one
+                // that doesn't leaves whatever was there, so picking an
+                // account never silently rewrites an amount's meaning.
+                copy(
+                    accountId = picked.account.id,
+                    commodity = picked.account.commodity ?: commodity,
+                )
+            }
             pickingFor = null
         }
     }
@@ -484,6 +496,13 @@ private fun PostingRow(
     index: Int,
     draft: DraftPosting,
     paths: Map<String, String>,
+    /**
+     * The currency the row's account declares, if any. Only ever a warning:
+     * an FX transfer is legitimately one transaction touching two
+     * currencies, and postings recorded before the account declared
+     * anything must stay editable.
+     */
+    accountCommodity: String?,
     onAccount: () -> Unit,
     onAmount: (String) -> Unit,
     onCommodity: (String) -> Unit,
@@ -582,6 +601,7 @@ private fun PostingRow(
                     trailingIcon = {
                         ExposedDropdownMenuDefaults.TrailingIcon(expanded = commodityExpanded)
                     },
+                    isError = accountCommodity != null && accountCommodity != draft.commodity.uppercase(),
                     modifier = Modifier.menuAnchor().fillMaxWidth(),
                 )
                 ExposedDropdownMenu(
@@ -599,6 +619,13 @@ private fun PostingRow(
                     }
                 }
             }
+        }
+        if (accountCommodity != null && accountCommodity != draft.commodity.uppercase()) {
+            Text(
+                stringResource(Res.string.account_commodity_mismatch, accountCommodity),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }

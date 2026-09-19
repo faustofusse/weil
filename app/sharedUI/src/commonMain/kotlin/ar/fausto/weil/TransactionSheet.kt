@@ -37,7 +37,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -55,11 +54,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ar.fausto.weil.AccountType
 import ar.fausto.weil.AccountsRepository
@@ -72,9 +77,7 @@ import ar.fausto.weil.resolveDefault
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
-import weil.app.sharedui.generated.resources.action_close
 import weil.app.sharedui.generated.resources.picker_create
-import weil.app.sharedui.generated.resources.quick_amount_label
 import weil.app.sharedui.generated.resources.quick_category_label
 import weil.app.sharedui.generated.resources.quick_choose
 import weil.app.sharedui.generated.resources.quick_description_label
@@ -87,6 +90,7 @@ import weil.app.sharedui.generated.resources.quick_source_label
 import weil.app.sharedui.generated.resources.quick_to_label
 import weil.app.sharedui.generated.resources.quick_transfer_from_label
 import weil.app.sharedui.generated.resources.quick_transfer_title
+import weil.app.sharedui.generated.resources.sheet_more
 import weil.app.sharedui.generated.resources.sheet_new_title
 
 /**
@@ -111,6 +115,7 @@ fun TransactionSheet(
     settings: SettingsRepository,
     onDismiss: () -> Unit,
     onSaved: () -> Unit,
+    onMore: () -> Unit = onDismiss,
 ) {
     // Back closes the panel instead of leaving the tab behind it: it is not
     // on the back stack, so nothing else would have answered.
@@ -177,7 +182,7 @@ fun TransactionSheet(
                         ledger = ledger,
                         accounts = accounts,
                         settings = settings,
-                        onDismiss = onDismiss,
+                        onMore = onMore,
                         onSaved = onSaved,
                     )
                 }
@@ -197,7 +202,7 @@ private fun TransactionSheetForm(
     ledger: TransactionsRepository,
     accounts: AccountsRepository,
     settings: SettingsRepository,
-    onDismiss: () -> Unit,
+    onMore: () -> Unit,
     onSaved: () -> Unit,
 ) {
     var currentKind by remember { mutableStateOf(TxnKind.Expense) }
@@ -322,15 +327,32 @@ private fun TransactionSheetForm(
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
                 stringResource(Res.string.sheet_new_title),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Light,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.inverseSurface,
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Filled.Close, contentDescription = stringResource(Res.string.action_close))
+            // "Ver más" instead of a close button: the panel already closes
+            // by tapping the header above it or pressing back, and the thing
+            // this form cannot do — a date, a note, more than two postings —
+            // is exactly one tap away in the full editor.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable(onClick = onMore).padding(start = 8.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+            ) {
+                Text(
+                    stringResource(Res.string.sheet_more),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                )
+                Icon(
+                    Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.inverseSurface,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
-        Spacer(Modifier.padding(top = 4.dp))
+        Spacer(Modifier.padding(top = 10.dp))
         // Only the fields scroll; the title stays put and the record button
         // stays reachable, which is what a weighted scroll region buys that
         // a scrolling column with a weighted spacer in it does not (that was
@@ -341,91 +363,141 @@ private fun TransactionSheetForm(
                 .verticalScroll(rememberScrollState()),
         ) {
             KindSwitcher(current = currentKind, onSelect = { switchKind(it) })
+            Spacer(Modifier.padding(top = 12.dp))
 
-            // The amount is the reason the screen opened: no box around it, it's
-            // just the biggest thing on the panel, focused and waiting.
-            TextField(
-                value = amountText,
-                onValueChange = { amountText = sanitizeAmountInput(it, allowNegative = false) },
-                // "0,00", not the word "Monto": next to the symbol it shows the
-                // shape of what goes here, and the label would be a second
-                // large word fighting the title for the eye.
-                placeholder = {
-                    Text(
-                        formatMinorUnits(0),
-                        style = MaterialTheme.typography.displaySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.4f),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
+            // Account and amount share one row, as in the design: "this much,
+            // out of that account" is a single thought, and splitting it in
+            // two boxes made the panel a four-row form for what is really two
+            // decisions plus a name.
+            SheetRow {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clickable { picking = SheetSide.From }
+                        .padding(start = 12.dp, end = 4.dp)
+                        .weight(1f),
+                ) {
+                    Icon(
+                        Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.inverseSurface,
+                        modifier = Modifier.size(20.dp).rotate(90f),
                     )
-                },
-                prefix = { Text("$ ", style = MaterialTheme.typography.displaySmall) },
-                visualTransformation = AmountVisualTransformation,
-                singleLine = true,
-                textStyle = MaterialTheme.typography.displaySmall.copy(textAlign = TextAlign.Center),
-                isError = amountText.isNotBlank() && !amountValid,
-                supportingText = if (amountText.isNotBlank() && !amountValid) {
-                    {
+                    Spacer(Modifier.padding(start = 6.dp))
+                    Text(
+                        fromId?.let { paths[it] } ?: chooseLabel,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.inverseSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // The amount writes itself into the row instead of onto a
+                // canvas of its own: focused on open, so the keyboard is
+                // already pointed at the only field that has no default.
+                TextField(
+                    value = amountText,
+                    onValueChange = { amountText = sanitizeAmountInput(it, allowNegative = false) },
+                    placeholder = {
                         Text(
-                            stringResource(Res.string.quick_error_amount),
+                            "$" + formatMinorUnits(0),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.45f),
+                            textAlign = TextAlign.End,
                             modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Center,
                         )
-                    }
-                } else {
-                    null
-                },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next,
-                ),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    errorContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    errorIndicatorColor = Color.Transparent,
-                    focusedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    cursorColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-                    .focusRequester(amountFocus),
-            )
+                    },
+                    // The symbol rides along inside the transformation rather
+                    // than in `prefix`: a prefix slot is pinned to the left
+                    // edge of the field, so with right-aligned digits the "$"
+                    // ended up marooned in the middle of the row.
+                    visualTransformation = AmountWithSymbol,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.titleLarge.copy(textAlign = TextAlign.End),
+                    isError = amountText.isNotBlank() && !amountValid,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next,
+                    ),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        errorContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        errorIndicatorColor = Color.Transparent,
+                        focusedTextColor = MaterialTheme.colorScheme.inverseSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.inverseSurface,
+                        cursorColor = MaterialTheme.colorScheme.inverseSurface,
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(amountFocus),
+                )
+            }
+            if (amountText.isNotBlank() && !amountValid) {
+                Text(
+                    stringResource(Res.string.quick_error_amount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 16.dp, top = 6.dp),
+                )
+            }
 
-            SheetField(
-                label = fromLabel,
-                value = fromId?.let { paths[it] },
-                placeholder = chooseLabel,
-                onClick = { picking = SheetSide.From },
-            )
             Spacer(Modifier.padding(top = 10.dp))
-            SheetField(
-                label = toLabel,
-                value = toId?.let { paths[it] },
-                placeholder = chooseLabel,
-                onClick = { picking = SheetSide.To },
-            )
+            SheetRow {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clickable { picking = SheetSide.To }
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 18.dp),
+                ) {
+                    Text(
+                        toLabel,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.inverseSurface,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        toId?.let { paths[it] } ?: chooseLabel,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
             Spacer(Modifier.padding(top = 10.dp))
-            TextField(
-                value = description,
-                onValueChange = { description = it },
-                label = { Text(stringResource(Res.string.quick_description_label)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { record() }),
-                shape = RoundedCornerShape(16.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.background,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.background,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
+            SheetRow {
+                TextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    placeholder = {
+                        Text(
+                            stringResource(Res.string.quick_description_label),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.55f),
+                        )
+                    },
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { record() }),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        focusedTextColor = MaterialTheme.colorScheme.inverseSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.inverseSurface,
+                        cursorColor = MaterialTheme.colorScheme.inverseSurface,
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                )
+            }
         }
 
         error?.let {
@@ -439,7 +511,7 @@ private fun TransactionSheetForm(
         Button(
             onClick = { record() },
             enabled = canRecord,
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(18.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.inverseSurface,
                 contentColor = MaterialTheme.colorScheme.inverseOnSurface,
@@ -448,12 +520,18 @@ private fun TransactionSheetForm(
                 .fillMaxWidth()
                 .padding(top = 16.dp)
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .heightIn(min = 56.dp),
+                // 52, not the design's ~80: it is the last thing you touch,
+                // not the thing you look at, and a slab that tall reads as a
+                // second surface rather than a button.
+                .heightIn(min = 52.dp),
         ) {
             if (busy) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             } else {
-                Text(stringResource(Res.string.quick_record))
+                Text(
+                    stringResource(Res.string.quick_record),
+                    style = MaterialTheme.typography.titleMedium,
+                )
             }
         }
     }
@@ -505,81 +583,103 @@ private fun TransactionSheetForm(
     }
 }
 
-/** Gasto / Ingreso / Traspaso as three pills on the mint. */
+/**
+ * Gasto / Ingreso / Traspaso as one segmented track: three separate pills read
+ * as three buttons that each do something, while a single track with one lit
+ * segment reads as a choice among three states of the same form.
+ */
 @Composable
 private fun KindSwitcher(current: TxnKind, onSelect: (TxnKind) -> Unit) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    Surface(
+        color = MaterialTheme.colorScheme.secondary,
+        shape = RoundedCornerShape(SegmentCorner),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        TxnKind.entries.forEach { kind ->
-            val selected = kind == current
-            Surface(
-                color = if (selected) {
-                    MaterialTheme.colorScheme.inverseSurface
-                } else {
-                    MaterialTheme.colorScheme.background
-                },
-                contentColor = if (selected) {
-                    MaterialTheme.colorScheme.inverseOnSurface
-                } else {
-                    MaterialTheme.colorScheme.inverseSurface
-                },
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .clickable { onSelect(kind) }
-                        .heightIn(min = 40.dp)
-                        .fillMaxWidth(),
+        Row(modifier = Modifier.fillMaxWidth()) {
+            TxnKind.entries.forEach { kind ->
+                val selected = kind == current
+                Surface(
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.inverseSurface
+                    } else {
+                        Color.Transparent
+                    },
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    shape = RoundedCornerShape(SegmentCorner),
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Text(sheetKindTitle(kind), style = MaterialTheme.typography.bodyMedium)
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clickable { onSelect(kind) }
+                            .heightIn(min = 46.dp)
+                            .fillMaxWidth(),
+                    ) {
+                        Icon(
+                            kindIcon(kind),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.padding(start = 6.dp))
+                        Text(
+                            sheetKindTitle(kind),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-/** A tappable row that opens a picker: label above, chosen path below. */
+/** Direction, as a glyph: down-left out of the wallet, up-right into it. */
+private fun kindIcon(kind: TxnKind) = when (kind) {
+    TxnKind.Expense -> Icons.Filled.ArrowDownLeft
+    TxnKind.Income -> Icons.Filled.ArrowUpRight
+    TxnKind.Transfer -> Icons.Filled.Remove
+}
+
+private val SegmentCorner = 24.dp
+
+/** Grouped digits with the peso sign glued to their left. */
+private val AmountWithSymbol = VisualTransformation { text ->
+    // Empty stays empty: a lone "$" counts as content and would suppress the
+    // placeholder, leaving the row showing a symbol and nothing else.
+    if (text.text.isEmpty()) {
+        TransformedText(text, OffsetMapping.Identity)
+    } else {
+    val grouped = AmountVisualTransformation.filter(text)
+    val inner = grouped.offsetMapping
+    TransformedText(
+        AnnotatedString("$") + grouped.text,
+        object : OffsetMapping {
+            override fun originalToTransformed(offset: Int) = inner.originalToTransformed(offset) + 1
+            override fun transformedToOriginal(offset: Int) =
+                inner.transformedToOriginal((offset - 1).coerceAtLeast(0))
+        },
+    )
+    }
+}
+
+/** The translucent slab every field of the panel sits on. */
 @Composable
-private fun SheetField(
-    label: String,
-    value: String?,
-    placeholder: String,
-    onClick: () -> Unit,
-) {
+private fun SheetRow(content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.background,
+        // A tint of the dark ink over the mint, not a solid grey: the field
+        // has to belong to the panel it floats on, and an opaque colour would
+        // have been a fourth surface in a screen that only has the mint.
+        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.22f),
         contentColor = MaterialTheme.colorScheme.inverseSurface,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.secondary,
-                )
-                Text(
-                    value ?: placeholder,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (value == null) {
-                        MaterialTheme.colorScheme.secondary
-                    } else {
-                        MaterialTheme.colorScheme.inverseSurface
-                    },
-                )
-            }
-            Icon(Icons.Filled.ChevronRight, contentDescription = null)
-        }
+            modifier = Modifier.heightIn(min = 64.dp),
+            content = content,
+        )
     }
 }
 

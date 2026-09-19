@@ -120,15 +120,27 @@ fun TransactionQuickScreen(
     val scope = rememberCoroutineScope()
     val amountFocus = remember { FocusRequester() }
 
-    val money = Money.parse(amountText.trim(), Money.DEFAULT_COMMODITY)
+    // The asset leg is what holds money, so it decides the currency: a
+    // charge on a dollar account is in dollars without the user saying so.
+    // An account that declares nothing keeps the old default.
+    val assetId = when (currentKind) {
+        TxnKind.Expense, TxnKind.Transfer -> fromId
+        TxnKind.Income -> toId
+    }
+    val commodity = remember(tree, assetId) {
+        tree.flatMap { it.selfAndDescendants }
+            .firstOrNull { it.account.id == assetId }
+            ?.account?.commodity
+            ?: Money.DEFAULT_COMMODITY
+    }
+    val money = Money.parse(amountText.trim(), commodity)
     val amountValid = money != null && money.minorUnits > 0
     val canRecord = !busy && amountValid && fromId != null && toId != null
 
     suspend fun reloadTree() {
         defaults = settings.defaultAccounts()
         tree = accounts.tree()
-        paths = tree.flatMap { it.selfAndDescendants }
-            .associate { it.account.id to it.path.censored() }
+        paths = disambiguatedPaths(tree)
     }
 
     LaunchedEffect(Unit) {
@@ -195,8 +207,8 @@ fun TransactionQuickScreen(
         scope.launch {
             try {
                 val drafts = listOf(
-                    DraftPosting(from, formatMinorUnits(-amount.minorUnits)),
-                    DraftPosting(to, formatMinorUnits(amount.minorUnits)),
+                    DraftPosting(from, formatMinorUnits(-amount.minorUnits), amount.commodity),
+                    DraftPosting(to, formatMinorUnits(amount.minorUnits), amount.commodity),
                 )
                 ledger.add(epochMillis(), description.trim().ifBlank { kindLabel }, null, drafts)
                 onSaved()
@@ -280,7 +292,7 @@ fun TransactionQuickScreen(
                 value = amountText,
                 onValueChange = { amountText = sanitizeAmountInput(it, allowNegative = false) },
                 label = { Text(stringResource(Res.string.quick_amount_label)) },
-                prefix = { Text("${Money.DEFAULT_COMMODITY} ") },
+                prefix = { Text("$commodity ") },
                 visualTransformation = AmountVisualTransformation,
                 singleLine = true,
                 textStyle = MaterialTheme.typography.headlineMedium.copy(textAlign = TextAlign.End),
@@ -334,10 +346,23 @@ fun TransactionQuickScreen(
             else -> listOfNotNull(fromId).toSet()
         }
         val isCategory = pickerType == AccountType.Expense
+        // A transfer here carries one amount, so both legs must be the same
+        // currency: offering a dollar account opposite a peso one would only
+        // produce a transaction this screen cannot express (the full editor
+        // does FX, with two amounts).
+        val transferCommodity = if (currentKind == TxnKind.Transfer) {
+            val other = if (field == QuickField.From) toId else fromId
+            tree.flatMap { it.selfAndDescendants }
+                .firstOrNull { it.account.id == other }
+                ?.account?.commodity
+        } else {
+            null
+        }
         AccountPickerSheet(
             tree = tree.filter { it.account.type == pickerType },
             title = if (field == QuickField.From) fromLabel else toLabel,
             exclude = exclude,
+            commodityFilter = transferCommodity,
             createLabel = if (isCategory) newCategoryLabel else null,
             onCreate = if (isCategory) {
                 {

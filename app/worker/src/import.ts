@@ -109,6 +109,15 @@ export interface PostableAccount {
   name: string;
   path: string;
   type: PostableType;
+  /** Declared currency of an asset/liability account, null when unrestricted. */
+  commodity: string | null;
+  /**
+   * What the model is shown and must echo back. The path, plus the currency
+   * in parentheses when a sibling shares the same path: two accounts may be
+   * named "Santander" as long as their currencies differ, and the bare path
+   * cannot name either of them.
+   */
+  label: string;
 }
 
 /**
@@ -124,8 +133,17 @@ export interface PostableAccount {
 export async function loadAccounts(
   queryUserDb: (sql: string) => Promise<Array<Record<string, unknown>>>
 ): Promise<PostableAccount[]> {
-  const rows = await queryUserDb('select id, name, parent_id, type from accounts');
-  const byId = new Map<string, { id: string; name: string; parent_id: string | null; type: string }>();
+  // The column is added by the app on open, so a user whose devices have not
+  // yet run the migration still has a table without it; losing the whole
+  // account list (and with it every category) over that is far worse than
+  // importing with no currencies.
+  const rows = await queryUserDb('select id, name, parent_id, type, commodity from accounts').catch(() =>
+    queryUserDb('select id, name, parent_id, type from accounts')
+  );
+  const byId = new Map<
+    string,
+    { id: string; name: string; parent_id: string | null; type: string; commodity: string | null }
+  >();
   for (const r of rows) {
     const id = String(r.id);
     byId.set(id, {
@@ -133,6 +151,7 @@ export async function loadAccounts(
       name: String(r.name),
       parent_id: r.parent_id == null ? null : String(r.parent_id),
       type: String(r.type),
+      commodity: r.commodity == null || String(r.commodity).trim() === '' ? null : String(r.commodity).toUpperCase(),
     });
   }
   const pathOf = (id: string): string => {
@@ -144,9 +163,36 @@ export async function loadAccounts(
   const out: PostableAccount[] = [];
   for (const acc of byId.values()) {
     if (!postable.includes(acc.type as PostableType)) continue;
-    out.push({ id: acc.id, name: acc.name, path: pathOf(acc.id), type: acc.type as PostableType });
+    out.push({
+      id: acc.id,
+      name: acc.name,
+      path: pathOf(acc.id),
+      type: acc.type as PostableType,
+      commodity: acc.commodity,
+      label: '',
+    });
   }
-  return out;
+  return withLabels(out);
+}
+
+/**
+ * Fills in [PostableAccount.label]: the bare path when it identifies the
+ * account, the path plus " (USD)" when it does not.
+ *
+ * Only ambiguous paths are decorated. Appending the currency to every account
+ * would be noise the model has to reproduce verbatim on hundreds of rows,
+ * and it reads as part of the category name.
+ */
+export function withLabels(accounts: PostableAccount[]): PostableAccount[] {
+  const seen = new Map<string, number>();
+  for (const a of accounts) {
+    const key = a.path.toLowerCase();
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  return accounts.map((a) => ({
+    ...a,
+    label: (seen.get(a.path.toLowerCase()) ?? 0) > 1 && a.commodity ? `${a.path} (${a.commodity})` : a.path,
+  }));
 }
 
 /**
@@ -381,9 +427,9 @@ export function prompt(
   history: PayeeMemory[] = [],
   kind: 'document' | 'table' = 'document'
 ): string {
-  const expense = accounts.filter((c) => c.type === 'expense').map((c) => c.path);
-  const income = accounts.filter((c) => c.type === 'income').map((c) => c.path);
-  const own = accounts.filter((c) => c.type === 'asset' || c.type === 'liability').map((c) => c.path);
+  const expense = accounts.filter((c) => c.type === 'expense').map((c) => c.label || c.path);
+  const income = accounts.filter((c) => c.type === 'income').map((c) => c.label || c.path);
+  const own = accounts.filter((c) => c.type === 'asset' || c.type === 'liability').map((c) => c.label || c.path);
   const table = kind === 'table';
   return [
     table
@@ -467,6 +513,8 @@ export function prompt(
           '"Dinero disponible en Mercado Pago" belongs to the user\'s Mercado Pago account, a statement header names the',
           'account for every row on it, and a card slip names the card. Match on the brand or bank name even when the',
           'wording differs. Use null only when the document gives no usable hint.',
+          'An account listed with a currency in parentheses holds only that currency: two accounts may share a name and',
+          'differ only there, so pick the one whose currency matches the amount and copy the parentheses too.',
         ].join(' ')
       : '',
     history.length > 0
@@ -745,7 +793,30 @@ export async function handleAnalyze(
  * direction), amounts in minor units, dates in epoch ms.
  */
 export function normalizeCandidates(raw: GeminiCandidateTx[], accounts: PostableAccount[]) {
-  const byPath = new Map(accounts.map((c) => [c.path.toLowerCase(), c]));
+  const byLabel = new Map(accounts.map((c) => [(c.label || c.path).toLowerCase(), c]));
+  // Several accounts can share a path; the label is what disambiguates them.
+  const byPath = new Map<string, PostableAccount[]>();
+  for (const c of accounts) {
+    const key = c.path.toLowerCase();
+    byPath.set(key, [...(byPath.get(key) ?? []), c]);
+  }
+  /**
+   * Resolves whatever the model echoed back. The label is the intended
+   * answer; a bare path still resolves when it names exactly one account, or
+   * when the transaction's currency picks one of the namesakes. Anything
+   * still ambiguous returns undefined and the review screen's default
+   * applies — a coin flip here files the charge against the wrong account.
+   */
+  const resolve = (text: string | null | undefined, commodity: string): PostableAccount | undefined => {
+    const key = text?.trim().toLowerCase();
+    if (!key) return undefined;
+    const labelled = byLabel.get(key);
+    if (labelled) return labelled;
+    const sharing = byPath.get(key) ?? [];
+    if (sharing.length <= 1) return sharing[0];
+    const matching = sharing.filter((c) => c.commodity === commodity);
+    return matching.length === 1 ? matching[0] : undefined;
+  };
   return raw.flatMap((t) => {
     const date = toEpochMs(t.date);
     if (date == null || !t.payee?.trim()) return [];
@@ -753,23 +824,24 @@ export function normalizeCandidates(raw: GeminiCandidateTx[], accounts: Postable
     // user's own accounts, not an expense/income category.
     const categoryTypes: PostableType[] =
       t.direction === 'transfer' ? ['asset', 'liability'] : [t.direction];
+    const txCommodity = (t.commodity || 'ARS').trim().toUpperCase();
     const splits = (t.splits ?? []).flatMap((s) => {
       const amountMinor = toMinor(s.amount);
       if (amountMinor == null || amountMinor === 0) return [];
-      const match = s.category ? byPath.get(s.category.trim().toLowerCase()) : undefined;
+      const match = resolve(s.category, txCommodity);
       const category = match && categoryTypes.includes(match.type) ? match : undefined;
       return [{ amountMinor, categoryAccountId: category?.id ?? null, categoryPath: category?.path ?? null }];
     });
     if (splits.length === 0) return [];
     // The model may hand back a category path here; only the user's own
     // asset/liability accounts are valid payment methods.
-    const ownMatch = t.account ? byPath.get(t.account.trim().toLowerCase()) : undefined;
+    const ownMatch = resolve(t.account, txCommodity);
     const own = ownMatch && (ownMatch.type === 'asset' || ownMatch.type === 'liability') ? ownMatch : undefined;
     // The far leg of a currency exchange: different amount, different
     // commodity. Only meaningful when it really is a second currency.
     const counterCommodity = t.counterCommodity?.trim().toUpperCase() || null;
     const counterMinor = t.counterAmount ? toMinor(t.counterAmount) : null;
-    const commodity = (t.commodity || 'ARS').trim().toUpperCase();
+    const commodity = txCommodity;
     const hasCounter =
       t.direction === 'transfer' &&
       counterCommodity != null &&
