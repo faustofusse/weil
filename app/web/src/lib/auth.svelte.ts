@@ -9,16 +9,16 @@ import type {
  * /Users/fausto/sw/gim/web/src/lib/auth.svelte.ts.
  *
  * One deliberate omission: there is **no register fallback**. The app's client
- * registers a user when login fails; a dry-run inspector must never create a
- * finance account by accident, so a failed login is an error here.
+ * registers a user when login fails; this app must never create a finance
+ * account by accident, so a failed login is an error here.
  *
- * `rp_id` for the finance app is `finance.fausto.ar`, and this SPA is served
- * from `dry.finance.fausto.ar` — a subdomain, so the passkeys that already
- * exist on the phone and the Mac work unchanged.
+ * `rp_id` for the finance app is `finance.fausto.ar`, which is where this app
+ * is served from, so the passkeys that already exist on the phone and the Mac
+ * work unchanged.
  */
 const AUTH = 'https://auth.fausto.ar';
 const APP = 'finance';
-const STORAGE_KEY = 'weil.dryrun.session.v1';
+const STORAGE_KEY = 'weil.web.session.v1';
 
 /** Reuse a stored token only while it has this much life left. */
 const REUSE_MARGIN = 24 * 60 * 60 * 1000;

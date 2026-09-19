@@ -381,7 +381,7 @@ fun emailPlainText(raw: String): String {
 
 private val TAG = Regex("<[^>]*>")
 // `[\s\S]` rather than `.` + DOT_MATCHES_ALL: that option is JVM-only and
-// this file also compiles for JS (the dry-run inspector runs the same rules).
+// this file also compiles for JS (the web app runs the same rules).
 private val BLOCK = Regex(
     "<(style|script)\\b[^>]*>[\\s\\S]*?</\\1\\s*>",
     RegexOption.IGNORE_CASE,
@@ -499,7 +499,7 @@ fun accountPaths(accounts: List<Account>): Map<String, String> {
  * the tree and drops the refs already linked to a transaction.
  *
  * Pure so both `IngestRepository` (which fetches the rows from the database)
- * and the dry-run inspector in `app/dryrun` (which fetches them over HTTP and
+ * and the web app in `app/web` (which fetches them over HTTP and
  * calls this through the Kotlin/JS bridge) produce the same inbox.
  *
  * [movements] pairs each movement with the headline of the message it came

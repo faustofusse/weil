@@ -9,11 +9,11 @@ import kotlinx.serialization.json.Json
  * ([parseNotification], [parseEmail], [buildInbox]) and the reconciliation
  * matcher ([matchAll]).
  *
- * Used by the dry-run inspector in `app/dryrun`, which replays a statement,
- * a notification or an email exactly as the app would and shows every
- * intermediate value. Running the real Kotlin here — rather than porting the
- * rules to TypeScript — is the whole point: a second implementation would
- * drift, and the drift is precisely what the inspector is supposed to reveal.
+ * Used by the web app in `app/web`, which replays a statement, a notification
+ * or an email exactly as the app would and shows every intermediate value.
+ * Running the real Kotlin here — rather than porting the rules to TypeScript —
+ * is the whole point: a second implementation would drift, and the drift is
+ * precisely what the web app is supposed to reveal.
  *
  * Everything crosses the boundary as a JSON string. Kotlin/JS cannot export
  * `List`, enums or sealed classes in a usable way, and JSON is also what the
@@ -99,7 +99,7 @@ private fun ScoredMatch.toDto() = MatchDto(
 )
 
 @JsExport
-object DryRun {
+object WebBridge {
 
     /** `{id, packageName, title, text, postTime}` → [IngestedMovement] or null. */
     fun parseNotificationJson(rowJson: String): String? {

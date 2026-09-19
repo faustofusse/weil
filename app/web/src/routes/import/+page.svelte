@@ -69,8 +69,8 @@
 				headers: {
 					'content-type': contentType(file),
 					// The worker reads the accounts and the payee memory with this
-					// token — the one the session already gave us, so the dry-run
-					// worker never needs a Turso API token of its own.
+					// token — the one the session already gave us, so this worker
+					// never needs a Turso API token of its own.
 					'x-turso-token': auth.session?.jwt ?? ''
 				},
 				body: await file.arrayBuffer()

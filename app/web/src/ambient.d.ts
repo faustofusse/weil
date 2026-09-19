@@ -6,7 +6,7 @@
 
 /** The compiled Kotlin/JS library, aliased in vite.config.ts. */
 declare module '$kotlin' {
-	export const DryRun: {
+	export const WebBridge: {
 		getInstance(): {
 			parseNotificationJson(rowJson: string): string | null | undefined;
 			parseEmailJson(rowJson: string): string | null | undefined;

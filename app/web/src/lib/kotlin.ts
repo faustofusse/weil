@@ -1,14 +1,14 @@
-import { DryRun } from '$kotlin';
+import { WebBridge } from '$kotlin';
 import type { AccountRow, EmailRow, LedgerFact, NotificationRow } from './db';
 
 /**
  * Typed façade over the compiled Kotlin/JS bridge
- * (`app/sharedLogic/src/jsMain/kotlin/ar/fausto/weil/DryRunBridge.kt`).
+ * (`app/sharedLogic/src/jsMain/kotlin/ar/fausto/weil/WebBridge.kt`).
  *
  * Everything crosses as JSON, so this file is only parse/stringify plus the
  * types. The logic it calls is literally the code the phone runs.
  */
-const kt = DryRun.getInstance();
+const kt = WebBridge.getInstance();
 
 export type ImportSplit = {
 	amountMinor: number;

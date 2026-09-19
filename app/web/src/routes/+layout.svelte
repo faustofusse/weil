@@ -19,7 +19,7 @@
 <div class="mx-auto min-h-screen max-w-5xl px-5 py-6">
 	<header class="mb-6 flex items-center gap-4">
 		<div>
-			<h1 class="text-lg font-semibold">weil · dry run</h1>
+			<h1 class="text-lg font-semibold">weil</h1>
 			<p class="text-sm text-neutral-500">tu base, en crudo y de solo lectura</p>
 		</div>
 		<span class="grow"></span>

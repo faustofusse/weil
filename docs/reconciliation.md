@@ -273,8 +273,8 @@ screen's default account rather than guessing.
 
 ### Seeing it run
 
-`app/dryrun` (https://dry.finance.fausto.ar) replays all of this in a browser:
-the same prompt and context the worker sends to Gemini, then `parseNotification`
-/ `parseEmail` / `buildInbox` / `matchAll` over the real rows — the actual
-Kotlin, compiled to JS from `:app:sharedLogic` via `DryRunBridge.kt`, not a
-port. Read-only by construction. See `app/dryrun/README.md`.
+`app/web` (https://finance.fausto.ar) replays all of this in a browser: the
+same prompt and context the worker sends to Gemini, then `parseNotification` /
+`parseEmail` / `buildInbox` / `matchAll` over the real rows — the actual
+Kotlin, compiled to JS from `:app:sharedLogic` via `WebBridge.kt`, not a port.
+Read-only by construction. See `app/web/README.md`.

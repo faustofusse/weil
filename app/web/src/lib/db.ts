@@ -10,9 +10,10 @@ import type { Session } from './auth.svelte';
  * `knownSourceRefs` in sharedLogic — because the point of the inspector is to
  * feed the real Kotlin rules the real rows.
  *
- * The JWT is read/write, so the guard below is what keeps a dry run dry:
+ * The JWT is read/write, so the guard below is what keeps this app harmless:
  * every statement must be a `select`, and anything else throws before it
- * reaches the network.
+ * reaches the network. Writes belong to the app on the phone, which owns the
+ * transaction boundaries and the undo.
  */
 export class ReadOnlyDb {
 	private client: Client;
@@ -23,7 +24,7 @@ export class ReadOnlyDb {
 
 	async select(sql: string, args: unknown[] = []): Promise<Array<Record<string, unknown>>> {
 		const verb = sql.trimStart().slice(0, 6).toLowerCase();
-		if (verb !== 'select') throw new Error(`dry run is read-only, refused: ${sql.slice(0, 40)}…`);
+		if (verb !== 'select') throw new Error(`read-only, refused: ${sql.slice(0, 40)}…`);
 		const rs = await this.client.execute({ sql, args: args as never });
 		return rs.rows as unknown as Array<Record<string, unknown>>;
 	}

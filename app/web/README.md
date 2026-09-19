@@ -1,15 +1,17 @@
-# dry run — https://dry.finance.fausto.ar
+# weil web — https://finance.fausto.ar
 
-A Svelte SPA that replays the app's import pipeline with the lid off: drop the
-same statement you would share into the phone and see **what the model
-receives** (accounts, payee memory, the built prompt, the literal request
-parts, the response schema) and **what the ledger says about the result**
-(reconciliation outcomes: crear / asociar / omitir). It also replays the
-notification and email ingestion rules over your captured messages.
+The browser companion to the phone app: sign in with the same passkey and look
+at your own data. Today that means the captured notifications and emails, the
+accounts tree, and the import pipeline with the lid off — drop the same
+statement you would share into the phone and see **what the model receives**
+(accounts, payee memory, the built prompt, the literal request parts, the
+response schema) and **what the ledger says about the result** (reconciliation
+outcomes: crear / asociar / omitir).
 
 Nothing is written. There is no R2 binding on the worker, no ledger write path,
 and every SQL statement the browser sends is checked to start with `select`
-(`ReadOnlyDb` in `src/lib/db.ts`).
+(`ReadOnlyDb` in `src/lib/db.ts`). Writes belong to the app on the phone, which
+owns the transaction boundaries and the undo.
 
 ## How it avoids drifting from the app
 
@@ -20,17 +22,24 @@ and every SQL statement the browser sends is checked to start with `select`
   debug payload.
 - The ingestion rules and the reconciliation matcher are the **Kotlin**
   `Ingest.kt` / `Reconcile.kt`, compiled to JS from `:app:sharedLogic` and
-  exported through `DryRunBridge.kt` (JSON in, JSON out). The SQL for accounts,
+  exported through `WebBridge.kt` (JSON in, JSON out). The SQL for accounts,
   notifications, emails, ledger facts and known source refs is ported in
   `src/lib/db.ts` from the matching repositories.
 
-## Auth
+## Auth and the shared hostname
 
-Passkey login against the auth worker, app slug `finance`. The origin
-`https://dry.finance.fausto.ar` is a subdomain of the `finance` rp id
-(`finance.fausto.ar`), so the passkeys already on the phone and the Mac work
-here; the origin is allowlisted in the auth worker's `APPS` var. There is **no
-register fallback** — this tool must never create a finance account.
+Passkey login against the auth worker, app slug `finance`. This app is served
+from the rp id itself (`finance.fausto.ar`), so the passkeys already on the
+phone and the Mac work here. There is **no register fallback** — the web app
+must never create a finance account.
+
+A hostname belongs to exactly one Worker, and the auth worker still owns three
+paths on this one: the Android `assetlinks.json`, the Apple app site
+association (both paths) and `/desktop-pair`. `src/hooks.server.ts` proxies
+them to `auth.fausto.ar` with `?rp=finance.fausto.ar`, which is how the auth
+worker knows which app is being asked about when the request no longer arrives
+on the rp id host. **If those stop resolving, native passkey sign-in breaks**,
+so they are worth a curl after any deploy that touches routing.
 
 ## Develop
 

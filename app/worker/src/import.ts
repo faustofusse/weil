@@ -587,7 +587,7 @@ export async function geminiJson<T>(
 
 /**
  * Optional out-param recording what actually went to (and came back from) the
- * model. Production ignores it; the dry-run inspector in `app/dryrun` passes
+ * model. Production ignores it; the web app in `app/web` passes
  * one so it can show the request, the model that answered, the token usage
  * and the raw JSON — none of which is otherwise observable from outside.
  */
