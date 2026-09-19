@@ -401,7 +401,7 @@ internal fun NodeRowView(
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        node.account.name,
+                        node.account.name.censored(),
                         style = if (row.depth == 0) {
                             MaterialTheme.typography.titleSmall
                         } else {
@@ -507,14 +507,14 @@ internal fun AccountActionsSheet(
     var pickingIcon by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf(account.name) }
-    val deleteMessage = stringResource(Res.string.account_delete_message, account.name)
+    val deleteMessage = stringResource(Res.string.account_delete_message, account.name.censored())
     val undoLabel = stringResource(Res.string.action_undo)
     if (sheetOpen) {
         ModalBottomSheet(onDismissRequest = onDismiss) {
             val itemColors = ListItemDefaults.colors(containerColor = Color.Transparent)
             Column(modifier = Modifier.padding(bottom = 24.dp)) {
                 Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
-                    Text(account.name, style = MaterialTheme.typography.titleLarge)
+                    Text(account.name.censored(), style = MaterialTheme.typography.titleLarge)
                     Text(
                         accountTypeLabel(account.type),
                         style = MaterialTheme.typography.bodySmall,

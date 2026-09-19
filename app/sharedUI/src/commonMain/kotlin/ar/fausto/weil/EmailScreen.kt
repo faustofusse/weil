@@ -151,14 +151,14 @@ private fun EmailCard(email: Email, onOpen: () -> Unit) {
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = email.fromEmail,
+                text = email.fromEmail.censored(),
                 style = typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = email.subject ?: stringResource(Res.string.emails_no_subject),
+                text = email.subject?.censored() ?: stringResource(Res.string.emails_no_subject),
                 style = typography.bodyLarge,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

@@ -199,7 +199,7 @@ private fun CategoryRow(
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    account.name,
+                    account.name.censored(),
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

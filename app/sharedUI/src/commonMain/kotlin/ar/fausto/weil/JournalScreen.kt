@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -81,10 +82,10 @@ import weil.app.sharedui.generated.resources.journal_dev_delete_range_to
 import weil.app.sharedui.generated.resources.journal_empty
 import weil.app.sharedui.generated.resources.journal_more_postings
 import weil.app.sharedui.generated.resources.journal_title
-import weil.app.sharedui.generated.resources.months_short
+import weil.app.sharedui.generated.resources.months_full
 import weil.app.sharedui.generated.resources.nav_movements
 import weil.app.sharedui.generated.resources.more_options
-import weil.app.sharedui.generated.resources.weekdays_short
+import weil.app.sharedui.generated.resources.weekdays_full
 import weil.app.sharedui.generated.resources.new_transaction
 import weil.app.sharedui.generated.resources.new_transaction_hint
 
@@ -259,18 +260,20 @@ fun JournalScreen(
                     item(key = "day-${group.key}") {
                         DayHeader(group)
                     }
-                    // Same compact row and grouped-card skin as Home's
-                    // preview — the two read as one list design. Unlike Home,
-                    // the day header stays a run's own heading here: with
-                    // dozens of rows a day it can't be mistaken for a caption
-                    // on the first one, the ambiguity that made Home drop it.
-                    itemsIndexed(txs, key = { _, tx -> tx.id }) { index, tx ->
-                        TransactionRow(
+                    // Same row as Home's preview — the two read as one list
+                    // design now, not two that happen to sit in the same tab
+                    // bar. Unlike Home, the day header stays a run's own
+                    // heading here: with dozens of rows a day it can't be
+                    // mistaken for a caption on the first one, the ambiguity
+                    // that made Home drop it.
+                    items(txs, key = { it.id }) { tx ->
+                        MovementRow(
                             tx = tx,
                             names = state.names,
                             types = state.types,
+                            icons = state.icons,
+                            hidden = false,
                             onOpen = { onOpenTransaction(tx.id) },
-                            skin = rowSkin(first = index == 0, last = index == txs.lastIndex),
                         )
                     }
                 }
@@ -429,8 +432,8 @@ internal fun dayLabel(group: DayGroup): String = when (group) {
     DayToday -> stringResource(Res.string.day_today)
     DayYesterday -> stringResource(Res.string.day_yesterday)
     is DayDate -> {
-        val weekday = stringArrayResource(Res.array.weekdays_short).getOrElse(group.weekday) { "" }
-        val month = stringArrayResource(Res.array.months_short).getOrElse(group.month - 1) { "" }
+        val weekday = stringArrayResource(Res.array.weekdays_full).getOrElse(group.weekday) { "" }
+        val month = stringArrayResource(Res.array.months_full).getOrElse(group.month - 1) { "" }
         if (group.year == null) {
             stringResource(Res.string.day_date, weekday, group.day, month)
         } else {
@@ -443,7 +446,7 @@ internal fun dayLabel(group: DayGroup): String = when (group) {
 suspend fun accountPaths(accounts: AccountsRepository): Map<String, String> =
     accounts.tree()
         .flatMap { it.selfAndDescendants }
-        .associate { it.account.id to it.path }
+        .associate { it.account.id to it.path.censored() }
 
 /** id → account type, so journal/home rows can color a posting by what it did to an asset account. */
 suspend fun accountTypes(accounts: AccountsRepository): Map<String, AccountType> =
@@ -455,21 +458,23 @@ suspend fun accountTypes(accounts: AccountsRepository): Map<String, AccountType>
 suspend fun accountNames(accounts: AccountsRepository): Map<String, String> =
     accounts.tree()
         .flatMap { it.selfAndDescendants }
-        .associate { it.account.id to it.account.name }
+        .associate { it.account.id to it.account.name.censored() }
 
 /** [paths], [types] and [names] from a single [AccountsRepository.tree] call. */
 internal class AccountIndex(
     val paths: Map<String, String>,
     val types: Map<String, AccountType>,
     val names: Map<String, String>,
+    val icons: Map<String, String?>,
 )
 
 internal suspend fun accountIndex(accounts: AccountsRepository): AccountIndex {
     val nodes = accounts.tree().flatMap { it.selfAndDescendants }
     return AccountIndex(
-        paths = nodes.associate { it.account.id to it.path },
+        paths = nodes.associate { it.account.id to it.path.censored() },
         types = nodes.associate { it.account.id to it.account.type },
-        names = nodes.associate { it.account.id to it.account.name },
+        names = nodes.associate { it.account.id to it.account.name.censored() },
+        icons = nodes.associate { it.account.id to it.account.icon },
     )
 }
 
@@ -521,6 +526,20 @@ internal fun flowColor(direction: Int): Color = when {
     else -> MaterialTheme.colorScheme.onSurface
 }
 
+/**
+ * The three fixed hex colors for a movement row's amount, as specified
+ * directly (not the theme's `tertiary`/`error`, which happen to differ by
+ * theme): income, expense, transfer between the user's own accounts. Used
+ * by [MovementRow] and the classic [TransactionRow] — the two places an
+ * amount stands for an entire transaction in a list — not by the detail
+ * screen's hero figure, which stays on the theme.
+ */
+internal fun transactionRowColor(direction: Int): Color = when {
+    direction > 0 -> Color(0xFF55A345)
+    direction < 0 -> Color(0xFFDB1616)
+    else -> Color(0xFF363636)
+}
+
 // A small "›" chevron reads as "leads to" without the vertical-alignment
 // headaches of the wider "→" arrow glyph, which sits at different heights
 // across the platform default fonts (Roboto on Android, the desktop font,
@@ -561,7 +580,7 @@ internal fun TransactionRow(
     val dimSize = MaterialTheme.typography.bodySmall.fontSize
     val label = buildAnnotatedString {
         if (tx.payee.isNotBlank()) {
-            append(tx.payee)
+            append(tx.payee.censored())
             if (hasRoute) append("  ")
         }
         if (hasRoute) {
@@ -619,7 +638,7 @@ internal fun TransactionRow(
                             // and the direction is already in the color.
                             formatMoney(flow.amountMinor, flow.commodity),
                             style = MaterialTheme.typography.titleSmall,
-                            color = flowColor(flow.direction),
+                            color = transactionRowColor(flow.direction),
                             maxLines = 1,
                         )
                     }

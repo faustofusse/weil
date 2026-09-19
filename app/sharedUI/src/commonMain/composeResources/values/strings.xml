@@ -253,8 +253,10 @@
     <!-- Day labels -->
     <string name="day_today">Hoy</string>
     <string name="day_yesterday">Ayer</string>
-    <string name="day_date">%1$s %2$d %3$s</string>
-    <string name="day_date_year">%1$s %2$d %3$s %4$d</string>
+    <!-- "Viernes, 17 de septiembre" / "..., 17 de septiembre de 2023" (the
+         year only when it isn't the current one — see DayDate.year). -->
+    <string name="day_date">%1$s, %2$d de %3$s</string>
+    <string name="day_date_year">%1$s, %2$d de %3$s de %4$d</string>
     <string-array name="weekdays_short">
         <item>lun</item>
         <item>mar</item>
@@ -277,6 +279,30 @@
         <item>oct</item>
         <item>nov</item>
         <item>dic</item>
+    </string-array>
+    <!-- Full names for the day header ("Viernes, 17 de septiembre"). -->
+    <string-array name="weekdays_full">
+        <item>Lunes</item>
+        <item>Martes</item>
+        <item>Miércoles</item>
+        <item>Jueves</item>
+        <item>Viernes</item>
+        <item>Sábado</item>
+        <item>Domingo</item>
+    </string-array>
+    <string-array name="months_full">
+        <item>enero</item>
+        <item>febrero</item>
+        <item>marzo</item>
+        <item>abril</item>
+        <item>mayo</item>
+        <item>junio</item>
+        <item>julio</item>
+        <item>agosto</item>
+        <item>septiembre</item>
+        <item>octubre</item>
+        <item>noviembre</item>
+        <item>diciembre</item>
     </string-array>
 
     <!-- Pago con QR (handoff a la billetera) -->

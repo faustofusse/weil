@@ -222,7 +222,7 @@ fun HomeScreen(
             val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
             // Leaf names, not full paths: a one-line movement row has room for
             // "Efectivo → Comida", not for "Activos:Efectivo → Gastos:Comida".
-            val names = remember(nodes) { nodes.associate { it.account.id to it.account.name } }
+            val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
             val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),

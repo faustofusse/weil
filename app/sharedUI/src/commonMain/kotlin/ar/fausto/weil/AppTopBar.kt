@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -49,6 +50,10 @@ fun AppTopBar(
             Text(
                 title,
                 style = MaterialTheme.typography.headlineMedium,
+                // headlineMedium is Bold app-wide (it's also the balance
+                // hero's weight); the header overrides it to Light on its
+                // own so that doesn't move the hero figure's weight too.
+                fontWeight = FontWeight.Light,
                 color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

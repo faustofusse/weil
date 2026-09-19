@@ -58,7 +58,10 @@ enum class AppTheme(val displayName: String, val colorScheme: ColorScheme) {
             // Secondary text (routes, captions): the mid slate, which is
             // exactly what it's for.
             onSurfaceVariant = Color(0xFF5F6F7B),
-            surfaceContainerLowest = Color(0xFFFFFFFF),
+            // Not literal white: F3F3F8 is the app's one "page" color, and
+            // this role is a surface *on* the page, not a QR-style backing
+            // that needs true white contrast.
+            surfaceContainerLowest = Color(0xFFF3F3F8),
             surfaceContainerLow = Color(0xFFFAFAFD),
             surfaceContainer = Color(0xFFEDEDF3),
             surfaceContainerHigh = Color(0xFFE7E7EF),

@@ -214,14 +214,14 @@ private fun NotificationCard(notificationItem: NotificationItem, onClick: () -> 
                     Spacer(Modifier.width(8.dp))
                 }
                 Text(
-                    text = notificationItem.appName,
+                    text = notificationItem.appName.censored(),
                     style = typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Text(text = notificationItem.title, style = typography.bodyMedium)
-            Text(text = notificationItem.text, style = typography.bodyMedium)
+            Text(text = notificationItem.title.censored(), style = typography.bodyMedium)
+            Text(text = notificationItem.text.censored(), style = typography.bodyMedium)
             notificationItem.category?.let {
                 Text(
                     text = stringResource(Res.string.notifications_category, it),

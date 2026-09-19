@@ -192,7 +192,7 @@ fun HomeDashboardScreen(
                 ledgerState.tree.filter { it.account.type == AccountType.Asset }
             }
             val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
-            val names = remember(nodes) { nodes.associate { it.account.id to it.account.name } }
+            val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
             val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
             val icons = remember(nodes) { nodes.associate { it.account.id to it.account.icon } }
             // Computed in composition, not inside the LazyListScope builder
@@ -275,7 +275,7 @@ fun HomeDashboardScreen(
                     }
                 }
                 items(recentItems, key = { "recent-${it.id}" }) { tx ->
-                    MovementCard(
+                    MovementRow(
                         tx = tx,
                         names = names,
                         types = types,
@@ -395,7 +395,17 @@ private fun BalanceHero(state: LedgerState) {
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.weight(1f))
+            if (state.busy && (!state.loaded || state.pullRefreshing)) {
+                CircularProgressIndicator(
+                    modifier = Modifier.padding(end = 8.dp).size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            // Top-right corner of the card, level with the title — not
+            // trailing it mid-row, where it read as part of the label
+            // instead of as the card's own action button.
             IconButton(onClick = { state.toggleAmountsHidden() }, modifier = Modifier.size(28.dp)) {
                 Icon(
                     if (hidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
@@ -406,14 +416,6 @@ private fun BalanceHero(state: LedgerState) {
                     modifier = Modifier.size(18.dp),
                 )
             }
-            Spacer(Modifier.weight(1f))
-            if (state.busy && (!state.loaded || state.pullRefreshing)) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
         }
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -422,10 +424,9 @@ private fun BalanceHero(state: LedgerState) {
                     maskedAmount(primary?.value ?: 0L, primary?.key ?: Money.DEFAULT_COMMODITY, hidden),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
-                    // Amounts don't print a minus anywhere in the app, so a
-                    // figure that *can* be negative has to be colored or the
-                    // sign is simply lost.
-                    color = heroColor(primary?.value ?: 0L),
+                    // No red for a negative total here: this is a net worth,
+                    // not a debit — the sign is already legible in the minus.
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -453,7 +454,7 @@ private fun BalanceHero(state: LedgerState) {
                             maskedAmount(minor, commodity, hidden),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = heroColor(minor),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
                             maxLines = 1,
                         )
                     }
@@ -478,7 +479,10 @@ private fun DashboardHeader(title: String, actionLabel: String, onAction: () -> 
             title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground,
+            // Same ink as the darker account tile, not the page's default
+            // text color: "Cuentas"/"Movimientos" read as part of that same
+            // slate family rather than as generic body text.
+            color = MaterialTheme.colorScheme.inverseSurface,
             modifier = Modifier.weight(1f),
         )
         Row(
@@ -491,12 +495,12 @@ private fun DashboardHeader(title: String, actionLabel: String, onAction: () -> 
             Text(
                 actionLabel,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.inverseSurface,
             )
             Icon(
                 Icons.Filled.ChevronRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = MaterialTheme.colorScheme.inverseSurface,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -537,7 +541,7 @@ private fun AccountTile(
         // USD" vs "Galicia ARS"), which a generic wallet glyph can't
         // distinguish — it only stole width from the name that can.
         Text(
-            node.account.name,
+            node.account.name.censored(),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.inverseOnSurface,
             maxLines = 1,
@@ -547,115 +551,13 @@ private fun AccountTile(
             maskedAmount(entry?.value ?: 0L, entry?.key ?: Money.DEFAULT_COMMODITY, hidden),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            // Same reasoning as the hero, in the tile's own palette: the
-            // page's `error` is too dark to read on slate, so the negative
-            // case borrows the light error *container* tone.
-            color = if ((entry?.value ?: 0L) < 0L) {
-                MaterialTheme.colorScheme.errorContainer
-            } else {
-                MaterialTheme.colorScheme.inverseOnSurface
-            },
+            // No red for a negative balance here either — an account tile is
+            // a total, not a debit; the minus already says overdrawn.
+            color = MaterialTheme.colorScheme.inverseOnSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
     }
-}
-
-/** Net-worth figure color: only a negative total is marked. */
-@Composable
-private fun heroColor(minor: Long) = if (minor < 0L) {
-    MaterialTheme.colorScheme.error
-} else {
-    MaterialTheme.colorScheme.onPrimaryContainer
-}
-
-/**
- * One movement as its own outlined row: the icon of the account that gives
- * the movement its meaning (the category for an expense, the source for an
- * income), the payee, the route in a dim line under it, and the amount.
- */
-@Composable
-internal fun MovementCard(
-    tx: Transaction,
-    names: Map<String, String>,
-    types: Map<String, AccountType>,
-    icons: Map<String, String?>,
-    hidden: Boolean,
-    onOpen: () -> Unit,
-) {
-    val flow = flowOf(tx, types)
-    val from = flow?.fromId?.let { names[it] }
-    val to = flow?.toId?.let { names[it] }
-    val iconId = iconAccountId(flow, types)
-    val avatar = AccountIcons.resolve(icons[iconId], types[iconId])
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 10.dp)
-            .clip(RoundedCornerShape(18.dp))
-            // The tile slate at 15%: a tint of the same ink the tiles are
-            // made of, so the list belongs to them instead of introducing a
-            // fourth grey. An outline would have been a fifth edge on a page
-            // that already has four card shapes.
-            .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.15f))
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        AccountAvatar(icon = avatar, container = Color.Transparent, outlined = true)
-        Spacer(Modifier.width(12.dp))
-        // `end` inset, not a Spacer after the column: the payee is what gets
-        // ellipsized when space runs out, and without a reserved gap it ran
-        // straight into the amount.
-        Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
-            Text(
-                tx.payee.ifBlank { names[iconId] ?: "" },
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (from != null || to != null) {
-                Text(
-                    if (from != null && to != null && from != to) "$from $ROUTE_ARROW $to" else (from ?: to ?: ""),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        if (flow != null) {
-            Text(
-                maskedAmount(flow.amountMinor, flow.commodity, hidden),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = flowColor(flow.direction),
-                maxLines = 1,
-            )
-        }
-        Icon(
-            Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier.padding(start = 6.dp).size(20.dp),
-        )
-    }
-}
-
-/**
- * Which account's icon represents a movement: the leg that says *what it was
- * for* — the category of an expense, the source of an income — falling back
- * to the destination for a transfer between two of the user's own accounts,
- * where no leg carries a meaning the other doesn't.
- */
-internal fun iconAccountId(flow: TxnFlow?, types: Map<String, AccountType>): String? {
-    if (flow == null) return null
-    val ends = listOfNotNull(flow.fromId, flow.toId)
-    return ends.firstOrNull {
-        types[it] == AccountType.Expense || types[it] == AccountType.Income
-    } ?: flow.toId ?: flow.fromId
 }
 
 /**
@@ -663,5 +565,13 @@ internal fun iconAccountId(flow: TxnFlow?, types: Map<String, AccountType>): Str
  * The symbol is always shown, including for ARS: a bare number on a tile is
  * the one place a reader has nothing else to tell them it is money.
  */
-internal fun maskedAmount(minor: Long, commodity: String, hidden: Boolean): String =
-    if (hidden) "${currencySymbol(commodity)} ••••••" else formatMoney(minor, commodity)
+internal fun maskedAmount(
+    minor: Long,
+    commodity: String,
+    hidden: Boolean,
+    // Only the compact movement row hides its sign (color carries it there,
+    // same as every other transaction row in the app); the hero and the
+    // tiles are numbers on their own, so they keep the minus.
+    signed: Boolean = true,
+): String =
+    if (hidden) "${currencySymbol(commodity)} ••••••" else formatMoney(minor, commodity, signed = signed)

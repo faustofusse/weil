@@ -128,7 +128,7 @@ fun TransactionQuickScreen(
         defaults = settings.defaultAccounts()
         tree = accounts.tree()
         paths = tree.flatMap { it.selfAndDescendants }
-            .associate { it.account.id to it.path }
+            .associate { it.account.id to it.path.censored() }
     }
 
     LaunchedEffect(Unit) {

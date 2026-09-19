@@ -95,7 +95,7 @@ private fun NetWorthPickerRow(
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    row.node.account.name,
+                    row.node.account.name.censored(),
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (excludedHere) {
                         MaterialTheme.colorScheme.onSurfaceVariant

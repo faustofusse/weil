@@ -140,12 +140,12 @@ fun NotificationDetailScreen(
                             )
                             Spacer(Modifier.width(8.dp))
                         }
-                        Text(current.appName, style = MaterialTheme.typography.titleMedium)
+                        Text(current.appName.censored(), style = MaterialTheme.typography.titleMedium)
                     }
                     Spacer(Modifier.height(12.dp))
-                    Text(current.title, style = MaterialTheme.typography.titleLarge)
+                    Text(current.title.censored(), style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(6.dp))
-                    Text(current.text, style = MaterialTheme.typography.bodyMedium)
+                    Text(current.text.censored(), style = MaterialTheme.typography.bodyMedium)
                     current.category?.let {
                         Spacer(Modifier.height(8.dp))
                         Text(

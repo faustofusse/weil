@@ -194,14 +194,14 @@ private fun SimilarRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                item.title.ifBlank { item.subtitle },
+                item.title.censored().ifBlank { item.subtitle.censored() },
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (item.subtitle.isNotBlank() && item.title.isNotBlank()) {
                 Text(
-                    item.subtitle,
+                    item.subtitle.censored(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -225,7 +225,8 @@ private fun SimilarRow(
         val amount = item.amountMinor
         if (amount != null) {
             Text(
-                formatMoney(amount, item.commodity ?: Money.DEFAULT_COMMODITY),
+                // No color here to carry direction, so the minus has to.
+                formatMoney(amount, item.commodity ?: Money.DEFAULT_COMMODITY, signed = true),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(start = 12.dp),
             )

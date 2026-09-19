@@ -127,12 +127,12 @@ fun EmailDetailScreen(
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
-                                current.subject ?: noSubject,
+                                current.subject?.censored() ?: noSubject,
                                 style = MaterialTheme.typography.titleLarge,
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                stringResource(Res.string.email_detail_from, current.fromEmail),
+                                stringResource(Res.string.email_detail_from, current.fromEmail.censored()),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -209,7 +209,7 @@ fun EmailDetailScreen(
                         if (bodyHtml.isNullOrBlank()) {
                             // Pre-HTML rows, and mails that only carried text.
                             Text(
-                                current.bodyText.orEmpty(),
+                                current.bodyText.orEmpty().censored(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier
                                     .padding(16.dp)
@@ -217,7 +217,7 @@ fun EmailDetailScreen(
                             )
                         } else {
                             HtmlView(
-                                html = rememberEmailDocument(bodyHtml),
+                                html = rememberEmailDocument(bodyHtml.censored()),
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }

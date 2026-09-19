@@ -139,7 +139,7 @@ fun AccountDetailScreen(
             TopAppBar(
                 title = {
                     Text(
-                        node?.account?.name ?: stringResource(Res.string.detail_account_fallback),
+                        node?.account?.name?.censored() ?: stringResource(Res.string.detail_account_fallback),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -187,7 +187,7 @@ fun AccountDetailScreen(
                         node?.let { n ->
                             if (n.path != n.account.name) {
                                 Text(
-                                    n.path,
+                                    n.path.censored(),
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -283,7 +283,7 @@ private fun RegisterRowView(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                entry.payee,
+                entry.payee.censored(),
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

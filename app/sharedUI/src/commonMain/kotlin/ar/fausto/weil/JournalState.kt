@@ -52,8 +52,12 @@ class JournalState(
     var types by mutableStateOf<Map<String, AccountType>>(emptyMap())
         private set
 
-    /** Leaf names, for the compact [TransactionRow] shared with Home. */
+    /** Leaf names, for the compact [MovementRow] shared with Home. */
     var names by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
+
+    /** Leaf icon keys, same row. */
+    var icons by mutableStateOf<Map<String, String?>>(emptyMap())
         private set
 
     /** Set once a real fetch (not a Home seed) has populated [items]. */
@@ -130,7 +134,7 @@ class JournalState(
 
     /** Appends whatever comes after the seeded rows, using them as the starting cursor. */
     private suspend fun extendSeed() {
-        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names }
+        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons }
         val after = cursor
         if (after != null) {
             val page = ledger.page(before = after)
@@ -158,7 +162,7 @@ class JournalState(
         val page = ledger.page()
         cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
         hasMore = page.size == LIST_PAGE_SIZE
-        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names }
+        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons }
         items = page
         loaded = true
         fetchedOwnPage = true

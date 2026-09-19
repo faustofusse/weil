@@ -203,7 +203,7 @@ fun AccountPickerSheet(
                     }
                     items(flat, key = { it.account.id }) { node ->
                         Text(
-                            node.path,
+                            node.path.censored(),
                             style = MaterialTheme.typography.bodyLarge,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -283,7 +283,7 @@ private fun LazyListScope.itemsIndented(
                 ) {
                     Spacer(Modifier.width((depth * 16).dp))
                     Text(
-                        node.account.name,
+                        node.account.name.censored(),
                         style = MaterialTheme.typography.bodyLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

@@ -295,8 +295,8 @@ fun ImportReviewScreen(
         defaults = settings.defaultAccounts()
         tree = accounts.tree()
         val nodes = tree.flatMap { it.selfAndDescendants }
-        paths = nodes.associate { it.account.id to it.path }
-        names = nodes.associate { it.account.id to it.account.name }
+        paths = nodes.associate { it.account.id to it.path.censored() }
+        names = nodes.associate { it.account.id to it.account.name.censored() }
     }
 
     LaunchedEffect(source, attempt) {
@@ -812,10 +812,10 @@ fun ImportReviewScreen(
                     // AI couldn't categorize is usually decided by the date
                     // and the note, so both ride along with payee + amount.
                     listOfNotNull(
-                        target.draft.payee.ifBlank { "—" },
+                        target.draft.payee.censored().ifBlank { "—" },
                         formatMinorUnits(target.draft.splits.getOrNull(target.splitIndex)?.amount?.minorUnits ?: 0L),
                         dayLabel(dayGroup(target.draft.date)),
-                        target.draft.note?.takeIf { it.isNotBlank() },
+                        target.draft.note?.censored()?.takeIf { it.isNotBlank() },
                         stringResource(Res.string.import_chain_progress, step, queue.size),
                     ).joinToString(" · ")
                 } else {
@@ -946,7 +946,7 @@ private fun CandidateCard(
                 Checkbox(checked = draft.include, onCheckedChange = { draft.include = it })
                 Column(Modifier.weight(1f)) {
                     Text(
-                        draft.payee.ifBlank { "—" },
+                        draft.payee.censored().ifBlank { "—" },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = dim),
                         maxLines = 1,
@@ -1142,7 +1142,7 @@ private fun MatchBanner(
     }
     val target = stringResource(
         Res.string.import_match_will_associate,
-        suggestion.fact.payee.ifBlank { "—" },
+        suggestion.fact.payee.censored().ifBlank { "—" },
     )
     // Two reasons fit the row; the third was always being ellipsized away,
     // and the two strongest signals are what the user is judging anyway.

@@ -252,7 +252,7 @@ fun TransactionDetailScreen(
                 if (transaction != null) {
                     // Cabecera: payee + fecha/hora + nota.
                     Text(
-                        transaction.payee,
+                        transaction.payee.censored(),
                         style = MaterialTheme.typography.headlineSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -266,7 +266,7 @@ fun TransactionDetailScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    transaction.note?.takeIf { it.isNotBlank() }?.let {
+                    transaction.note?.censored()?.takeIf { it.isNotBlank() }?.let {
                         Spacer(Modifier.height(4.dp))
                         Text(
                             it,
@@ -281,7 +281,9 @@ fun TransactionDetailScreen(
                     val flow = flowOf(transaction, types)
                     if (flow != null) {
                         Text(
-                            formatMoney(flow.amountMinor, flow.commodity),
+                            // Not a row in a list — the one figure on the
+                            // page keeps its minus alongside the color.
+                            formatMoney(flow.amountMinor, flow.commodity, signed = true),
                             style = MaterialTheme.typography.displaySmall,
                             color = flowColor(flow.direction),
                         )

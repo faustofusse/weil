@@ -139,7 +139,7 @@ fun AccountAddScreen(
             Spacer(Modifier.height(12.dp))
             PickerField(
                 label = stringResource(Res.string.account_choose_parent),
-                value = parent?.let { stringResource(Res.string.account_parent_under, it.path) },
+                value = parent?.let { stringResource(Res.string.account_parent_under, it.path.censored()) },
                 placeholder = stringResource(Res.string.account_parent_none),
                 onClick = { pickingParent = true },
             )
