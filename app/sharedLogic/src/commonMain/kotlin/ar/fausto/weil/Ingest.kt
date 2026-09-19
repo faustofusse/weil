@@ -1,5 +1,7 @@
 package ar.fausto.weil
 
+import kotlinx.serialization.Serializable
+
 /**
  * Turns push notifications and email receipts into [CandidateEvent]s, the same
  * shape statement rows take, so the reconciliation engine matches all three
@@ -20,6 +22,7 @@ package ar.fausto.weil
  */
 
 /** An amount as written by a bank: "$ 5.895,57", "U$S100,00", "$ 19200". */
+@Serializable
 data class ParsedMoney(val amountMinor: Long, val commodity: String)
 
 /**
@@ -32,6 +35,7 @@ data class ParsedMoney(val amountMinor: Long, val commodity: String)
  * account list and can legitimately fail (then the review screen's default
  * account applies).
  */
+@Serializable
 data class IngestedMovement(
     val ruleId: String,
     val source: EventSource,
@@ -376,9 +380,11 @@ fun emailPlainText(raw: String): String {
 }
 
 private val TAG = Regex("<[^>]*>")
+// `[\s\S]` rather than `.` + DOT_MATCHES_ALL: that option is JVM-only and
+// this file also compiles for JS (the dry-run inspector runs the same rules).
 private val BLOCK = Regex(
-    "<(style|script)\\b[^>]*>.*?</\\1\\s*>",
-    setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+    "<(style|script)\\b[^>]*>[\\s\\S]*?</\\1\\s*>",
+    RegexOption.IGNORE_CASE,
 )
 private val WHITESPACE = Regex("[\\s\\u00a0]+")
 private val ENTITIES = mapOf(
@@ -473,4 +479,62 @@ fun resolveAccountHint(
     val best = scored.firstOrNull() ?: return null
     val runnerUp = scored.getOrNull(1)?.second ?: 0
     return if (best.second > runnerUp) best.first else null
+}
+
+/** Colon-joined path of every account, by id ("Activos:Banco:Santander"). */
+fun accountPaths(accounts: List<Account>): Map<String, String> {
+    val byId = accounts.associateBy { it.id }
+    fun pathOf(id: String, seen: Set<String> = emptySet()): String {
+        val account = byId[id] ?: return ""
+        val parent = account.parentId
+        // A cycle can only come from corrupt data, but it must not hang.
+        return if (parent == null || parent in seen) account.name
+        else "${pathOf(parent, seen + id)}:${account.name}"
+    }
+    return accounts.associate { it.id to pathOf(it.id) }
+}
+
+/**
+ * Recognized movements → review rows: resolves each one's account hint against
+ * the tree and drops the refs already linked to a transaction.
+ *
+ * Pure so both `IngestRepository` (which fetches the rows from the database)
+ * and the dry-run inspector in `app/dryrun` (which fetches them over HTTP and
+ * calls this through the Kotlin/JS bridge) produce the same inbox.
+ *
+ * [movements] pairs each movement with the headline of the message it came
+ * from, which stands in as the payee when the bank names no merchant.
+ */
+fun buildInbox(
+    movements: List<Pair<IngestedMovement, String>>,
+    accounts: List<Account>,
+    known: Set<String>,
+): List<InboxCandidate> {
+    val paths = accountPaths(accounts)
+    return movements
+        .filterNot { it.first.sourceRef in known }
+        .sortedByDescending { it.first.date }
+        .map { (movement, title) ->
+            val accountId = resolveAccountHint(movement.accountHints, movement.commodity, accounts)
+            InboxCandidate(
+                candidate = ImportCandidate(
+                    date = movement.date,
+                    // "Tu pago fue aprobado" names no merchant, so the
+                    // message's own headline stands in: it is the bank's
+                    // wording, not a string this layer invented, and a
+                    // blank payee would leave the row invalid to save.
+                    payee = movement.payee.ifBlank { title },
+                    note = null,
+                    commodity = movement.commodity,
+                    direction = movement.direction,
+                    accountId = accountId,
+                    accountPath = accountId?.let { paths[it] },
+                    splits = listOf(ImportSplit(movement.amountMinor, null, null)),
+                ),
+                kind = movement.source,
+                ref = movement.sourceRef,
+                ruleId = movement.ruleId,
+                title = title,
+            )
+        }
 }

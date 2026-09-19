@@ -1,9 +1,12 @@
 package ar.fausto.weil
 
+import kotlinx.serialization.Serializable
+
 /**
  * One recognized movement, ready for the review screen: the [candidate] in the
  * same shape the document importer produces, plus where it came from.
  */
+@Serializable
 data class InboxCandidate(
     val candidate: ImportCandidate,
     val kind: EventSource,
@@ -39,9 +42,7 @@ class IngestRepository(
      */
     suspend fun inbox(days: Int = 30, maxRows: Int = 400): List<InboxCandidate> {
         val since = epochMillis() - days.toLong() * 86_400_000L
-        val tree = accounts.tree()
-        val flat = tree.flatMap { it.selfAndDescendants }.map { it.account }
-        val paths = tree.flatMap { it.selfAndDescendants }.associate { it.account.id to it.path }
+        val flat = accounts.tree().flatMap { it.selfAndDescendants }.map { it.account }
 
         val movements = mutableListOf<Pair<IngestedMovement, String>>()
         collectNotifications(since, maxRows, movements)
@@ -50,32 +51,7 @@ class IngestRepository(
         // A message stays in the inbox until something links it, so the same
         // alert is not offered twice after the user acts on it.
         val known = ledger.knownSourceRefs(movements.map { it.first.sourceRef })
-        return movements
-            .filterNot { it.first.sourceRef in known }
-            .sortedByDescending { it.first.date }
-            .map { (movement, title) ->
-                val accountId = resolveAccountHint(movement.accountHints, movement.commodity, flat)
-                InboxCandidate(
-                    candidate = ImportCandidate(
-                        date = movement.date,
-                        // "Tu pago fue aprobado" names no merchant, so the
-                        // message's own headline stands in: it is the bank's
-                        // wording, not a string this layer invented, and a
-                        // blank payee would leave the row invalid to save.
-                        payee = movement.payee.ifBlank { title },
-                        note = null,
-                        commodity = movement.commodity,
-                        direction = movement.direction,
-                        accountId = accountId,
-                        accountPath = accountId?.let { paths[it] },
-                        splits = listOf(ImportSplit(movement.amountMinor, null, null)),
-                    ),
-                    kind = movement.source,
-                    ref = movement.sourceRef,
-                    ruleId = movement.ruleId,
-                    title = title,
-                )
-            }
+        return buildInbox(movements, flat, known)
     }
 
     private suspend fun collectNotifications(

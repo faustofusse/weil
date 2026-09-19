@@ -2,8 +2,10 @@ package ar.fausto.weil
 
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlinx.serialization.Serializable
 
 /** The five accounting categories; type is set at creation and inherited by children. */
+@Serializable
 enum class AccountType(val db: String) {
     Asset("asset"),
     Liability("liability"),
@@ -17,6 +19,7 @@ enum class AccountType(val db: String) {
     }
 }
 
+@Serializable
 data class Account(
     val id: String,
     val name: String,

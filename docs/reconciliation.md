@@ -270,3 +270,11 @@ screen's default account rather than guessing.
   single-amount candidate shape cannot express.
 - **No learned aliases yet.** "Google  youtube premiu" and a statement's
   "GOOGLE *YOUTUBE" only meet through the payee-affinity heuristic.
+
+### Seeing it run
+
+`app/dryrun` (https://dry.finance.fausto.ar) replays all of this in a browser:
+the same prompt and context the worker sends to Gemini, then `parseNotification`
+/ `parseEmail` / `buildInbox` / `matchAll` over the real rows — the actual
+Kotlin, compiled to JS from `:app:sharedLogic` via `DryRunBridge.kt`, not a
+port. Read-only by construction. See `app/dryrun/README.md`.

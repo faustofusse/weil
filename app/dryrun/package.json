@@ -1,0 +1,36 @@
+{
+	"name": "finance-dryrun",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"kotlin": "(cd ../.. && ./gradlew :app:sharedLogic:jsBrowserProductionLibraryDistribution)",
+		"dev": "npm run kotlin && vite dev",
+		"build": "npm run kotlin && vite build",
+		"preview": "vite preview",
+		"deploy": "npm run build && wrangler deploy",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-cloudflare": "^7.2.9",
+		"@sveltejs/kit": "^2.63.0",
+		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@tailwindcss/vite": "^4.1.14",
+		"@types/node": "^26",
+		"svelte": "^5.56.1",
+		"svelte-check": "^4.6.0",
+		"tailwindcss": "^4.1.14",
+		"typescript": "^5.9.2",
+		"vite": "^8.0.16",
+		"wrangler": "^4.129.0"
+	},
+	"dependencies": {
+		"@libsql/client": "^0.15.15",
+		"@simplewebauthn/browser": "^14.0.0"
+	},
+	"allowScripts": {
+		"esbuild@0.28.1": true,
+		"workerd@1.20260918.1": true
+	}
+}

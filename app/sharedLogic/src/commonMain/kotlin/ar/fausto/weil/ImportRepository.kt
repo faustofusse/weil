@@ -77,6 +77,7 @@ val CSV_MIME_ALIASES = setOf(
  * user owns (Transfer — paying a credit card from the bank account, buying
  * dollars, topping up a wallet: nothing is spent or earned).
  */
+@Serializable
 enum class ImportDirection {
     Expense,
     Income,
@@ -97,6 +98,7 @@ enum class ImportDirection {
  * itself breaks the payment into separately categorizable parts (a
  * supermarket receipt's line items, an invoice's fee-plus-tax).
  */
+@Serializable
 data class ImportSplit(
     val amountMinor: Long,
     /**
@@ -113,6 +115,7 @@ data class ImportSplit(
  * movement of the user's own money (the [total]), sliced into one or more
  * [splits] by category.
  */
+@Serializable
 data class ImportCandidate(
     val date: Long,
     /**

@@ -102,9 +102,9 @@ export async function authenticate(request: Request, env: ImportEnv): Promise<Au
   return { id: row.user_id, turso_db_name: row.turso_db_name, turso_db_hostname: row.turso_db_hostname };
 }
 
-type PostableType = 'expense' | 'income' | 'asset' | 'liability';
+export type PostableType = 'expense' | 'income' | 'asset' | 'liability';
 
-interface PostableAccount {
+export interface PostableAccount {
   id: string;
   name: string;
   path: string;
@@ -157,7 +157,7 @@ export async function loadAccounts(
  * separate "receipt mode" — the split list is the only shape, and its length
  * happens to be 1 most of the time. Amounts are decimal strings, parsed here.
  */
-const RESPONSE_SCHEMA = {
+export const RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
     transactions: {
@@ -492,7 +492,7 @@ interface GeminiSplit {
   category?: string | null;
 }
 
-interface GeminiCandidateTx {
+export interface GeminiCandidateTx {
   date: string;
   payee: string;
   note?: string | null;
@@ -511,22 +511,27 @@ interface GeminiCandidateTx {
 export async function geminiJson<T>(
   env: ImportEnv,
   parts: Array<Record<string, unknown>>,
-  responseSchema: unknown
+  responseSchema: unknown,
+  debug?: GeminiDebug
 ): Promise<T> {
-  const body = JSON.stringify({
+  const started = Date.now();
+  const request = {
     contents: [{ parts }],
     generationConfig: {
       responseMimeType: 'application/json',
       responseSchema,
       temperature: 0.1,
     },
-  });
+  };
+  if (debug) debug.request = request;
+  const body = JSON.stringify(request);
   const headers = { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' };
 
   // Through the account's AI Gateway when one exists (logs, caching, limits);
   // its own errors (missing/unauthorized gateway) fall back to Google directly
   // instead of failing an import the user already paid an upload for.
   let viaGateway = true;
+  if (debug) debug.viaGateway = true;
   const send = async (model: string): Promise<Response> => {
     const path = `v1beta/models/${model}:generateContent`;
     const direct = () =>
@@ -543,10 +548,12 @@ export async function geminiJson<T>(
     if (res.status === 524) {
       console.log('gemini: gateway timed out (524), retrying direct');
       viaGateway = false;
+      if (debug) debug.viaGateway = false;
       return direct();
     }
     if (res.ok || !(await res.clone().text()).includes('AiGatewayError')) return res;
     viaGateway = false;
+    if (debug) debug.viaGateway = false;
     return direct();
   };
 
@@ -556,6 +563,7 @@ export async function geminiJson<T>(
   const models = env.GEMINI_MODELS.split(',').map((m) => m.trim()).filter(Boolean);
   let res: Response | null = null;
   for (const model of models) {
+    if (debug) debug.model = model;
     res = await send(model);
     if (res.status !== 503 && res.status !== 429) break;
     console.log(`gemini: ${model} unavailable (${res.status}), trying next model`);
@@ -565,25 +573,76 @@ export async function geminiJson<T>(
 
   const data = (await res.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    usageMetadata?: Record<string, unknown>;
   };
   const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
+  if (debug) {
+    debug.latencyMs = Date.now() - started;
+    debug.usage = data.usageMetadata;
+    debug.rawText = text;
+  }
   if (!text) throw new Error('gemini: empty response');
   return JSON.parse(text) as T;
+}
+
+/**
+ * Optional out-param recording what actually went to (and came back from) the
+ * model. Production ignores it; the dry-run inspector in `app/dryrun` passes
+ * one so it can show the request, the model that answered, the token usage
+ * and the raw JSON — none of which is otherwise observable from outside.
+ */
+export interface GeminiDebug {
+  request?: unknown;
+  model?: string;
+  viaGateway?: boolean;
+  latencyMs?: number;
+  usage?: Record<string, unknown>;
+  rawText?: string;
+}
+
+/**
+ * The file as the model sees it: a text part for anything textual (no base64
+ * inflation, and the model reads a table), inline base64 otherwise.
+ */
+export function buildParts(document: { mimeType: string; bytes: Uint8Array }): Array<Record<string, unknown>> {
+  return [
+    isTextual(document.mimeType)
+      ? { text: `--- FILE CONTENTS ---\n${decodeText(document.bytes).slice(0, MAX_TEXT_CHARS)}` }
+      : { inline_data: { mime_type: document.mimeType, data: base64Of(document.bytes) } },
+  ];
+}
+
+/** Lite model first for textual input: a CSV is pure output tokens and a
+ *  year-long export runs for minutes on the heavy models. */
+export function modelOrderFor(env: ImportEnv, mimeType: string): ImportEnv {
+  if (!isTextual(mimeType)) return env;
+  const models = env.GEMINI_MODELS.split(',').map((m) => m.trim()).filter(Boolean);
+  return {
+    ...env,
+    GEMINI_MODELS: [
+      ...models.filter((m) => m.includes('lite')),
+      ...models.filter((m) => !m.includes('lite')),
+    ].join(','),
+  };
+}
+
+/** `prompt()`'s two dialects, keyed off the document's content type. */
+export function promptKind(mimeType: string): 'document' | 'table' {
+  return isTextual(mimeType) ? 'table' : 'document';
 }
 
 /** Exported for the `scripts/try-csv.ts` harness. */
 export async function callGemini(
   env: ImportEnv,
   document: { mimeType: string; bytes: Uint8Array },
-  promptText: string
+  promptText: string,
+  debug?: GeminiDebug
 ): Promise<GeminiCandidateTx[]> {
-  const part = isTextual(document.mimeType)
-    ? { text: `--- FILE CONTENTS ---\n${decodeText(document.bytes).slice(0, MAX_TEXT_CHARS)}` }
-    : { inline_data: { mime_type: document.mimeType, data: base64Of(document.bytes) } };
   const parsed = await geminiJson<{ transactions?: GeminiCandidateTx[] }>(
     env,
-    [part, { text: promptText }],
-    RESPONSE_SCHEMA
+    [...buildParts(document), { text: promptText }],
+    RESPONSE_SCHEMA,
+    debug
   );
   return parsed.transactions ?? [];
 }
@@ -671,29 +730,23 @@ export async function handleAnalyze(
     return [] as PayeeMemory[];
   });
 
-  // A CSV is pure output tokens: no page to read, but one JSON object per row,
-  // and a year-long export runs for minutes on the heavy models. The lite one
-  // goes first here for the same reason the chat path does it, with the others
-  // behind it as fallbacks.
-  const models = env.GEMINI_MODELS.split(',').map((m) => m.trim()).filter(Boolean);
-  const callEnv: ImportEnv = isTextual(mimeType)
-    ? {
-        ...env,
-        GEMINI_MODELS: [
-          ...models.filter((m) => m.includes('lite')),
-          ...models.filter((m) => !m.includes('lite')),
-        ].join(','),
-      }
-    : env;
-
   const raw = await callGemini(
-    callEnv,
+    modelOrderFor(env, mimeType),
     { mimeType, bytes },
-    prompt(accounts, history, isTextual(mimeType) ? 'table' : 'document')
+    prompt(accounts, history, promptKind(mimeType))
   );
 
+  return json({ docId, transactions: normalizeCandidates(raw, accounts) });
+}
+
+/**
+ * The model's answer turned into the wire shape the app consumes: paths
+ * resolved to account ids (and rejected when the type doesn't fit the
+ * direction), amounts in minor units, dates in epoch ms.
+ */
+export function normalizeCandidates(raw: GeminiCandidateTx[], accounts: PostableAccount[]) {
   const byPath = new Map(accounts.map((c) => [c.path.toLowerCase(), c]));
-  const transactions = raw.flatMap((t) => {
+  return raw.flatMap((t) => {
     const date = toEpochMs(t.date);
     if (date == null || !t.payee?.trim()) return [];
     // A transfer's "category" is the other side of the movement: one of the
@@ -739,8 +792,6 @@ export async function handleAnalyze(
       },
     ];
   });
-
-  return json({ docId, transactions });
 }
 
 /** GET /import/document/{docId} — streams the stored original back. */

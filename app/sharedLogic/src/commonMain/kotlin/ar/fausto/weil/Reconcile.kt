@@ -1,5 +1,7 @@
 package ar.fausto.weil
 
+import kotlinx.serialization.Serializable
+
 /**
  * Reconciliation engine: decides whether an incoming event (a statement row,
  * a push notification, an email receipt) is already in the ledger.
@@ -12,6 +14,7 @@ package ar.fausto.weil
  */
 
 /** Which door an event came through. [db] is what lands in `transaction_sources.kind`. */
+@Serializable
 enum class EventSource(val db: String) {
     Document("document"),
     Notification("notification"),
@@ -34,6 +37,7 @@ enum class EventSource(val db: String) {
  * id, email id); [eventKey] is the source-independent fingerprint used to
  * recognize the same movement arriving twice.
  */
+@Serializable
 data class TransactionSource(
     val kind: EventSource,
     val ref: String,
@@ -48,6 +52,7 @@ data class TransactionSource(
  * (same account, same sign) and a transfer mirror (other account, opposite
  * sign) fall out of one comparison.
  */
+@Serializable
 data class CandidateEvent(
     val source: EventSource,
     val sourceRef: String?,
@@ -75,6 +80,7 @@ data class CandidateEvent(
 }
 
 /** One movement of an existing transaction, with the type of its account. */
+@Serializable
 data class FactLeg(
     val postingId: String,
     val accountId: String,
@@ -94,6 +100,7 @@ data class FactLeg(
 }
 
 /** An existing transaction as the matcher sees it: legs plus known origins. */
+@Serializable
 data class LedgerFact(
     val transactionId: String,
     val date: Long,
@@ -104,6 +111,7 @@ data class LedgerFact(
 )
 
 /** Why the matcher thinks two movements are the same; the UI translates these. */
+@Serializable
 enum class MatchReason {
     AlreadyImported,
     SameAmount,
@@ -117,6 +125,7 @@ enum class MatchReason {
 }
 
 /** What kind of coincidence a match is — it decides what "associate" does. */
+@Serializable
 enum class MatchRelation {
     /** The transaction already carries this event's fingerprint. Nothing to do. */
     AlreadyImported,
@@ -158,6 +167,7 @@ sealed interface MatchOutcome {
  * because arrival order is inverted per source: a statement corrects an
  * earlier notification, but a notification must not overwrite a statement.
  */
+@Serializable
 data class MatchPolicy(
     val dateWindowDays: Int = 3,
     /** Absolute slack, in minor units, before two amounts stop matching. */
@@ -174,6 +184,7 @@ data class MatchPolicy(
 }
 
 /** Which side wins when the two records of one event disagree. */
+@Serializable
 enum class MatchAuthority {
     /** The arriving event is the better record (a statement over a notification). */
     Incoming,
