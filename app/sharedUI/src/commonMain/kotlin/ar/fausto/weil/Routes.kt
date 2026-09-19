@@ -25,6 +25,18 @@ enum class TxnKind { Expense, Income, Transfer }
 /** [TxnKind]-driven simplified transaction entry screen. */
 data class TransactionQuickRoute(val kind: TxnKind)
 
+/**
+ * Quick entry pre-filled from a scanned merchant QR. [raw] is the payload
+ * byte-for-byte: after recording, it is handed to the wallet app untouched.
+ * The prefills are null when the QR wasn't EMVCo (or was static) — the
+ * handoff works either way, so an unreadable payload still reaches here.
+ */
+data class QrPayRoute(
+    val raw: String,
+    val merchant: String? = null,
+    val amountMinor: Long? = null,
+)
+
 /** [accountId] pre-seeds the first posting when adding from an account screen. */
 data class TransactionNewRoute(val accountId: String? = null)
 

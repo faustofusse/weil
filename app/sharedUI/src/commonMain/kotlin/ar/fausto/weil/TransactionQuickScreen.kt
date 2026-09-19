@@ -88,6 +88,10 @@ fun TransactionQuickScreen(
     kind: TxnKind,
     onSaved: () -> Unit,
     onNavigateBack: () -> Unit,
+    /** Seeds the amount field (QR pay); the user can still edit it. */
+    prefillAmount: String? = null,
+    /** Seeds the description, which is what `ledger.add` stores as payee. */
+    prefillPayee: String? = null,
 ) {
     var currentKind by remember { mutableStateOf(kind) }
     val kindLabel = kindTitle(currentKind)
@@ -106,8 +110,8 @@ fun TransactionQuickScreen(
     val chooseLabel = stringResource(Res.string.quick_choose)
     val newCategoryLabel = stringResource(Res.string.picker_create)
 
-    var amountText by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
+    var amountText by remember { mutableStateOf(prefillAmount.orEmpty()) }
+    var description by remember { mutableStateOf(prefillPayee.orEmpty()) }
     var fromId by remember { mutableStateOf<String?>(null) }
     var toId by remember { mutableStateOf<String?>(null) }
     var tree by remember { mutableStateOf<List<AccountNode>>(emptyList()) }

@@ -62,6 +62,7 @@ import weil.app.sharedui.generated.resources.home_accounts_title
 import weil.app.sharedui.generated.resources.home_add_first_account
 import weil.app.sharedui.generated.resources.home_no_accounts_yet
 import weil.app.sharedui.generated.resources.home_no_recent
+import weil.app.sharedui.generated.resources.home_pay_qr
 import weil.app.sharedui.generated.resources.home_recent_title
 import weil.app.sharedui.generated.resources.home_see_all
 import weil.app.sharedui.generated.resources.import_menu
@@ -88,6 +89,9 @@ fun HomeScreen(
     documents: () -> DocumentPicker?,
     onImportDocument: (PickedDocument) -> Unit,
     onNavigateToInbox: () -> Unit,
+    /** Resolved lazily (needs a foreground activity); null hides QR pay. */
+    scanner: () -> QrScanner? = { null },
+    onPayWithQr: (QrPayment) -> Unit = {},
     onNavigateToProfile: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToEmails: () -> Unit,
@@ -103,6 +107,7 @@ fun HomeScreen(
     }
     val scope = rememberCoroutineScope()
     val noPickerMessage = stringResource(Res.string.import_no_picker)
+    val qrScanner = scanner()
     val unsupportedMessage = stringResource(Res.string.import_unsupported)
 
     // Manual counterpart of the Android share target: pick a receipt/statement
@@ -126,6 +131,22 @@ fun HomeScreen(
                 return@launch
             }
             onImportDocument(document)
+        }
+    }
+
+    // Scan a merchant QR, record the expense, hand the payload to the wallet.
+    // A payload we can't parse still goes through with empty prefills: the
+    // handoff doesn't depend on *us* understanding the QR.
+    fun payWithQr(qr: QrScanner) {
+        scope.launch {
+            val raw = try {
+                qr.scan()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Feedback.show(e.message ?: e.toString())
+                null
+            } ?: return@launch
+            onPayWithQr(parseEmvcoQr(raw) ?: QrPayment(raw, null, null, null, null))
         }
     }
 
@@ -161,6 +182,12 @@ fun HomeScreen(
                             OverflowItem(Icons.Filled.DocumentScanner, stringResource(Res.string.import_menu)) {
                                 menuOpen = false
                                 importDocument()
+                            }
+                            if (qrScanner != null) {
+                                OverflowItem(Icons.Filled.QrScan, stringResource(Res.string.home_pay_qr)) {
+                                    menuOpen = false
+                                    payWithQr(qrScanner)
+                                }
                             }
                             OverflowItem(Icons.Filled.Bolt, stringResource(Res.string.inbox_menu)) {
                                 menuOpen = false

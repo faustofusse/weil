@@ -252,6 +252,9 @@
         <item>dic</item>
     </string-array>
 
+    <!-- Pago con QR (handoff a la billetera) -->
+    <string name="home_pay_qr">Pagar con QR</string>
+
     <!-- Movimientos detectados en notificaciones y mails -->
     <string name="inbox_menu">Detectar movimientos</string>
     <string name="inbox_title">Detectados</string>

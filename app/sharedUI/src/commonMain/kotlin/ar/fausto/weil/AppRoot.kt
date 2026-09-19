@@ -192,6 +192,8 @@ fun RootScreen(
                                         documents = { graph.documents },
                                         onImportDocument = { navigate(ImportReviewRoute(it)) },
                                         onNavigateToInbox = { navigate(InboxReviewRoute) },
+                                        scanner = { graph.scanner },
+                                        onPayWithQr = { navigate(QrPayRoute(it.raw, it.merchant, it.amountMinor)) },
                                         onNavigateToTree = { navigate(AccountsTreeRoute) },
                                         onNewTransaction = { kind -> navigate(TransactionQuickRoute(kind)) },
                                         onNavigateToProfile = { navigate(ProfileRoute) },
@@ -226,6 +228,25 @@ fun RootScreen(
                                         settings = graph.settings,
                                         kind = route.kind,
                                         onSaved = { pop() },
+                                        onNavigateBack = { pop() },
+                                    )
+                                }
+                                entry<QrPayRoute> { route ->
+                                    TransactionQuickScreen(
+                                        ledger = graph.ledger,
+                                        accounts = graph.accounts,
+                                        settings = graph.settings,
+                                        kind = TxnKind.Expense,
+                                        prefillAmount = route.amountMinor?.let { formatMinorUnits(it) },
+                                        prefillPayee = route.merchant,
+                                        // Record first, then hand off: there is no
+                                        // result callback from the wallet. An
+                                        // abandoned payment leaves an ordinary
+                                        // transaction, one tap to delete.
+                                        onSaved = {
+                                            graph.wallet?.payWithMercadoPago(route.raw)
+                                            pop()
+                                        },
                                         onNavigateBack = { pop() },
                                     )
                                 }

@@ -102,6 +102,9 @@ class WeilApplication : Application() {
                 documentPicker = {
                     AndroidDocumentPicker(requireNotNull(currentActivity) { "no foreground activity" })
                 },
+                // Wallet handoff is a plain intent from the app context, so
+                // there's no foreground-activity dance here.
+                wallet = { AndroidWalletLauncher(this) },
                 dbContext = dbDispatcher,
                 dbReadContext = dbReadDispatcher,
                 dbFactory = { userId, url, token ->

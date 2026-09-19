@@ -20,6 +20,7 @@ class AppGraph(
     passkeys: () -> PasskeyCeremony,
     qrScanner: () -> QrScanner? = { null },
     documentPicker: () -> DocumentPicker? = { null },
+    wallet: () -> WalletLauncher? = { null },
     // Swapped by the desktop screenshot harness for a seeded fake; the app
     // always uses the worker-backed [ImportRepository].
     importAnalyzer: DocumentAnalyzer? = null,
@@ -32,6 +33,9 @@ class AppGraph(
 ) {
     private val qrScannerProvider = qrScanner
     private val documentPickerProvider = documentPicker
+
+    /** Hands a scanned QR to a wallet app; null where no wallet is wired. */
+    val wallet: WalletLauncher? = wallet()
     private val authApi = AuthApi(AuthConfig.BASE_URL, AuthConfig.SLUG, store)
     val auth = AuthRepository(authApi, store, passkeys)
     val chain = ChainRepository(authApi, auth)
