@@ -4,6 +4,7 @@ package ar.fausto.weil
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,6 +13,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +58,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
@@ -337,7 +340,7 @@ private fun TransactionSheetForm(
             // is exactly one tap away in the full editor.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable(onClick = onMore).padding(start = 8.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                modifier = Modifier.fadeOnPress(onMore).padding(start = 8.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
             ) {
                 Text(
                     stringResource(Res.string.sheet_more),
@@ -373,7 +376,7 @@ private fun TransactionSheetForm(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .clickable { picking = SheetSide.From }
+                        .fadeOnPress { picking = SheetSide.From }
                         .padding(start = 12.dp, end = 4.dp)
                         .weight(1f),
                 ) {
@@ -449,7 +452,7 @@ private fun TransactionSheetForm(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .clickable { picking = SheetSide.To }
+                        .fadeOnPress { picking = SheetSide.To }
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 18.dp),
                 ) {
@@ -682,6 +685,31 @@ internal fun SheetRow(content: @Composable androidx.compose.foundation.layout.Ro
             content = content,
         )
     }
+}
+
+/**
+ * Tap feedback for the halves of a slab row: a fade of the row's own content
+ * instead of a ripple.
+ *
+ * A ripple is bounded by the clickable's layout, and these clickables are a
+ * text and an icon inside a 64.dp slab — the splash came out as a thin
+ * rectangle hugging the glyphs, which reads as a rendering fault rather than
+ * as a press. Fading what was touched says the same thing and respects the
+ * shape the slab actually has.
+ */
+@Composable
+internal fun Modifier.fadeOnPress(onClick: () -> Unit): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val alpha by animateFloatAsState(
+        targetValue = if (pressed) 0.45f else 1f,
+        // Quick in, slower out: the press should register instantly, the
+        // release should not snap.
+        animationSpec = tween(if (pressed) 90 else 180),
+    )
+    return this
+        .graphicsLayer { this.alpha = alpha }
+        .clickable(interactionSource = interaction, indication = null, onClick = onClick)
 }
 
 @Composable

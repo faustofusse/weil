@@ -2,7 +2,6 @@
 
 package ar.fausto.weil
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -360,7 +359,7 @@ fun TransactionEditScreen(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .clickable { drafts = drafts + DraftPosting(null, "") }
+                        .fadeOnPress { drafts = drafts + DraftPosting(null, "") }
                         .padding(horizontal = 6.dp, vertical = 4.dp),
                 ) {
                     Text(
@@ -550,7 +549,7 @@ private fun SlabValue(
         Column(
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
-                .clickable(onClick = onClick)
+                .fadeOnPress(onClick)
                 .heightIn(min = 64.dp)
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
@@ -602,7 +601,7 @@ private fun PostingSlab(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .clickable(onClick = onAccount)
+                    .fadeOnPress(onAccount)
                     .padding(start = 12.dp, end = 4.dp)
                     .weight(1f),
             ) {
@@ -684,7 +683,7 @@ private fun PostingSlab(
                         alpha = if (selected) 1f else 0.5f,
                     ),
                     modifier = Modifier
-                        .clickable { onCommodity(chip) }
+                        .fadeOnPress { onCommodity(chip) }
                         .padding(horizontal = 6.dp, vertical = 4.dp),
                 )
             }
