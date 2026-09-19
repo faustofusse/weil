@@ -168,8 +168,6 @@ fun HomeDashboardScreen(
                 },
                 actions = {
                     HomeOverflow(
-                        onNavigateToTree = onNavigateToTree,
-                        onNavigateToJournal = onNavigateToJournal,
                         onNavigateToNotifications = onNavigateToNotifications,
                         onNavigateToEmails = onNavigateToEmails,
                         onImport = { importDocument() },
@@ -292,8 +290,6 @@ fun HomeDashboardScreen(
 /** The overflow that holds every secondary destination. */
 @Composable
 private fun HomeOverflow(
-    onNavigateToTree: () -> Unit,
-    onNavigateToJournal: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToEmails: () -> Unit,
     onImport: () -> Unit,
@@ -307,14 +303,9 @@ private fun HomeOverflow(
                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.more_options))
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                MenuRow(Icons.Filled.AccountTree, stringResource(Res.string.open_account_tree)) {
-                    menuOpen = false
-                    onNavigateToTree()
-                }
-                MenuRow(Icons.Filled.MenuBook, stringResource(Res.string.open_journal)) {
-                    menuOpen = false
-                    onNavigateToJournal()
-                }
+                // Tree and Journal dropped from here: both are one tap away
+                // already ("Ver todo" on Cuentas / Movimientos, and the
+                // Movimientos tab), so they don't need a second door.
                 MenuRow(Icons.Filled.Notifications, stringResource(Res.string.open_notifications)) {
                     menuOpen = false
                     onNavigateToNotifications()
