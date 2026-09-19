@@ -104,6 +104,13 @@
     <string name="editor_transaction_deleted">Transacción eliminada</string>
     <string name="editor_deleted_payee_fallback">(eliminada)</string>
     <string name="editor_payee_label">Detalle / beneficiario</string>
+    <string name="editor_description">Descripción</string>
+    <string name="editor_detail_optional">Detalle (opcional)</string>
+    <string name="editor_postings_title">Movimientos</string>
+    <string name="editor_add_posting">Agregar</string>
+    <string name="editor_date_short">Fecha</string>
+    <string name="editor_time_short">Hora</string>
+    <string name="editor_discard">Descartar</string>
     <string name="editor_date_label">Fecha (AAAA-MM-DD)</string>
     <string name="editor_date_pick">Elegir</string>
     <string name="editor_time_label">Hora (HH:MM)</string>
@@ -115,6 +122,7 @@
     <string name="editor_record">Registrar</string>
     <string name="editor_invalid_date">Fecha inválida: %1$s</string>
     <string name="editor_amount_auto">Monto (auto)</string>
+    <string name="editor_amount_auto_short">auto</string>
     <string name="editor_amount">Monto</string>
     <string name="editor_commodity_label">Moneda</string>
     <string name="editor_choose_account">Elegir cuenta %1$d</string>

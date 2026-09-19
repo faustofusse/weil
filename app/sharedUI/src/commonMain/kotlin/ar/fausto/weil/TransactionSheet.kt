@@ -644,7 +644,8 @@ private fun kindIcon(kind: TxnKind) = when (kind) {
 private val SegmentCorner = 24.dp
 
 /** Grouped digits with the peso sign glued to their left. */
-private val AmountWithSymbol = VisualTransformation { text ->
+/** Shared with the full editor, which draws the same money in the same slab. */
+internal val AmountWithSymbol = VisualTransformation { text ->
     // Empty stays empty: a lone "$" counts as content and would suppress the
     // placeholder, leaving the row showing a symbol and nothing else.
     if (text.text.isEmpty()) {
@@ -663,9 +664,9 @@ private val AmountWithSymbol = VisualTransformation { text ->
     }
 }
 
-/** The translucent slab every field of the panel sits on. */
+/** The translucent slab every field of the panel (and of the editor) sits on. */
 @Composable
-private fun SheetRow(content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+internal fun SheetRow(content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
     Surface(
         // A tint of the dark ink over the mint, not a solid grey: the field
         // has to belong to the panel it floats on, and an opaque colour would
