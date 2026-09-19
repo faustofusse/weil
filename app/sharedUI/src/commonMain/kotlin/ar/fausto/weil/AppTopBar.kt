@@ -7,11 +7,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import org.jetbrains.compose.resources.stringResource
+import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.action_back
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,6 +36,12 @@ import androidx.compose.ui.unit.dp
 fun AppTopBar(
     title: String,
     modifier: Modifier = Modifier,
+    /**
+     * Set on a tab root pushed to (the editor opened from "Ver más", for
+     * instance): a back arrow instead of the tab's usual bare title, same as
+     * every pushed screen's stock bar wears one.
+     */
+    onNavigateBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     // The app draws edge to edge, so the header owns the status-bar inset:
@@ -45,8 +56,13 @@ fun AppTopBar(
                 // end is tighter than start: the trailing slot holds icon
                 // buttons, whose own 12.dp of internal padding makes up the
                 // rest.
-                .padding(start = 20.dp, end = 8.dp),
+                .padding(start = if (onNavigateBack != null) 4.dp else 20.dp, end = 8.dp),
         ) {
+            if (onNavigateBack != null) {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
+                }
+            }
             Text(
                 title,
                 style = MaterialTheme.typography.headlineMedium,

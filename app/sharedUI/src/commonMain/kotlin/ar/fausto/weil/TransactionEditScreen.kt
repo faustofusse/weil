@@ -26,8 +26,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,7 +72,6 @@ import weil.app.sharedui.generated.resources.editor_date_short
 import weil.app.sharedui.generated.resources.editor_deleted_payee_fallback
 import weil.app.sharedui.generated.resources.editor_description
 import weil.app.sharedui.generated.resources.editor_detail_optional
-import weil.app.sharedui.generated.resources.editor_discard
 import weil.app.sharedui.generated.resources.editor_edit_title
 import weil.app.sharedui.generated.resources.editor_invalid_date
 import weil.app.sharedui.generated.resources.editor_invalid_time
@@ -86,7 +83,6 @@ import weil.app.sharedui.generated.resources.editor_remove_posting
 import weil.app.sharedui.generated.resources.editor_time_none
 import weil.app.sharedui.generated.resources.editor_time_short
 import weil.app.sharedui.generated.resources.editor_transaction_deleted
-import weil.app.sharedui.generated.resources.more_options
 
 /**
  * Create/edit a balanced transaction. Ledger-style: one posting may leave its
@@ -224,33 +220,15 @@ fun TransactionEditScreen(
                 title = stringResource(
                     if (editId == null) Res.string.editor_new_title else Res.string.editor_edit_title,
                 ),
+                onNavigateBack = onNavigateBack,
                 actions = {
-                    var menuOpen by remember { mutableStateOf(false) }
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(
-                            Icons.Filled.MoreVert,
-                            contentDescription = stringResource(Res.string.more_options),
-                        )
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        if (editId != null) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(Res.string.action_delete)) },
-                                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
-                                onClick = {
-                                    menuOpen = false
-                                    deleteTransaction(editId)
-                                },
+                    if (editId != null) {
+                        IconButton(onClick = { deleteTransaction(editId) }) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = stringResource(Res.string.action_delete),
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(Res.string.editor_discard)) },
-                            leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null) },
-                            onClick = {
-                                menuOpen = false
-                                onNavigateBack()
-                            },
-                        )
                     }
                 },
             )
