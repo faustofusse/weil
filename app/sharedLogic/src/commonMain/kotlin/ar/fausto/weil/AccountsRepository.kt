@@ -15,7 +15,8 @@ class AccountsRepository(private val db: DatabaseProvider) {
     /** One flat query turned into a node tree with colon-joined paths. */
     suspend fun tree(): List<AccountNode> = db.useForRead { d ->
         val all = d.query(
-            "select id, name, parent_id, type, in_net_worth, icon from accounts order by lower(name), id",
+            "select id, name, parent_id, type, in_net_worth, icon, commodity, color " +
+                "from accounts order by lower(name), id",
             null,
         ) { rows ->
             rows.mapNotNull { row ->
@@ -30,15 +31,26 @@ class AccountsRepository(private val db: DatabaseProvider) {
                     // null only mid-migration on a lagging replica; treat as included.
                     inNetWorth = (row.getOrNull(4) as? Number)?.toLong() != 0L,
                     icon = row.getOrNull(5)?.toString()?.takeIf { it.isNotBlank() },
+                    commodity = normalizeCommodity(row.getOrNull(6)?.toString()),
+                    color = row.getOrNull(7)?.toString()?.takeIf { it.isNotBlank() },
                 )
             }.toList()
         }
         buildTree(all)
     }
 
-    /** Flat ids of an account's subtree (itself included), for register rollups. */
+    /**
+     * Flat ids of an account's subtree (itself included), for register
+     * rollups. [nodes] is the *root* list from [tree], so the account has to
+     * be looked for at every depth: matching only the roots silently returned
+     * an empty list for any child — and an empty id list reads downstream as
+     * "no accounts", i.e. a register or a filtered list that is simply empty,
+     * which looks like missing data rather than a bug.
+     */
     fun subtreeIds(nodes: List<AccountNode>, accountId: String): List<String> =
-        (nodes.firstOrNull { it.account.id == accountId }?.selfAndDescendants
+        (nodes.flatMap { it.selfAndDescendants }
+            .firstOrNull { it.account.id == accountId }
+            ?.selfAndDescendants
             ?: listOf()).map { it.account.id }
 
     /** Returns the id of the created account (children inherit the type). */
@@ -47,20 +59,34 @@ class AccountsRepository(private val db: DatabaseProvider) {
         type: AccountType,
         parentId: String? = null,
         icon: String? = null,
+        commodity: String? = null,
+        color: String? = null,
     ): String = db.use { d ->
         val id = Uuid.random().toString()
         val trimmed = name.trim()
         require(trimmed.isNotEmpty()) { "account name cannot be empty" }
+        // Only Asset/Liability hold a currency; a category is never restricted.
+        val ccy = normalizeCommodity(commodity)
+            ?.takeIf { type == AccountType.Asset || type == AccountType.Liability }
+        requireNameFree(d, parentId, trimmed, ccy, excludeId = null)
+        val ccySql = if (ccy == null) "null" else ":commodity"
+        val ccyParam: Map<String, Any> =
+            if (ccy == null) emptyMap() else mapOf(":commodity" to ccy)
         // The binder takes non-null values only, so a missing icon is a
         // literal `null` in the SQL rather than an unbound parameter (an
         // unknown/unbound name silently binds nothing on this engine).
         val iconSql = if (icon.isNullOrBlank()) "null" else ":icon"
         val iconParam: Map<String, Any> =
             if (icon.isNullOrBlank()) emptyMap() else mapOf(":icon" to icon)
+        val colorSql = if (color.isNullOrBlank()) "null" else ":color"
+        val colorParam: Map<String, Any> =
+            if (color.isNullOrBlank()) emptyMap() else mapOf(":color" to color)
         if (parentId == null) {
             d.execute(
-                "insert into accounts(id, name, parent_id, type, icon) values(:id, :name, null, :type, $iconSql)",
-                mapOf(":id" to id, ":name" to trimmed, ":type" to type.db) + iconParam,
+                "insert into accounts(id, name, parent_id, type, icon, commodity, color) " +
+                    "values(:id, :name, null, :type, $iconSql, $ccySql, $colorSql)",
+                mapOf(":id" to id, ":name" to trimmed, ":type" to type.db) +
+                    iconParam + ccyParam + colorParam,
             )
         } else {
             val parent = fetch(d, parentId) ?: throw IllegalArgumentException("parent account not found")
@@ -68,13 +94,14 @@ class AccountsRepository(private val db: DatabaseProvider) {
                 throw IllegalArgumentException("children must share the parent's type (${parent.type.db})")
             }
             d.execute(
-                "insert into accounts(id, name, parent_id, type, icon) values(:id, :name, :parent, :type, $iconSql)",
+                "insert into accounts(id, name, parent_id, type, icon, commodity, color) " +
+                    "values(:id, :name, :parent, :type, $iconSql, $ccySql, $colorSql)",
                 mapOf(
                     ":id" to id,
                     ":name" to trimmed,
                     ":parent" to parentId,
                     ":type" to type.db,
-                ) + iconParam,
+                ) + iconParam + ccyParam + colorParam,
             )
         }
         d.sync()
@@ -108,9 +135,49 @@ class AccountsRepository(private val db: DatabaseProvider) {
         d.sync()
     }
 
+    /**
+     * Sets (or clears, with null) the account's palette key. Unvalidated for
+     * the same reason as [setIcon]: the eight pairs live in the UI module, a
+     * key this build doesn't know still has to survive a round trip, and a
+     * stored hex would freeze a decision the next palette wants to make.
+     */
+    suspend fun setColor(id: String, color: String?) = db.use { d ->
+        if (color.isNullOrBlank()) {
+            d.execute("update accounts set color = null where id = :id", mapOf(":id" to id))
+        } else {
+            d.execute(
+                "update accounts set color = :color where id = :id",
+                mapOf(":color" to color, ":id" to id),
+            )
+        }
+        d.sync()
+    }
+
+    /**
+     * Sets (or clears, with null) the account's declared currency. Never
+     * rewrites existing postings: the column restricts what the entry screens
+     * *offer*, not what the ledger already holds.
+     */
+    suspend fun setCommodity(id: String, commodity: String?) = db.use { d ->
+        val account = fetch(d, id) ?: throw IllegalArgumentException("account not found")
+        val ccy = normalizeCommodity(commodity)
+        requireNameFree(d, account.parentId, account.name, ccy, excludeId = id)
+        if (ccy == null) {
+            d.execute("update accounts set commodity = null where id = :id", mapOf(":id" to id))
+        } else {
+            d.execute(
+                "update accounts set commodity = :commodity where id = :id",
+                mapOf(":commodity" to ccy, ":id" to id),
+            )
+        }
+        d.sync()
+    }
+
     suspend fun rename(id: String, name: String) = db.use { d ->
         val trimmed = name.trim()
         require(trimmed.isNotEmpty()) { "account name cannot be empty" }
+        val account = fetch(d, id) ?: throw IllegalArgumentException("account not found")
+        requireNameFree(d, account.parentId, trimmed, account.commodity, excludeId = id)
         d.execute(
             "update accounts set name = :name where id = :id",
             mapOf(":name" to trimmed, ":id" to id),
@@ -138,6 +205,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
                 ancestor = ancestor.parentId?.let { fetch(d, it) }
             }
         }
+        requireNameFree(d, newParentId, account.name, account.commodity, excludeId = id)
         d.execute(
             if (newParentId == null) {
                 "update accounts set parent_id = null where id = :id"
@@ -182,9 +250,59 @@ class AccountsRepository(private val db: DatabaseProvider) {
         d.sync()
     }
 
+    /**
+     * Siblings may share a name only when their declared currencies differ
+     * ("Santander" in ARS and "Santander" in USD are two real accounts).
+     *
+     * Checked here rather than with a unique index because the sync engine
+     * merges row state across devices: an index would turn two offline
+     * creations into an unrepairable constraint violation at merge time.
+     * This is a courtesy guard for the UI, not an invariant the reader can
+     * lean on.
+     */
+    private fun requireNameFree(
+        d: Database,
+        parentId: String?,
+        name: String,
+        commodity: String?,
+        excludeId: String?,
+    ) {
+        val siblings = d.query(
+            if (parentId == null) {
+                "select id, name, commodity from accounts where parent_id is null"
+            } else {
+                "select id, name, commodity from accounts where parent_id = :parent"
+            },
+            if (parentId == null) null else mapOf(":parent" to parentId),
+        ) { rows ->
+            rows.map {
+                Triple(
+                    it.getOrNull(0)?.toString() ?: "",
+                    it.getOrNull(1)?.toString() ?: "",
+                    normalizeCommodity(it.getOrNull(2)?.toString()),
+                )
+            }.toList()
+        }
+        val clash = siblings.any { (otherId, otherName, otherCcy) ->
+            otherId != excludeId &&
+                otherName.equals(name, ignoreCase = true) &&
+                otherCcy == commodity
+        }
+        if (clash) {
+            throw IllegalArgumentException(
+                if (commodity == null) {
+                    "an account named '$name' already exists here; give it a currency to tell them apart"
+                } else {
+                    "an account named '$name' in $commodity already exists here"
+                },
+            )
+        }
+    }
+
     private fun fetch(d: Database, id: String): Account? =
         d.query(
-            "select id, name, parent_id, type, in_net_worth, icon from accounts where id = :id",
+            "select id, name, parent_id, type, in_net_worth, icon, commodity, color " +
+                "from accounts where id = :id",
             mapOf(":id" to id),
         ) { rows ->
             rows.filter { it.size >= 4 }
@@ -197,6 +315,8 @@ class AccountsRepository(private val db: DatabaseProvider) {
                             type = type,
                             inNetWorth = (row.getOrNull(4) as? Number)?.toLong() != 0L,
                             icon = row.getOrNull(5)?.toString()?.takeIf { it.isNotBlank() },
+                            commodity = normalizeCommodity(row.getOrNull(6)?.toString()),
+                            color = row.getOrNull(7)?.toString()?.takeIf { it.isNotBlank() },
                         )
                     }
                 }
@@ -209,6 +329,10 @@ class AccountsRepository(private val db: DatabaseProvider) {
         }
 
     companion object {
+        /** Blank/absent → null (unrestricted); otherwise the upper-case code. */
+        fun normalizeCommodity(value: String?): String? =
+            value?.trim()?.takeIf { it.isNotEmpty() }?.uppercase()
+
         /** Builds the forest; an account whose parent is missing becomes a root. */
         fun buildTree(accounts: List<Account>): List<AccountNode> {
             val byId = accounts.associateBy { it.id }

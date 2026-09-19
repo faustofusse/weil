@@ -3,8 +3,10 @@ package ar.fausto.weil
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,9 +20,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -54,6 +58,64 @@ fun AccountAvatar(
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(size * 0.5f))
+    }
+}
+
+/**
+ * The eight palette entries as a row of swatches, plus the "no color" one.
+ * Inline rather than a second dialog: a color is judged against the icon it
+ * sits behind, so hiding it one tap away would make the user pick blind.
+ */
+@Composable
+fun ColorPickerRow(
+    selected: String?,
+    onPick: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+    ) {
+        Swatch(
+            tint = MaterialTheme.colorScheme.background,
+            ink = MaterialTheme.colorScheme.inverseSurface,
+            isSelected = AccountColor.of(selected) == null,
+            onClick = { onPick(null) },
+        )
+        AccountColor.entries.forEach { entry ->
+            Swatch(
+                tint = entry.tint,
+                ink = entry.ink,
+                isSelected = entry.key == selected,
+                onClick = { onPick(entry.key) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun Swatch(tint: Color, ink: Color, isSelected: Boolean, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(36.dp)
+            .background(tint, CircleShape)
+            // The ring is the pair's own ink, so the selected swatch shows
+            // both halves of what was picked — the tint alone doesn't say
+            // what the glyph and the label will look like.
+            .then(if (isSelected) Modifier.border(2.dp, ink, CircleShape) else Modifier)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+    ) {
+        if (isSelected) {
+            Icon(
+                Icons.Filled.Check,
+                contentDescription = null,
+                tint = ink,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 

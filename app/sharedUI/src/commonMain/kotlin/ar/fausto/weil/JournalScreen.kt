@@ -272,6 +272,7 @@ fun JournalScreen(
                             names = state.names,
                             types = state.types,
                             icons = state.icons,
+                            colors = state.colors,
                             hidden = false,
                             onOpen = { onOpenTransaction(tx.id) },
                         )
@@ -444,9 +445,29 @@ internal fun dayLabel(group: DayGroup): String = when (group) {
 
 /** id → colon-joined full path for picker and journal rendering. */
 suspend fun accountPaths(accounts: AccountsRepository): Map<String, String> =
-    accounts.tree()
-        .flatMap { it.selfAndDescendants }
-        .associate { it.account.id to it.path.censored() }
+    disambiguatedPaths(accounts.tree())
+
+/**
+ * id → path, with the currency appended when a namesake shares that path
+ * ("Activos:Banco (USD)"). Two accounts may have the same name as long as
+ * their currencies differ, and a bare path then names neither of them.
+ *
+ * Only the ambiguous ones are decorated: a suffix on every row would read as
+ * part of the account's name everywhere the path is shown.
+ */
+fun disambiguatedPaths(tree: List<AccountNode>): Map<String, String> {
+    val nodes = tree.flatMap { it.selfAndDescendants }
+    val shared = nodes.groupBy { it.path.lowercase() }.filterValues { it.size > 1 }.keys
+    return nodes.associate { node ->
+        val commodity = node.account.commodity
+        val path = node.path.censored()
+        node.account.id to if (commodity != null && node.path.lowercase() in shared) {
+            "$path ($commodity)"
+        } else {
+            path
+        }
+    }
+}
 
 /** id → account type, so journal/home rows can color a posting by what it did to an asset account. */
 suspend fun accountTypes(accounts: AccountsRepository): Map<String, AccountType> =
@@ -466,6 +487,7 @@ internal class AccountIndex(
     val types: Map<String, AccountType>,
     val names: Map<String, String>,
     val icons: Map<String, String?>,
+    val colors: Map<String, String?>,
 )
 
 internal suspend fun accountIndex(accounts: AccountsRepository): AccountIndex {
@@ -475,6 +497,7 @@ internal suspend fun accountIndex(accounts: AccountsRepository): AccountIndex {
         types = nodes.associate { it.account.id to it.account.type },
         names = nodes.associate { it.account.id to it.account.name.censored() },
         icons = nodes.associate { it.account.id to it.account.icon },
+        colors = nodes.associate { it.account.id to it.account.color },
     )
 }
 

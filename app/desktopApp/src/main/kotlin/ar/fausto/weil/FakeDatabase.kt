@@ -83,9 +83,23 @@ class FakeDatabase(
         val bank = "seed-asset-bank"
         val food = "seed-expense-food"
         val salary = "seed-income-salary"
-        fun account(id: String, name: String, type: String) = execute(
-            "insert or ignore into accounts(id, name, parent_id, type) values (:id, :name, null, :type)",
-            mapOf(":id" to id, ":name" to name, ":type" to type),
+        fun account(
+            id: String,
+            name: String,
+            type: String,
+            commodity: String? = null,
+            icon: String? = null,
+            color: String? = null,
+        ) = execute(
+            "insert or ignore into accounts(id, name, parent_id, type, commodity, icon, color) " +
+                "values (:id, :name, null, :type, " +
+                "${if (commodity == null) "null" else ":commodity"}, " +
+                "${if (icon == null) "null" else ":icon"}, " +
+                "${if (color == null) "null" else ":color"})",
+            mapOf(":id" to id, ":name" to name, ":type" to type) +
+                (commodity?.let { mapOf(":commodity" to it) } ?: emptyMap()) +
+                (icon?.let { mapOf(":icon" to it) } ?: emptyMap()) +
+                (color?.let { mapOf(":color" to it) } ?: emptyMap()),
         )
         // Cached display name: the harness has no reachable auth worker, and
         // the greeting reads from this mirror first (see UserState).
@@ -94,9 +108,26 @@ class FakeDatabase(
             mapOf(":at" to System.currentTimeMillis()),
         )
         account(cash, "Efectivo", "asset")
-        account(bank, "Banco", "asset")
-        account(food, "Comida", "expense")
+        account(bank, "Banco", "asset", "ARS")
+        // Same name, different currency: the case the tree has to render
+        // unambiguously and the pickers have to filter.
+        account("seed-asset-bank-usd", "Banco", "asset", "USD")
+        // Painted, so the shots show both halves of a palette entry; the
+        // income stays unpainted, which is the fallback look.
+        account(food, "Comida", "expense", icon = "food", color = "terracota")
+        account("seed-expense-transport", "Transporte", "expense", icon = "car", color = "rojo")
+        account("seed-expense-home", "Hogar", "expense", icon = "home", color = "azul")
+        account("seed-expense-fun", "Ocio", "expense", icon = "gift", color = "lila")
         account(salary, "Sueldo", "income")
+        // Children of Comida, so the category screen has chips to filter by.
+        fun child(id: String, name: String, parent: String, icon: String) = execute(
+            "insert or ignore into accounts(id, name, parent_id, type, icon) " +
+                "values (:id, :name, :parent, 'expense', :icon)",
+            mapOf(":id" to id, ":name" to name, ":parent" to parent, ":icon" to icon),
+        )
+        child("seed-expense-food-super", "Supermercado", food, "cart")
+        child("seed-expense-food-meat", "Carnicería", food, "food")
+        child("seed-expense-food-bakery", "Panadería", food, "food")
 
         val now = System.currentTimeMillis()
         val day = 24 * 60 * 60 * 1000L
@@ -135,6 +166,15 @@ class FakeDatabase(
         tx(
             "seed-tx-1", now - 3600_000, "Café",
             listOf(Triple(cash, -50000L, "ARS"), Triple(food, 50000L, "ARS")),
+        )
+        // Posted to a *child* category, which is what the category screen's
+        // chip filter narrows to — and what nothing else in the seed covers.
+        tx(
+            "seed-tx-sub", now - 5400_000, "Coto",
+            listOf(
+                Triple(bank, -780000L, "ARS"),
+                Triple("seed-expense-food-super", 780000L, "ARS"),
+            ),
         )
         tx(
             "seed-tx-2", now - 7200_000, "Supermercado Coto de la esquina",

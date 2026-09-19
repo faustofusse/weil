@@ -291,7 +291,9 @@ fun RootScreen(
                     val categoriesScreen: @Composable (@Composable () -> Unit) -> Unit = { bar ->
                         CategoriesScreen(
                             ledgerState = ledgerState,
-                            onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
+                            // A category opens its own screen (subcategory
+                            // chips + movements), not the asset register.
+                            onNavigateToAccount = { navigate(CategoryDetailRoute(it)) },
                             bottomBar = bar,
                         )
                     }
@@ -355,6 +357,14 @@ fun RootScreen(
                                     }
                                 }
                                 entry<CategoriesRoute> { categoriesScreen {} }
+                                entry<CategoryDetailRoute> { route ->
+                                    CategoryDetailScreen(
+                                        ledgerState = ledgerState,
+                                        categoryId = route.id,
+                                        onNavigateBack = { pop() },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
+                                    )
+                                }
                                 entry<AccountsTreeRoute> {
                                     AccountsTreeScreen(
                                         ledgerState = ledgerState,

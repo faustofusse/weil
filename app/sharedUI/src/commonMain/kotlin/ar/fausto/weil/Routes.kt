@@ -48,6 +48,14 @@ data class TransactionEditRoute(val id: String)
 
 data class AccountDetailRoute(val id: String)
 
+/**
+ * One expense category: its subcategories as chips, its movements below.
+ * Separate from [AccountDetailRoute] because the two are read differently —
+ * an asset wants a register with a running balance, a category wants the
+ * list of what was bought.
+ */
+data class CategoryDetailRoute(val id: String)
+
 /** [initialType] preselects the type picker (Home suggests Activo); the user can still change it. */
 data class AccountAddRoute(val initialType: AccountType? = null)
 

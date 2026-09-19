@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -89,9 +89,11 @@ fun CategoriesScreen(
     val expenses = remember(ledgerState.tree) {
         ledgerState.tree.filter { it.account.type == AccountType.Expense }
     }
-    val rows = remember(expenses) {
-        buildList<TreeRow> { addFlat(expenses, 0) }.filterIsInstance<NodeRow>()
-    }
+    // Top level only. A flattened tree put "Comida" between "Carne" and
+    // "Chino" — its own children, indented — which reads as eleven peers
+    // instead of one category with three parts. The children live on the
+    // category's own screen, as chips.
+    val rows = remember(expenses) { expenses }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -132,16 +134,15 @@ fun CategoriesScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
                 ) {
-                    itemsIndexed(rows, key = { _, row -> row.key }) { index, row ->
+                    items(rows, key = { node -> node.account.id }) { node ->
                         CategoryRow(
                             state = ledgerState,
-                            row = row,
-                            skin = rowSkin(first = index == 0, last = index == rows.lastIndex),
-                            // Tapping the icon edits the icon; tapping the row
-                            // edits the category. Two intents, two targets, no
-                            // menu in between.
-                            onEdit = { editing = row.node.account },
-                            onOpen = { onNavigateToAccount(row.node.account.id) },
+                            node = node,
+                            // The row opens the category (its subcategories
+                            // and its movements); the pencil edits it. Two
+                            // intents, two targets, no menu in between.
+                            onEdit = { editing = node.account },
+                            onOpen = { onNavigateToAccount(node.account.id) },
                         )
                     }
                 }
@@ -168,61 +169,33 @@ fun CategoriesScreen(
 @Composable
 private fun CategoryRow(
     state: LedgerState,
-    row: NodeRow,
-    skin: RowSkin,
+    node: AccountNode,
     onEdit: () -> Unit,
     onOpen: () -> Unit,
 ) {
-    val account = row.node.account
-    val indent = (row.depth.coerceAtMost(4) * 16).dp
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(skin.shape)
-            .background(skin.container),
+    val account = node.account
+    val paint = accountPaint(account.color, seed = account.id)
+    val total = state.totals[account.id].orEmpty()
+    AppListRow(
+        icon = AccountIcons.resolve(account.icon, account.type),
+        paint = paint,
+        title = account.name.censored(),
+        // The name carries the color too, not just the disc: it is the wider
+        // target of the two, and a tinted circle next to default-ink text
+        // reads as decoration rather than as the category's identity.
+        titleColor = paint.ink,
+        subtitle = total.takeIf { it.isNotEmpty() }?.let { formatTotals(it) },
+        onClick = onOpen,
     ) {
-        if (skin.divider) {
-            HorizontalDivider(
-                modifier = Modifier.padding(start = 16.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+        // Rename/icon/color/parent, without having to enter the category
+        // first — tidying up is a pass over the whole list.
+        IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Filled.Edit,
+                contentDescription = stringResource(Res.string.category_edit_title),
+                tint = MaterialTheme.colorScheme.inverseSurface,
+                modifier = Modifier.size(20.dp),
             )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onEdit)
-                .heightIn(min = 64.dp)
-                .padding(start = 16.dp + indent, end = 8.dp, top = 8.dp, bottom = 8.dp),
-        ) {
-            AccountAvatar(icon = AccountIcons.resolve(account.icon, account.type))
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    account.name.censored(),
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val total = state.totals[account.id].orEmpty()
-                if (total.isNotEmpty()) {
-                    Text(
-                        formatTotals(total),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
-                }
-            }
-            // The register of the category, for "what did I actually spend
-            // here" — the one thing this screen doesn't do itself.
-            IconButton(onClick = onOpen) {
-                Icon(
-                    Icons.Filled.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }
@@ -232,13 +205,14 @@ private fun CategoryRow(
  * on the edit path. [account] null means "new".
  */
 @Composable
-private fun CategoryDialog(
+internal fun CategoryDialog(
     state: LedgerState,
     account: Account?,
     onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf(account?.name ?: "") }
     var icon by remember { mutableStateOf(account?.icon) }
+    var color by remember { mutableStateOf(account?.color) }
     var parentId by remember { mutableStateOf(account?.parentId) }
     var pickingIcon by remember { mutableStateOf(false) }
     var pickingParent by remember { mutableStateOf(false) }
@@ -256,10 +230,11 @@ private fun CategoryDialog(
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
         if (account == null) {
-            state.addAccount(trimmed, AccountType.Expense, parentId, icon)
+            state.addAccount(trimmed, AccountType.Expense, parentId, icon, color = color)
         } else {
             if (trimmed != account.name) state.rename(account.id, trimmed)
             if (icon != account.icon) state.setIcon(account.id, icon)
+            if (color != account.color) state.setColor(account.id, color)
             if (parentId != account.parentId) state.reparent(account.id, parentId)
         }
         onDismiss()
@@ -276,10 +251,15 @@ private fun CategoryDialog(
         },
         text = {
             Column {
+                // A new category previews the color it would be given, so the
+                // dialog shows the same disc the list will.
+                val paint = accountPaint(color, seed = account?.id)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AccountAvatar(
                         icon = AccountIcons.resolve(icon, AccountType.Expense),
                         size = 48.dp,
+                        container = paint.tint,
+                        content = paint.ink,
                         modifier = Modifier.clip(androidx.compose.foundation.shape.CircleShape)
                             .clickable { pickingIcon = true },
                     )
@@ -288,6 +268,10 @@ private fun CategoryDialog(
                         Text(stringResource(Res.string.category_icon_label))
                     }
                 }
+                Spacer(Modifier.height(12.dp))
+                // Under the avatar it previews: picking a swatch repaints the
+                // circle right above it.
+                ColorPickerRow(selected = color, onPick = { color = it })
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = name,
@@ -311,7 +295,13 @@ private fun CategoryDialog(
                         onClick = {
                             state.deleteAccount(account.id)
                             Feedback.undoable(deleteMessage, undoLabel) {
-                                state.addAccount(account.name, account.type, account.parentId, account.icon)
+                                state.addAccount(
+                                    account.name,
+                                    account.type,
+                                    account.parentId,
+                                    account.icon,
+                                    color = account.color,
+                                )
                             }
                             onDismiss()
                         },

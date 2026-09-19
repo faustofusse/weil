@@ -40,6 +40,27 @@ data class Account(
      * per-type default instead of breaking the row.
      */
     val icon: String? = null,
+    /**
+     * The currency this account holds, when it is restricted to one
+     * ("ARS", "USD"). Only meaningful for Asset/Liability; null means
+     * unrestricted, which is the right answer for categories and for any
+     * account the user never declared.
+     *
+     * Soft on purpose: it drives defaults, filtering and disambiguation, but
+     * postings are never rejected for disagreeing with it — an FX transfer
+     * is legitimately one transaction touching two commodities, and history
+     * predates whatever the user declares today.
+     */
+    val commodity: String? = null,
+    /**
+     * Key of the palette entry this account is painted with (see
+     * `AccountColors` in sharedUI), a key for the same reasons as [icon].
+     * One key means two colors — a tint for the avatar disc and an ink for
+     * the glyph and the label — which is why it can't be a stored hex.
+     * Null means "unpainted": the neutral theme pair, i.e. what every
+     * account looked like before the palette existed.
+     */
+    val color: String? = null,
 )
 
 /** Node of the in-memory account tree; [path] is the colon-joined chain to it. */

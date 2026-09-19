@@ -87,7 +87,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 8L
+private const val SCHEMA_VERSION = 10L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -150,6 +150,30 @@ fun Database.migrateSchema() {
         // know (written by a newer install on another device) falls back to
         // the account type's default icon.
         addColumn("alter table accounts add column icon text")
+    }
+    if ("color" !in columns) {
+        // Palette *key* ("terracota", "azul"), same reasoning as `icon`: the
+        // eight tint/ink pairs are a UI decision, and each key resolves to
+        // two hexes, not one — the ink is not derivable from the tint
+        // (#E2C79C→#A48B2F darkens within the hue, #B47C6B→#632A19 does not),
+        // so storing a single color would still leave the app guessing.
+        addColumn("alter table accounts add column color text")
+    }
+    if ("commodity" !in columns) {
+        // Declared currency of an Asset/Liability account ("USD"), null when
+        // the account is not restricted to one — every Income/Expense
+        // category, and any asset the user never declared. Deliberately NOT
+        // `not null default 'ARS'`: a default would assert a currency for
+        // every pre-existing account, and "unknown" has to stay
+        // distinguishable from "pesos" for resolveAccountHint to be able to
+        // refuse to guess.
+        //
+        // No unique index on (parent_id, name, commodity) to go with it: the
+        // sync engine replicates row state, so two devices creating the same
+        // account offline would converge into a constraint violation on a
+        // table the UI cannot repair. The duplicate check lives in
+        // AccountsRepository instead.
+        addColumn("alter table accounts add column commodity text")
     }
     val txColumns = query("pragma table_info(ledger_transactions)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()

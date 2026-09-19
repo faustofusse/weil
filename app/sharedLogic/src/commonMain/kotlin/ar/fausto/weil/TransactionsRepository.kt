@@ -338,13 +338,32 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         return ids.size
     }
 
-    /** Page of the journal, newest first; postings grouped in memory. */
-    suspend fun page(limit: Int = LIST_PAGE_SIZE, before: LedgerCursor? = null): List<Transaction> =
+    /**
+     * Page of the journal, newest first; postings grouped in memory.
+     *
+     * [accountIds] restricts it to transactions with a leg on one of those
+     * accounts (a category and its children, say). Whole transactions, not
+     * postings: the row shows origin → destination, so the other leg has to
+     * come along even though it isn't in the filter.
+     */
+    suspend fun page(
+        limit: Int = LIST_PAGE_SIZE,
+        before: LedgerCursor? = null,
+        accountIds: List<String>? = null,
+    ): List<Transaction> =
         db.useForRead { d ->
+            if (accountIds != null && accountIds.isEmpty()) return@useForRead emptyList()
+            val scope = accountIds?.let {
+                " t.id in (select transaction_id from postings where account_id in (${quoteList(it)}))"
+            }
+            val where = listOfNotNull(
+                if (before == null) null else TX_CURSOR_FILTER,
+                scope,
+            )
             val txs = d.query(
                 "select t.id, t.date, t.payee, t.note, t.created_at, t.time_known" +
                     " from ledger_transactions t" +
-                    (if (before == null) "" else " where $TX_CURSOR_FILTER") +
+                    (if (where.isEmpty()) "" else where.joinToString(" and ", prefix = " where ")) +
                     " order by t.date desc, t.id desc limit $limit",
                 cursorParams(before),
             ) { rows ->

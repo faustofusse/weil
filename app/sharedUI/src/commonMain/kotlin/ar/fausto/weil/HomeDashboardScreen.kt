@@ -193,6 +193,7 @@ fun HomeDashboardScreen(
             val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
             val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
             val icons = remember(nodes) { nodes.associate { it.account.id to it.account.icon } }
+            val colors = remember(nodes) { nodes.associate { it.account.id to it.account.color } }
             // Computed in composition, not inside the LazyListScope builder
             // (which isn't composable and would redo the work on every pass).
             // Four at most: Home is a glance, and a fifth tile pushes the
@@ -278,6 +279,7 @@ fun HomeDashboardScreen(
                         names = names,
                         types = types,
                         icons = icons,
+                        colors = colors,
                         hidden = ledgerState.amountsHidden,
                         onOpen = { onOpenTransaction(tx.id) },
                     )
