@@ -183,6 +183,8 @@ scanner-dependent affordances.
 | `app/sharedUI/.../TransactionQuickScreen.kt` | two optional prefill params |
 | `app/sharedUI/.../AppRoot.kt` | mount `QrPayRoute` |
 | `app/sharedUI/.../HomeScreen.kt` | overflow item + scan callback |
+| `app/sharedLogic/.../Reconcile.kt` | `EventSource.Qr` |
+| `app/sharedLogic/.../TransactionsRepository.kt` | `setNote` (failed-handoff capture) |
 | `.../composeResources/values/strings.xml` | one string |
 
 No schema change, so **no `SCHEMA_VERSION` bump**.
@@ -195,10 +197,41 @@ No schema change, so **no `SCHEMA_VERSION` bump**.
 - On device: scan a real merchant QR in a shop. Expect MP's app-lock prompt,
   then the spinner, then the confirm screen with the right amount and merchant.
 
+## What a real MP QR actually contains
+
+Decoded from a live «Cobrar con QR» screen for $ 800 (pinned as
+`EmvcoQrTest.parsesRealMercadoPagoQr`):
+
+```
+00020101021243650016com.mercadolibre0201306366b290f4f-…-c2b5d8af8fe7
+50150011204371902685204970053030325802AR5917Negocio de Fausto6004CABA63047F8B
+```
+
+Merchant (59), currency (53) and MCC (52, `9700` — MP's generic wallet code,
+not a category) come through. **Tag 54 is absent**: the amount lives in the
+order behind tag 43's uuid and MP resolves it server-side, so the amount
+prefill is null for precisely the QRs a shop shows. The user types what the
+merchant says, or leaves an estimate.
+
+That could have argued for handing off first and recording on return, but
+there is no result callback, so that needs pending state phase 1 doesn't have.
+Decision: **keep record-then-hand-off, and let phase 2's reconciliation correct
+the amount** rather than only deduplicate. The hook is already written — every
+QR-paid transaction carries a `transaction_sources` row with
+`kind='qr'` and the payload as `ref` (`EventSource.Qr`), so the matcher can
+find it without guessing.
+
+Phase 2 therefore needs an amount-tolerant tier: `CandidateEvent.eventKey`
+includes `amountMinor`, so a typed estimate will *not* fingerprint-match the
+wallet's push. Matching a push against a recent `kind='qr'` transaction on the
+same account within a few minutes, then rewriting both postings to the push's
+amount, is the shape.
+
 ## Explicit non-goals (phase 2+)
 
 - Reconciling the MP push notification against the transaction we just wrote —
-  **this phase will produce duplicates**, knowingly.
+  **this phase will produce duplicates**, knowingly, and leaves the amount as
+  whatever the user typed.
 - Pending / provisional transaction state.
 - MCC → category mapping (parsed and dropped for now).
 - iOS (`LSApplicationQueriesSchemes` + `UIApplication.openURL`).

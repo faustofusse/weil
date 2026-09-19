@@ -270,6 +270,7 @@
     <string name="txn_source_notification">Notificación</string>
     <string name="txn_source_email">Mail</string>
     <string name="txn_source_whatsapp">WhatsApp</string>
+    <string name="txn_source_qr">QR escaneado</string>
     <string name="txn_source_manual">Carga manual</string>
 
     <!-- Document import -->

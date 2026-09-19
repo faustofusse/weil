@@ -20,6 +20,14 @@ enum class EventSource(val db: String) {
     Notification("notification"),
     Email("email"),
     WhatsApp("whatsapp"),
+
+    /**
+     * A merchant QR the user scanned here and paid in a wallet app. The ref is
+     * the payload itself: MP's dynamic QRs carry no amount (it lives in the
+     * order behind the payload), so the amount on this transaction is the
+     * user's estimate until the wallet's own push arrives to correct it.
+     */
+    Qr("qr"),
     Manual("manual");
 
     companion object {

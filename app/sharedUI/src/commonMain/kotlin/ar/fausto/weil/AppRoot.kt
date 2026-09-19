@@ -245,6 +245,12 @@ fun RootScreen(
                                         kind = TxnKind.Expense,
                                         prefillAmount = route.amountMinor?.let { formatMinorUnits(it) },
                                         prefillPayee = route.merchant,
+                                        // The payload is the ref: it is unique
+                                        // per order for dynamic QRs, and it is
+                                        // what phase 2 looks for when the
+                                        // wallet's push arrives with the amount
+                                        // the QR never carried.
+                                        sources = listOf(TransactionSource(EventSource.Qr, route.raw)),
                                         // Record first, then hand off: there is no
                                         // result callback from the wallet. An
                                         // abandoned payment leaves an ordinary

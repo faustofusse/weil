@@ -93,6 +93,8 @@ fun TransactionQuickScreen(
     prefillAmount: String? = null,
     /** Seeds the description, which is what `ledger.add` stores as payee. */
     prefillPayee: String? = null,
+    /** Provenance rows written with the transaction (QR pay attaches one). */
+    sources: List<TransactionSource> = emptyList(),
 ) {
     var currentKind by remember { mutableStateOf(kind) }
     val kindLabel = kindTitle(currentKind)
@@ -203,7 +205,13 @@ fun TransactionQuickScreen(
                     DraftPosting(from, formatMinorUnits(-amount.minorUnits)),
                     DraftPosting(to, formatMinorUnits(amount.minorUnits)),
                 )
-                val id = ledger.add(epochMillis(), description.trim().ifBlank { kindLabel }, null, drafts)
+                val id = ledger.add(
+                    epochMillis(),
+                    description.trim().ifBlank { kindLabel },
+                    null,
+                    drafts,
+                    sources = sources,
+                )
                 onSaved(id)
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
