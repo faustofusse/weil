@@ -57,6 +57,23 @@ class EmvcoQrTest {
         assertEquals(120000L, parseEmvcoQr(raw)!!.amountMinor)
     }
 
+    /**
+     * A real "Cobrar con QR" payload from the MP app ($ 800). Note what it
+     * does *not* carry: there is no tag 54. MP's dynamic QRs put the amount in
+     * the order behind tag 43's id, resolved server-side — so the amount
+     * prefill is null for exactly the QRs a shop shows.
+     */
+    @Test
+    fun parsesRealMercadoPagoQr() {
+        val raw = "00020101021243650016com.mercadolibre0201306366b290f4f-7b70-47af-ba91-c2b5d8af8fe7" +
+            "50150011204371902685204970053030325802AR5917Negocio de Fausto6004CABA63047F8B"
+        val qr = parseEmvcoQr(raw)!!
+        assertEquals("Negocio de Fausto", qr.merchant)
+        assertNull(qr.amountMinor)
+        assertEquals("ARS", qr.commodity)
+        assertEquals("9700", qr.mcc)
+    }
+
     @Test
     fun rejectsBadCrc() {
         val broken = dynamic.dropLast(4) + "0000"
