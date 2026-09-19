@@ -61,7 +61,9 @@ internal fun MovementRow(
     ) {
         // Filled page-color circle, not an outline: on the tinted row an
         // outline read as a hole in the background rather than an icon.
-        AccountAvatar(icon = avatar, container = MaterialTheme.colorScheme.background)
+        // Smaller than the default avatar (40.dp) so it reads as a marker
+        // next to the payee, not a second focal point competing with it.
+        AccountAvatar(icon = avatar, container = MaterialTheme.colorScheme.background, size = 32.dp)
         Spacer(Modifier.width(12.dp))
         // `end` inset, not a Spacer after the column: the payee is what gets
         // ellipsized when space runs out, and without a reserved gap it ran
