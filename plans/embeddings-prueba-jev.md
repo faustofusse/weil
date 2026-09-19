@@ -17,16 +17,42 @@ La única parte que sí toca la app es la promoción final (§5), opt-in y apart
 §1–§5 están escritos y corridos (ver `prueba-jev/README.md`). Resultados:
 
 - `pull.ts`: 23.671 notificaciones + 132 mails a `data/lab.db` en ~8 s.
-- `classify.ts`: 140 mensajes con moneda → 140 llamadas a Jev en **7 s**.
-  Distribución **bimodal** (90 bajo 0,2 / 68 sobre 0,8), así que el umbral no es
-  una elección delicada: 0,3 y 0,8 dan el mismo conjunto. Con 0,6 salen **69
-  movimientos**, que cubren **51/51** del allowlist de `Ingest.kt` y agregan
-  **18 que el allowlist no ve** (avisos Santander por mail, DolarApp,
-  InvertirOnline, recargas Tuenti, pagos de entradas por Telegram).
-- El muestreo de lo descartado en el paso 1 (10.284 con dígitos, sin moneda) no
-  tiene ningún movimiento: son horas, resultados de fútbol, "4 new messages".
-  El prefiltro de moneda queda justificado con datos, no por intuición.
-- `embed.ts` + `search.ts`: **69 vectores reales** con `gemini-embedding-001` a
+- `classify.ts`: **148** mensajes con moneda → 148 llamadas a Jev en ~7 s.
+  Distribución **bimodal** (73 bajo 0,2 / 73 sobre 0,8), así que el umbral no es
+  una elección delicada: 0,3 y 0,6 dan el mismo conjunto. Con 0,6 salen **75
+  movimientos**, que cubren **51/52** del allowlist de `Ingest.kt` y agregan
+  **24 que el allowlist no ve** (avisos Santander por mail, DolarApp, Lemon
+  Cash, InvertirOnline, recargas Tuenti, pagos de entradas por Telegram).
+  El único del allowlist que Jev baja a 0,19 no es un error suyo: *"Recibiste
+  $5.000 🍟 — $5.000 de regalo para pedir tu comida favorita"* es un cupón, no
+  un movimiento.
+
+### ¿El prefiltro de moneda filtra de más? Sí — filtraba, y se arregló
+
+`scripts/probe.ts` toma lo que el paso 1 descarta y lo vuelve a filtrar con
+redes progresivamente más anchas, para responder eso con números. Sobre los
+23.664 descartados:
+
+| red | n | qué había |
+| --- | --- | --- |
+| A · número con formato de plata + palabra de movimiento | 1 | **un movimiento real**: "Recibiste 30.000 ARS" (Lemon Cash) |
+| B · número + moneda en palabras | 10 | cotizaciones de AstroPay, promos de Dia |
+| C · número con formato de plata, sin verbo | 5 | "Hay 1.000 becas", IPs, un `#17 1.216 error:` de un build |
+| D · número gordo + palabra de movimiento | 32 | códigos 2FA, `#2000011979889947` de facturas de ML |
+| E · dígitos sueltos | 23.616 | horas, resultados de fútbol, "4 new messages" |
+
+La causa de la fuga no era pedir moneda: era pedirla **solo como prefijo**.
+`MONEY` venía de `Ingest.kt`, donde la plata se escribe `$ 19.200`, pero las
+billeteras que hablan inglés la ponen después: `30.000 ARS`, `500,000 ARS`,
+`200 USD`. Anclar la regex a **cualquiera de los dos lados** suma 8 mensajes,
+de los cuales Jev confirma **6 movimientos** (un depósito DolarApp, la
+transferencia Lemon Cash y cuatro recibos ARQ/DolarApp) y descarta las 2
+cotizaciones de AstroPay. 140 → 148 candidatos, 69 → **75 movimientos**.
+
+Lo demás se queda afuera a propósito: ensanchar a "número gordo + verbo" (red
+D) traería 32 mensajes sin un solo movimiento, y a dígitos sueltos, 23.616.
+`Ingest.kt` tiene exactamente la misma limitación de prefijo.
+- `embed.ts` + `search.ts`: **75 vectores reales** con `gemini-embedding-001` a
   512 dimensiones (la key de OpenAI responde `429 insufficient_quota`, así que
   el proveedor en uso es Gemini — la misma key que ya usa el worker).
   `lib/embed.ts` renormaliza, porque Google devuelve el vector truncado sin

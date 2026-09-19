@@ -30,6 +30,7 @@ bun scripts/search.ts "pagaste en dolares"
 bun scripts/ids.ts [texto]                # lista ids embebidos (id corto, fecha, jev_score)
 bun scripts/search.ts --like 54f47dca     # "más como este"; el id acepta prefijos
 bun scripts/push.ts                       # dry run; --confirm escribe en la DB real
+bun scripts/probe.ts                      # ¿el prefiltro de moneda filtra de más?
 ```
 
 ## Cómo está guardado
@@ -48,22 +49,39 @@ satélite: el embedding es una propiedad del mensaje y muere con él.
 **Sin índice vectorial.** El motor de sync del teléfono tiene
 `vector_distance_cos` pero no `vector_top_k` ni `libsql_vector_idx`
 (verificado sobre el `.so` vendorizado), y el esquema se replica al teléfono.
-La búsqueda es scan exacto: con 69 vectores tarda **2–30 ms**, contra ~400 ms
+La búsqueda es scan exacto: con 75 vectores tarda **2–30 ms**, contra ~400 ms
 de embeber la consulta. El cuello de botella es la API, no el scan.
 
 ## Números medidos
 
 - 23.671 notificaciones + 132 mails.
-- Con símbolo de moneda: **140**. Con dígitos pero sin moneda: 10.284 (horas,
-  códigos, "15% OFF": el muestreo del reporte no encontró un solo movimiento
-  ahí).
-- Jev es bimodal: 90 mensajes por debajo de 0,2 y 68 por encima de 0,8. El
-  umbral entre 0,3 y 0,8 da el mismo resultado, así que 0,6 no es una elección
+- Con símbolo de moneda: **148**. Con dígitos pero sin moneda: 10.276.
+- Jev es bimodal: 73 mensajes por debajo de 0,2 y 73 por encima de 0,8. El
+  umbral entre 0,3 y 0,6 da el mismo resultado, así que 0,6 no es una elección
   delicada.
-- Con umbral 0,6: **69 movimientos**, que incluyen los 51 del allowlist de
-  `Ingest.kt` (51/51, sin falsos negativos) **más 18 que el allowlist no ve**:
-  avisos Santander por mail, DolarApp, InvertirOnline, recargas Tuenti, pagos
-  de entradas por Telegram.
+- Con umbral 0,6: **75 movimientos**, que incluyen 51 de los 52 del allowlist
+  de `Ingest.kt` **más 24 que el allowlist no ve**: avisos Santander por mail,
+  DolarApp, Lemon Cash, InvertirOnline, recargas Tuenti, pagos de entradas por
+  Telegram. El único que Jev baja (0,19) es *"Recibiste $5.000 🍟 — de regalo
+  para pedir tu comida favorita"*: un cupón que el allowlist toma por
+  movimiento.
+
+## ¿El prefiltro de moneda filtra de más?
+
+`scripts/probe.ts` contesta eso con números: agarra lo descartado y lo pasa por
+redes cada vez más anchas. Encontró una fuga real, ya arreglada.
+
+No era exigir moneda, era exigirla **como prefijo**. `MONEY` venía de
+`Ingest.kt`, donde la plata se escribe `$ 19.200`; las billeteras que hablan
+inglés la ponen al final: `30.000 ARS`, `500,000 ARS`, `200 USD`. Anclada a los
+dos lados, la regex suma 8 mensajes → **6 movimientos** confirmados por Jev
+(depósito DolarApp, transferencia Lemon Cash, cuatro recibos ARQ) y 2
+cotizaciones de AstroPay descartadas. `Ingest.kt` tiene la misma limitación.
+
+Lo que sigue afuera, con su conteo: número gordo + verbo de movimiento son 32
+mensajes **sin un solo movimiento** (códigos 2FA, `#2000011979889947` de
+facturas de ML), y dígitos sueltos son 23.616 (horas, resultados de fútbol,
+"4 new messages").
 
 ## Cuerpos de mail
 

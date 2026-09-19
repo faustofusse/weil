@@ -8,8 +8,16 @@
  * measures selectors instead of content.
  */
 
-/** Same currency-anchored money regex as `Ingest.kt`'s `MONEY`. */
-export const MONEY = /(?:U\$S|US\$|USD|ARS|\$)\s*[0-9][0-9.,]*/i;
+/**
+ * Currency-anchored, like `Ingest.kt`'s `MONEY`, but anchored on **either
+ * side**. The prefix-only version missed real movements, measured with
+ * `scripts/probe.ts`: "Recibiste 30.000 ARS de Fausto Fusse" (Lemon Cash),
+ * "You received 500,000 ARS" (DolarApp) and four ARQ/DolarApp receipts write
+ * the currency after the number, which is the normal order in English and
+ * common in crypto-adjacent wallets. `Ingest.kt` has the same gap.
+ */
+export const MONEY =
+  /(?:U\$S|US\$|USD|ARS|\$)\s*[0-9][0-9.,]*|[0-9][0-9.,]*\s*(?:U\$S|US\$|USD|ARS|pesos?|d[oó]lares?)\b/i;
 
 /** Digits with no currency marker: the wider net, kept to measure what the
  * narrow one discards (see the plan, §2). */
