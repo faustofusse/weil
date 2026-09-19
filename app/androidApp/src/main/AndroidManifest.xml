@@ -22,9 +22,15 @@
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"
             android:value="barcode_ui" />
+        <!-- adjustNothing: the app draws edge to edge and pads for the
+             keyboard itself (imePadding). Left free to resize as well, the
+             window shrinks *and* the padding is applied, so every ime-aware
+             layout is offset twice — the create panel ended a whole
+             keyboard's height above the keyboard. -->
         <activity
             android:exported="true"
             android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustNothing"
             android:name=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

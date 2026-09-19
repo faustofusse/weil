@@ -65,7 +65,7 @@ fun AppBottomBar(current: AppTab, onSelect: (AppTab) -> Unit, onNew: () -> Unit)
             // sheet with content floating on it.
             color = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            shape = RoundedCornerShape(topStart = BarCorner, topEnd = BarCorner),
             tonalElevation = 0.dp,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -177,3 +177,10 @@ private fun TabItem(
         )
     }
 }
+
+/**
+ * The bar's top radius, shared with [TransactionSheet]: the create panel is
+ * supposed to look like the bar itself grew upwards, which only holds if the
+ * two round their top edge by the same amount.
+ */
+val BarCorner = 28.dp

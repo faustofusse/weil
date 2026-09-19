@@ -159,6 +159,12 @@ object Icons {
             "M5 12h14",
         )
 
+        val Close: ImageVector = lineIcon(
+            "Close",
+            "M6 6l12 12",
+            "M18 6L6 18",
+        )
+
         val ExpandMore: ImageVector = lineIcon(
             "ExpandMore",
             "M6 9.5l6 6 6-6",

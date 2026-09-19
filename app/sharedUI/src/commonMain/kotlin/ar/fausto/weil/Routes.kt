@@ -6,6 +6,13 @@ object LoginRoute
 
 object HomeRoute
 
+/**
+ * The tab shell: one entry on the outer back stack standing for "the four
+ * tabs". The bar lives here and the tabs swap *inside* it, so switching one
+ * animates the content only — the bar doesn't fade out and back in with it.
+ */
+object TabsRoute
+
 object NotificationsRoute
 
 /** Texto completo de una notificación capturada, más sus parecidas. */

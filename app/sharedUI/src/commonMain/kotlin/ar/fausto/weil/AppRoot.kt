@@ -91,6 +91,14 @@ fun RootScreen(
      * headlessly; real entry points never set it.
      */
     initialRoute: Any? = null,
+    /**
+     * Opens the create panel on first composition. Same as [initialRoute]:
+     * the panel is an overlay rather than a route, so the harness needs its
+     * own way to ask for it.
+     */
+    openCreate: Boolean = false,
+    /** Tab the shell starts on. Harness-only, like [initialRoute]. */
+    startTab: AppTab = AppTab.Home,
 ) {
     val authState by graph.auth.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -145,19 +153,43 @@ fun RootScreen(
                     val whatsappState = remember(loggedIn) { WhatsappState(graph.whatsapp) }
                     val snackbarHostState = remember(loggedIn) { SnackbarHostState() }
                     val backStack = remember(loggedIn) {
-                        mutableStateListOf<Any>(if (loggedIn) HomeRoute else LoginRoute).apply {
+                        mutableStateListOf<Any>(if (loggedIn) TabsRoute else LoginRoute).apply {
                             if (loggedIn && initialRoute != null) add(initialRoute)
                         }
                     }
 
-                    // A tab switch is a sideways move, a push is a step into
-                    // something: they must not animate alike. NavDisplay only
-                    // exposes one transitionSpec, so the last navigation's
-                    // kind is recorded here and the spec branches on it.
-                    var lateralMove by remember(loggedIn) { mutableStateOf(false) }
+                    // The tabs' own stack, nested inside the shell: always
+                    // exactly one entry. A tab switch is a sideways move and
+                    // a push is a step into something, and they must not
+                    // animate alike — two nav hosts is what lets each have
+                    // its own transition, and it keeps the bar out of the
+                    // animation entirely (it's drawn by the shell, above the
+                    // host, so it never fades with the content it commands).
+                    val tabStack = remember(loggedIn) {
+                        mutableStateListOf<Any>(
+                            when (startTab) {
+                                AppTab.Home -> HomeRoute
+                                AppTab.Movements -> JournalRoute
+                                AppTab.Categories -> CategoriesRoute
+                                AppTab.Profile -> ProfileRoute
+                            },
+                        )
+                    }
+                    val currentTab = when (tabStack.lastOrNull()) {
+                        JournalRoute -> AppTab.Movements
+                        CategoriesRoute -> AppTab.Categories
+                        ProfileRoute -> AppTab.Profile
+                        else -> AppTab.Home
+                    }
+
+                    // The create panel is a layer over the app, not a
+                    // destination: it rises out of the bar and leaves the
+                    // header of whatever is behind it visible. Keeping it out
+                    // of the back stack means dismissing a form never also
+                    // pops the tab you were on.
+                    var creating by remember(loggedIn) { mutableStateOf(openCreate && loggedIn) }
 
                     fun navigate(route: Any) {
-                        lateralMove = false
                         backStack.add(route)
                     }
 
@@ -166,33 +198,113 @@ fun RootScreen(
                     }
 
                     // Tabs are roots, not pushes: selecting one replaces the
-                    // whole stack, so the bar never accumulates a back trail
-                    // of sideways moves (Inicio → Categorías → Inicio would
-                    // otherwise need two backs to leave).
+                    // nested stack's single entry, so the bar never
+                    // accumulates a back trail of sideways moves (Inicio →
+                    // Categorías → Inicio would otherwise need two backs to
+                    // leave).
                     fun selectTab(tab: AppTab) {
-                        lateralMove = true
                         val route: Any = when (tab) {
                             AppTab.Home -> HomeRoute
                             AppTab.Movements -> JournalRoute
                             AppTab.Categories -> CategoriesRoute
                             AppTab.Profile -> ProfileRoute
                         }
-                        if (backStack.size == 1 && backStack.first() == route) return
-                        backStack.clear()
-                        backStack.add(route)
+                        if (tabStack.lastOrNull() == route) return
+                        tabStack.clear()
+                        tabStack.add(route)
                     }
 
-                    // The bar, bound to whichever root is rendering it. A
-                    // lambda, not a local fun: the Compose compiler doesn't
-                    // take @Composable on local declarations.
-                    val tabs: @Composable (AppTab) -> Unit = { current ->
-                        AppBottomBar(
-                            current = current,
-                            onSelect = { tab -> selectTab(tab) },
-                            // The bar's create button does the same thing from
-                            // every root: open the quick entry on Gasto (the
-                            // kind is switchable there).
-                            onNew = { navigate(TransactionQuickRoute(TxnKind.Expense)) },
+                    // Home is only ever a tab, so it is written here as the
+                    // shell's entry rather than as a pushable destination.
+                    val homeTab: @Composable (@Composable () -> Unit) -> Unit = { bar ->
+                    // Captured for the QR handoff, which runs
+                    // in a callback, not in composition.
+                    val handoffFailed = stringResource(Res.string.qr_pay_handoff_failed)
+                    val noWallet = stringResource(Res.string.qr_pay_no_wallet)
+                    // The classic list-shaped Home is still
+                    // in HomeScreen.kt and takes the same
+                    // arguments; swap the call to compare.
+                    HomeDashboardScreen(
+                        ledgerState = ledgerState,
+                        userState = userState,
+                        documents = { graph.documents },
+                        onImportDocument = { navigate(ImportReviewRoute(it)) },
+                        onNavigateToInbox = { navigate(InboxReviewRoute) },
+                        scanner = { graph.scanner },
+                        // Hand off first — the user is standing
+                        // at a counter — then write the row from
+                        // the coroutine. The amount is a
+                        // placeholder (the QR has none); the
+                        // wallet's push completes it later.
+                        // Nothing is recorded when the wallet
+                        // never opened: no handoff, no payment.
+                        onPayWithQr = { qr ->
+                            val wallet = graph.wallet
+                            val opened = wallet?.payWithMercadoPago(qr.raw) == true
+                            scope.launch {
+                                // The payload outlives the
+                                // handoff in one synced row, so a
+                                // failure in a shop is still
+                                // debuggable at home.
+                                runCatching {
+                                    graph.settings.set(
+                                        QR_PAY_LAST_KEY,
+                                        "${epochMillis()}|${if (opened) "ok" else "fail"}|${qr.raw}",
+                                    )
+                                }
+                                if (opened) {
+                                    runCatching { graph.qrPayments.record(qr) }
+                                        .onSuccess { ledgerState.refresh() }
+                                        .onFailure { Feedback.show(it.message ?: it.toString()) }
+                                }
+                            }
+                            if (!opened) {
+                                Feedback.show(if (wallet == null) noWallet else handoffFailed)
+                            }
+                        },
+                        onNavigateToTree = { navigate(AccountsTreeRoute) },
+                        onNewTransaction = { kind -> navigate(TransactionQuickRoute(kind)) },
+                        onNavigateToNotifications = { navigate(NotificationsRoute) },
+                        onNavigateToEmails = { navigate(EmailsRoute) },
+                        onNavigateToJournal = { navigate(JournalRoute) },
+                        onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
+                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
+                        onNavigateToAddAccount = { navigate(AccountAddRoute(AccountType.Asset)) },
+                        bottomBar = bar,
+                    )
+                    }
+
+                    // Journal, Categorías and Profile are each both a tab and
+                    // a pushable destination, so each is written once here:
+                    // `bar` is the shell's reserved strip when it renders as
+                    // a tab and null when pushed (which is what makes the
+                    // screen show a back arrow instead).
+                    val journalScreen: @Composable ((@Composable () -> Unit)?) -> Unit = { bar ->
+                        JournalScreen(
+                            state = journalState,
+                            onNavigateBack = { pop() },
+                            bottomBar = bar,
+                            onNavigateToNew = { navigate(TransactionNewRoute()) },
+                            onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
+                        )
+                    }
+                    val categoriesScreen: @Composable (@Composable () -> Unit) -> Unit = { bar ->
+                        CategoriesScreen(
+                            ledgerState = ledgerState,
+                            onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
+                            bottomBar = bar,
+                        )
+                    }
+                    val profileScreen: @Composable ((@Composable () -> Unit)?) -> Unit = { bar ->
+                        ProfileScreen(
+                            chain = graph.chain,
+                            chainState = chainState,
+                            whatsappState = whatsappState,
+                            embeddings = graph.embeddings,
+                            userState = userState,
+                            onNavigateBack = { pop() },
+                            bottomBar = bar,
+                            onSignOut = { scope.launch { graph.auth.signOut() } },
                         )
                     }
 
@@ -229,70 +341,20 @@ fun RootScreen(
                                         scanner = { graph.scanner },
                                     )
                                 }
-                                entry<HomeRoute> {
-                                    // Captured for the QR handoff, which runs
-                                    // in a callback, not in composition.
-                                    val handoffFailed = stringResource(Res.string.qr_pay_handoff_failed)
-                                    val noWallet = stringResource(Res.string.qr_pay_no_wallet)
-                                    // The classic list-shaped Home is still
-                                    // in HomeScreen.kt and takes the same
-                                    // arguments; swap the call to compare.
-                                    HomeDashboardScreen(
-                                        ledgerState = ledgerState,
-                                        userState = userState,
-                                        documents = { graph.documents },
-                                        onImportDocument = { navigate(ImportReviewRoute(it)) },
-                                        onNavigateToInbox = { navigate(InboxReviewRoute) },
-                                        scanner = { graph.scanner },
-                                        // Hand off first — the user is standing
-                                        // at a counter — then write the row from
-                                        // the coroutine. The amount is a
-                                        // placeholder (the QR has none); the
-                                        // wallet's push completes it later.
-                                        // Nothing is recorded when the wallet
-                                        // never opened: no handoff, no payment.
-                                        onPayWithQr = { qr ->
-                                            val wallet = graph.wallet
-                                            val opened = wallet?.payWithMercadoPago(qr.raw) == true
-                                            scope.launch {
-                                                // The payload outlives the
-                                                // handoff in one synced row, so a
-                                                // failure in a shop is still
-                                                // debuggable at home.
-                                                runCatching {
-                                                    graph.settings.set(
-                                                        QR_PAY_LAST_KEY,
-                                                        "${epochMillis()}|${if (opened) "ok" else "fail"}|${qr.raw}",
-                                                    )
-                                                }
-                                                if (opened) {
-                                                    runCatching { graph.qrPayments.record(qr) }
-                                                        .onSuccess { ledgerState.refresh() }
-                                                        .onFailure { Feedback.show(it.message ?: it.toString()) }
-                                                }
-                                            }
-                                            if (!opened) {
-                                                Feedback.show(if (wallet == null) noWallet else handoffFailed)
-                                            }
-                                        },
-                                        onNavigateToTree = { navigate(AccountsTreeRoute) },
-                                        onNewTransaction = { kind -> navigate(TransactionQuickRoute(kind)) },
-                                        onNavigateToNotifications = { navigate(NotificationsRoute) },
-                                        onNavigateToEmails = { navigate(EmailsRoute) },
-                                        onNavigateToJournal = { navigate(JournalRoute) },
-                                        onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
-                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
-                                        onNavigateToAddAccount = { navigate(AccountAddRoute(AccountType.Asset)) },
-                                        bottomBar = { tabs(AppTab.Home) },
-                                    )
+                                entry<TabsRoute> {
+                                    TabShell(
+                                        current = currentTab,
+                                        stack = tabStack,
+                                        onSelect = { selectTab(it) },
+                                        onNew = { creating = true },
+                                    ) { bar ->
+                                        entry<HomeRoute> { homeTab(bar) }
+                                        entry<JournalRoute> { journalScreen(bar) }
+                                        entry<CategoriesRoute> { categoriesScreen(bar) }
+                                        entry<ProfileRoute> { profileScreen(bar) }
+                                    }
                                 }
-                                entry<CategoriesRoute> {
-                                    CategoriesScreen(
-                                        ledgerState = ledgerState,
-                                        onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
-                                        bottomBar = { tabs(AppTab.Categories) },
-                                    )
-                                }
+                                entry<CategoriesRoute> { categoriesScreen {} }
                                 entry<AccountsTreeRoute> {
                                     AccountsTreeScreen(
                                         ledgerState = ledgerState,
@@ -319,22 +381,7 @@ fun RootScreen(
                                         onNavigateBack = { pop() },
                                     )
                                 }
-                                entry<JournalRoute> {
-                                    JournalScreen(
-                                        state = journalState,
-                                        onNavigateBack = { pop() },
-                                        // Only a back arrow when it *is* a
-                                        // pushed screen; as a tab root the bar
-                                        // is how you leave.
-                                        bottomBar = if (backStack.size == 1) {
-                                            { tabs(AppTab.Movements) }
-                                        } else {
-                                            null
-                                        },
-                                        onNavigateToNew = { navigate(TransactionNewRoute()) },
-                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
-                                    )
-                                }
+                                entry<JournalRoute> { journalScreen(null) }
                                 entry<TransactionNewRoute> { route ->
                                     TransactionEditScreen(
                                         ledger = graph.ledger,
@@ -437,33 +484,14 @@ fun RootScreen(
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                     )
                                 }
-                                entry<ProfileRoute> {
-                                    ProfileScreen(
-                                        chain = graph.chain,
-                                        chainState = chainState,
-                                        whatsappState = whatsappState,
-                                        embeddings = graph.embeddings,
-                                        userState = userState,
-                                        onNavigateBack = { pop() },
-                                        bottomBar = if (backStack.size == 1) {
-                                            { tabs(AppTab.Profile) }
-                                        } else {
-                                            null
-                                        },
-                                        onSignOut = { scope.launch { graph.auth.signOut() } },
-                                    )
-                                }
+                                entry<ProfileRoute> { profileScreen(null) }
                             },
+                            // Every move on *this* stack is a step into
+                            // something; sideways moves happen a level down,
+                            // inside the shell, with their own spec.
                             transitionSpec = {
-                                if (lateralMove) {
-                                    // Tabs cross-fade in place: nothing slid
-                                    // in from the side, you just swapped which
-                                    // root you're looking at.
-                                    fadeIn(tween(180)) togetherWith fadeOut(tween(140))
-                                } else {
-                                    (slideInHorizontally(initialOffsetX = slideIn) + fadeIn()) togetherWith
-                                        (slideOutHorizontally(targetOffsetX = slideOut) + fadeOut())
-                                }
+                                (slideInHorizontally(initialOffsetX = slideIn) + fadeIn()) togetherWith
+                                    (slideOutHorizontally(targetOffsetX = slideOut) + fadeOut())
                             },
                             popTransitionSpec = {
                                 (slideInHorizontally(initialOffsetX = slideOut) + fadeIn()) togetherWith
@@ -474,6 +502,22 @@ fun RootScreen(
                                     (slideOutHorizontally(targetOffsetX = slideIn) + fadeOut())
                             },
                         )
+                        if (loggedIn) {
+                            TransactionSheet(
+                                visible = creating,
+                                ledger = graph.ledger,
+                                accounts = graph.accounts,
+                                settings = graph.settings,
+                                onDismiss = { creating = false },
+                                onSaved = {
+                                    creating = false
+                                    // Whatever root is behind the panel shows
+                                    // the new row the moment it closes.
+                                    ledgerState.refresh()
+                                    journalState.refresh()
+                                },
+                            )
+                        }
                         SnackbarHost(
                             hostState = snackbarHostState,
                             modifier = Modifier.align(Alignment.BottomCenter),

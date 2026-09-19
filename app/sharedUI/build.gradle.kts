@@ -55,6 +55,10 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
             implementation(libs.compose.ui)
+            // Not pulled in by compose.ui's compile classpath: the create
+            // panel is an overlay, so system back has to be intercepted by
+            // hand rather than by the nav host.
+            implementation(libs.compose.uiBackhandler)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)

@@ -5,6 +5,7 @@
     <!-- App / generic -->
     <string name="app_title">Finance</string>
     <string name="action_back">Atrás</string>
+    <string name="action_close">Cerrar</string>
     <string name="action_save">Guardar</string>
     <string name="action_cancel">Cancelar</string>
     <string name="action_ok">OK</string>
@@ -131,6 +132,7 @@
     <string name="quick_category_label">Categoría</string>
     <string name="quick_choose">Elegir…</string>
     <string name="quick_record">Registrar</string>
+    <string name="sheet_new_title">Nuevo movimiento</string>
     <string name="quick_error_amount">Ingresá un monto mayor a cero</string>
 
     <!-- Account picker -->

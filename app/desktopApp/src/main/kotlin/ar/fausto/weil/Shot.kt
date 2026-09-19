@@ -30,6 +30,8 @@ import org.jetbrains.skia.Image
  *   ./gradlew :app:desktopApp:shot -Pshot.route=notification (captured
  *     notification + its neighbours by vector similarity)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=email    (email detail)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=new      (the create panel,
+ *     risen over Home)
  *
  * Session and database are sandboxed under the temp dir: the harness must
  * never touch `~/.weil` (a real desktop session lives there) and always starts
@@ -87,6 +89,17 @@ fun main(args: Array<String>) {
         ) {
             RootScreen(
                 graph,
+                // Not a route: the create panel is an overlay over whatever
+                // root is showing.
+                openCreate = route == "new",
+                // The four tabs render inside the shell, so they are asked
+                // for by name rather than pushed as routes.
+                startTab = when (route) {
+                    "movements" -> AppTab.Movements
+                    "categories" -> AppTab.Categories
+                    "profile-tab" -> AppTab.Profile
+                    else -> AppTab.Home
+                },
                 initialRoute = when (route) {
                     "quick" -> TransactionQuickRoute(TxnKind.Expense)
                     "account-add" -> AccountAddRoute(AccountType.Asset)
@@ -94,7 +107,6 @@ fun main(args: Array<String>) {
                     "tx-new" -> TransactionNewRoute()
                     "account" -> AccountDetailRoute("seed-asset-bank")
                     "tree" -> AccountsTreeRoute
-                    "categories" -> CategoriesRoute
                     "inbox" -> InboxReviewRoute
                     "tx" -> TransactionDetailRoute("seed-tx-2")
                     "notification" -> NotificationDetailRoute("seed-notif-1")
