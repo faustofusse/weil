@@ -42,6 +42,9 @@ enum class AppTab { Home, Movements, Categories, Profile }
 /** How far the create button rides above the bar's top edge. */
 private val FabOverlap = 26.dp
 
+/** Extra air between the create button's slot and the tabs flanking it. */
+private val InnerTabGap = 26.dp
+
 /**
  * Bottom navigation for the four root destinations **plus** the create
  * button, which is part of the bar rather than a Scaffold FAB: the design has
@@ -91,7 +94,10 @@ fun AppBottomBar(current: AppTab, onSelect: (AppTab) -> Unit, onNew: () -> Unit)
                     stringResource(Res.string.nav_movements),
                     current,
                     onSelect,
-                    Modifier.weight(1f),
+                    // The two inner tabs are pushed away from the middle so
+                    // the create button gets clear air around it instead of
+                    // crowding the labels either side of its gap.
+                    Modifier.weight(1f).padding(end = InnerTabGap),
                 )
                 // The gap the create button sits in. Reserved as a real slot
                 // instead of letting the button cover a tab: a destination
@@ -103,7 +109,7 @@ fun AppBottomBar(current: AppTab, onSelect: (AppTab) -> Unit, onNew: () -> Unit)
                     stringResource(Res.string.nav_categories),
                     current,
                     onSelect,
-                    Modifier.weight(1f),
+                    Modifier.weight(1f).padding(start = InnerTabGap),
                 )
                 TabItem(
                     AppTab.Profile,
