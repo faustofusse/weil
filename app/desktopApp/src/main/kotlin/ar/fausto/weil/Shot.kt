@@ -25,6 +25,9 @@ import org.jetbrains.skia.Image
  *   ./gradlew :app:desktopApp:shot -Pshot.route=account  (register of the seeded
  *       bank account, which holds both ARS and USD postings)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=tree     (full account tree)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=notification (captured
+ *     notification + its neighbours by vector similarity)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=email    (email detail)
  *
  * Session and database are sandboxed under the temp dir: the harness must
  * never touch `~/.weil` (a real desktop session lives there) and always starts
@@ -49,9 +52,16 @@ fun main(args: Array<String>) {
         passkeys = { JvmDevPasskeys() },
         qrScanner = { null },
         importAnalyzer = FakeImportAnalyzer(),
+        // Hashed bag-of-words, not a model: no key, no network, and the
+        // vector functions it feeds are the ones FakeDatabase registers.
+        embedder = FakeEmbedder(),
         dbContext = jvmDbDispatcher,
         dbFactory = { _, _, _ -> FakeDatabase(dbFile) },
     )
+
+    // The similarity sections render nothing until vectors exist, and the
+    // harness has no one to tap "revectorizar": sweep up front.
+    kotlinx.coroutines.runBlocking { runCatching { graph.embeddings.embedPending() } }
 
     // Same path a real Android share takes: drop a document in the inbox and
     // RootScreen navigates to the review screen once it subscribes.
@@ -84,6 +94,8 @@ fun main(args: Array<String>) {
                     "tree" -> AccountsTreeRoute
                     "inbox" -> InboxReviewRoute
                     "tx" -> TransactionDetailRoute("seed-tx-2")
+                    "notification" -> NotificationDetailRoute("seed-notif-1")
+                    "email" -> EmailDetailRoute("seed-email-1")
                     // Chain and WhatsApp sections call the worker, which the
                     // sandboxed session cannot reach: both render their error
                     // state here, the layout is still what ships.

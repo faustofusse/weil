@@ -111,6 +111,18 @@ class NotificationsRepository(private val db: DatabaseProvider) {
         }
     }
 
+    /** One captured notification, for the detail screen. */
+    suspend fun get(id: String): NotificationItem? = db.useForRead { d ->
+        val apps = loadApps(d)
+        d.query(
+            "select id, package_name, title, text, category, post_time, received_at" +
+                " from notifications where id = :id",
+            mapOf(":id" to id),
+        ) { rows ->
+            rows.firstOrNull()?.takeIf { it.size >= 7 }?.let { toNotificationItem(it, apps) }
+        }
+    }
+
     /**
      * Records a captured notification locally and schedules a throttled push:
      * at most one `sync()` per [SYNC_INTERVAL_MILLIS], with a trailing sync so

@@ -5,6 +5,7 @@
  */
 import { createClient, type Client } from '@libsql/client';
 import { parseEmail } from './email';
+import { handleEmbed } from './embed';
 import { authenticate, handleAnalyze, handleDocument, json } from './import';
 import { handleInbound, handleLink, handleLinkStatus, handleUnlink } from './whatsapp';
 
@@ -104,6 +105,18 @@ export default {
       }
 
       return json({ error: 'not found' }, 404);
+    }
+
+    // ---- embeddings (cookie-authed; returns vectors, writes nothing) ----
+    if (request.method === 'POST' && url.pathname === '/embed') {
+      const user = await authenticate(request, env);
+      if (user instanceof Response) return user;
+      try {
+        return await handleEmbed(request, env);
+      } catch (e) {
+        console.error('embed failed:', e);
+        return json({ error: e instanceof Error ? e.message : 'embed failed' }, 502);
+      }
     }
 
     // ---- whatsapp ----

@@ -19,6 +19,7 @@ class FakeDatabase(
         file.parentFile?.mkdirs()
         Class.forName("org.sqlite.JDBC")
         conn = DriverManager.getConnection("jdbc:sqlite:${file.absolutePath}")
+        registerVectorFunctions(conn)
         // SCHEMA_SQL is a single `;`-joined string of statements; sqlite-jdbc's
         // default Statement.execute only runs the first one, so split it here.
         SCHEMA_SQL.split(";").map { it.trim() }.filter { it.isNotEmpty() }.forEach { stmt ->

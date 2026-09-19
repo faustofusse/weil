@@ -289,10 +289,14 @@ fun RootScreen(
                                     TransactionDetailScreen(
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
+                                        embeddings = graph.embeddings,
                                         id = route.id,
                                         onNavigateBack = { pop() },
                                         onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
                                         onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
+                                        onOpenNotification = { navigate(NotificationDetailRoute(it)) },
+                                        onOpenEmail = { navigate(EmailDetailRoute(it)) },
                                     )
                                 }
                                 entry<TransactionEditRoute> { route ->
@@ -347,14 +351,30 @@ fun RootScreen(
                                 entry<EmailDetailRoute> { route ->
                                     EmailDetailScreen(
                                         emails = graph.emails,
+                                        ledger = graph.ledger,
+                                        embeddings = graph.embeddings,
                                         id = route.id,
                                         onNavigateBack = { pop() },
+                                        onOpenEmail = { navigate(EmailDetailRoute(it)) },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                     )
                                 }
                                 entry<NotificationsRoute> {
                                     NotificationsScreen(
                                         state = notificationsState,
                                         onNavigateBack = { pop() },
+                                        onOpenNotification = { navigate(NotificationDetailRoute(it)) },
+                                    )
+                                }
+                                entry<NotificationDetailRoute> { route ->
+                                    NotificationDetailScreen(
+                                        notifications = graph.notifications,
+                                        ledger = graph.ledger,
+                                        embeddings = graph.embeddings,
+                                        id = route.id,
+                                        onNavigateBack = { pop() },
+                                        onOpenNotification = { navigate(NotificationDetailRoute(it)) },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                     )
                                 }
                                 entry<ProfileRoute> {
@@ -362,6 +382,7 @@ fun RootScreen(
                                         chain = graph.chain,
                                         chainState = chainState,
                                         whatsappState = whatsappState,
+                                        embeddings = graph.embeddings,
                                         onNavigateBack = { pop() },
                                         onSignOut = { scope.launch { graph.auth.signOut() } },
                                     )

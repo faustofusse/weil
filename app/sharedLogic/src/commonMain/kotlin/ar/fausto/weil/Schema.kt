@@ -87,7 +87,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 6L
+private const val SCHEMA_VERSION = 7L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -167,6 +167,16 @@ fun Database.migrateSchema() {
     }
     val emailColumns = query("pragma table_info(emails)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
+    }
+    // Embeddings: one vector per row plus the model that produced it, so rows
+    // from two different models are never compared against each other. No
+    // vector index — the sync engine has vector32/vector_distance_cos but not
+    // libsql_vector_idx, and the index DDL does not even parse on the device
+    // (see plans/embeddings-prueba-jev.md). Search is an exact scan over a few
+    // hundred candidate rows, which is milliseconds.
+    for (table in listOf("ledger_transactions", "notifications", "emails")) {
+        addColumn("alter table $table add column embedding F32_BLOB($EMBEDDING_DIMS)")
+        addColumn("alter table $table add column embedding_model text")
     }
     if ("body_html" !in emailColumns) {
         // Sanitized HTML body (see the worker's email ingest). Null for rows

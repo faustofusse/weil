@@ -8,6 +8,9 @@ object HomeRoute
 
 object NotificationsRoute
 
+/** Texto completo de una notificación capturada, más sus parecidas. */
+data class NotificationDetailRoute(val id: String)
+
 object EmailsRoute
 
 data class EmailDetailRoute(val id: String)

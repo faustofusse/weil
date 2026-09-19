@@ -78,6 +78,13 @@ import weil.app.sharedui.generated.resources.profile_device_revoked
 import weil.app.sharedui.generated.resources.profile_device_this
 import weil.app.sharedui.generated.resources.profile_devices_count_many
 import weil.app.sharedui.generated.resources.profile_devices_count_one
+import weil.app.sharedui.generated.resources.profile_embeddings_pending
+import weil.app.sharedui.generated.resources.profile_embeddings_progress
+import weil.app.sharedui.generated.resources.profile_embeddings_rebuild
+import weil.app.sharedui.generated.resources.profile_embeddings_run
+import weil.app.sharedui.generated.resources.profile_embeddings_subtitle
+import weil.app.sharedui.generated.resources.profile_embeddings_title
+import weil.app.sharedui.generated.resources.profile_embeddings_up_to_date
 import weil.app.sharedui.generated.resources.profile_email_edit
 import weil.app.sharedui.generated.resources.profile_email_not_set
 import weil.app.sharedui.generated.resources.profile_invite_expired
@@ -125,6 +132,7 @@ fun ProfileScreen(
     chain: ChainRepository,
     chainState: ChainState,
     whatsappState: WhatsappState,
+    embeddings: EmbeddingsRepository,
     onNavigateBack: () -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -154,6 +162,8 @@ fun ProfileScreen(
             ChainSection(chainState)
             Spacer(Modifier.height(16.dp))
             WhatsappSection(whatsappState)
+            Spacer(Modifier.height(16.dp))
+            EmbeddingsSection(embeddings)
             Spacer(Modifier.height(24.dp))
             SignOutSection(onClick = { confirmSignOut = true })
         }
@@ -234,6 +244,95 @@ private fun SectionCard(
             }
             Spacer(Modifier.height(14.dp))
             content()
+        }
+    }
+}
+
+/**
+ * The only part of "parecidos a este" that touches the network: the sweep that
+ * fills the vectors. It lives in the profile because it spans the three tables
+ * and this is already where maintenance lives (device chain, session).
+ *
+ * The sweep writes after each batch, so leaving the screen (which cancels the
+ * coroutine) loses nothing but the batch in flight.
+ */
+@Composable
+private fun EmbeddingsSection(embeddings: EmbeddingsRepository) {
+    var pending by remember { mutableStateOf<Int?>(null) }
+    var progress by remember { mutableStateOf<EmbedProgress?>(null) }
+    var running by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun refreshPending() {
+        pending = runCatching { embeddings.pendingCount() }.getOrNull()
+    }
+
+    LaunchedEffect(Unit) { refreshPending() }
+
+    fun sweep(invalidateFirst: Boolean) {
+        if (running) return
+        scope.launch {
+            running = true
+            progress = null
+            try {
+                if (invalidateFirst) embeddings.invalidateAll()
+                embeddings.embedPending { progress = it }
+                refreshPending()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Feedback.show(e.message ?: e.toString())
+            } finally {
+                running = false
+                progress = null
+            }
+        }
+    }
+
+    SectionCard(
+        title = stringResource(Res.string.profile_embeddings_title),
+        icon = Icons.Filled.Search,
+        subtitle = stringResource(Res.string.profile_embeddings_subtitle),
+    ) {
+        val status = when {
+            running -> progress?.let {
+                stringResource(Res.string.profile_embeddings_progress, it.done, it.total)
+            }
+            pending == null -> null
+            pending == 0 -> stringResource(Res.string.profile_embeddings_up_to_date)
+            else -> stringResource(Res.string.profile_embeddings_pending, pending ?: 0)
+        }
+        if (status != null) {
+            Text(
+                status,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = { sweep(invalidateFirst = false) },
+                enabled = !running,
+                modifier = Modifier.weight(1f).height(48.dp),
+            ) {
+                if (running) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Text(stringResource(Res.string.profile_embeddings_run), maxLines = 1)
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            OutlinedButton(
+                onClick = { sweep(invalidateFirst = true) },
+                enabled = !running,
+                modifier = Modifier.weight(1f).height(48.dp),
+            ) {
+                Text(stringResource(Res.string.profile_embeddings_rebuild), maxLines = 1)
+            }
         }
     }
 }

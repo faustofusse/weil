@@ -94,6 +94,25 @@ private data class IngestRule(
 private const val MONEY = "((?:U\\\$S|US\\\$|USD|\\\$)?\\s*[0-9][0-9.,]*)"
 
 /**
+ * "Does this message mention money at all?" — the cheap prefilter that decides
+ * which rows are worth embedding or running the rules over.
+ *
+ * Anchored on **both** sides on purpose. The prefix-only spelling misses real
+ * movements measured on the dev device: "Recibiste 30.000 ARS de Fausto Fusse"
+ * (Lemon Cash) and "You received 500,000 ARS" (DolarApp) write the currency
+ * after the number, which is the normal order in English and common in
+ * crypto-adjacent wallets.
+ */
+val MONEY_TEXT = Regex(
+    "(?:U\\\$S|US\\\$|USD|ARS|\\\$)\\s*[0-9][0-9.,]*" +
+        "|[0-9][0-9.,]*\\s*(?:U\\\$S|US\\\$|USD|ARS|pesos?|d[oó]lares?)\\b",
+    RegexOption.IGNORE_CASE,
+)
+
+/** True when [text] carries a currency-anchored amount ([MONEY_TEXT]). */
+fun hasAmount(text: String): Boolean = MONEY_TEXT.containsMatchIn(text)
+
+/**
  * Mercado Pago and Santander, the two apps that actually post movement alerts
  * on this device. Adding a bank is adding rows here — no other file changes.
  */
@@ -369,11 +388,11 @@ fun decodeMimeHeader(raw: String): String {
  * sentence, which is what makes "Monto … Comercio … Fecha" a single regex.
  */
 fun emailPlainText(raw: String): String {
-    val decoded = decodeQuotedPrintable(raw)
+    val decoded = decodeQuotedPrintable(unwrapMime(raw))
     // Style and script bodies survive tag stripping as text, and a marketing
     // email is mostly stylesheet: leaving them in buries the receipt in
     // selectors and makes every rule scan kilobytes of noise.
-    val noBlocks = decoded.replace(BLOCK, " ")
+    val noBlocks = decoded.replace(BLOCK, " ").replace(OPEN_BLOCK, " ")
     val noTags = noBlocks.replace(TAG, " ")
     val unescaped = ENTITIES.entries.fold(noTags) { acc, (k, v) -> acc.replace(k, v) }
     return unescaped.replace(WHITESPACE, " ").trim()
@@ -386,7 +405,63 @@ private val BLOCK = Regex(
     "<(style|script)\\b[^>]*>[\\s\\S]*?</\\1\\s*>",
     RegexOption.IGNORE_CASE,
 )
+// A body stored truncated at 10 kB often ends *inside* a stylesheet, so the
+// closing tag BLOCK needs never arrives and the whole CSS tail survives as
+// text. 45 of the dev device's 132 mails are cut like this.
+private val OPEN_BLOCK = Regex("<(style|script)\\b[^>]*>[\\s\\S]*$", RegexOption.IGNORE_CASE)
 private val WHITESPACE = Regex("[\\s\\u00a0]+")
+private val BOUNDARY_DECL = Regex("boundary=\"?([^\";\\r\\n]+)\"?", RegexOption.IGNORE_CASE)
+// A `--token` line immediately followed by a MIME header is a boundary;
+// requiring that next line is what keeps a line of dashes in a plain-text
+// signature from being mistaken for one.
+private val BOUNDARY_LINE = Regex(
+    "^--(\\S{4,})[ \\t]*\\r?\\n(?=Content-)",
+    setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE),
+)
+private val BLANK_LINE = Regex("\\r?\\n\\r?\\n")
+
+/**
+ * A stored `body_text` is frequently the whole MIME entity — boundaries,
+ * headers and quoted-printable included — truncated at 10 kB, so anything
+ * reading it (a rule, an embedding) measures `Content-Type: multipart/related`
+ * instead of the receipt. Picks the richest part (html over plain) and decodes
+ * its transfer encoding; returns [raw] unchanged when there is no multipart.
+ */
+fun unwrapMime(raw: String): String {
+    // The declared boundary when the stored text still includes the entity
+    // headers, and otherwise the first `--token` line: rows cut at 10 kB
+    // frequently start *inside* the multipart, declaration already gone.
+    val boundary = BOUNDARY_DECL.find(raw)?.groupValues?.get(1)
+        ?: BOUNDARY_LINE.find(raw)?.groupValues?.get(1)
+        ?: return raw
+    var best = ""
+    var bestRank = -1
+    for (part in raw.split("--$boundary").drop(1)) {
+        // Headers end at the first blank line; nested multiparts get unwrapped
+        // again, which is how `related` inside `alternative` reaches the html.
+        val split = BLANK_LINE.find(part)?.range?.first ?: continue
+        val headers = part.substring(0, split).lowercase()
+        if ("multipart/" in headers) {
+            val inner = unwrapMime(part)
+            if (inner != part && inner.length > best.length) {
+                best = inner
+                bestRank = 2
+            }
+            continue
+        }
+        val isHtml = "text/html" in headers
+        val isPlain = "text/plain" in headers
+        if (!isHtml && !isPlain) continue
+        var body = part.substring(split).trim()
+        if ("base64" in headers) body = decodeBase64Utf8(body)
+        val rank = if (isHtml) 2 else 1
+        if (rank > bestRank) {
+            best = body
+            bestRank = rank
+        }
+    }
+    return best.ifEmpty { raw }
+}
 private val ENTITIES = mapOf(
     "&nbsp;" to " ", "&amp;" to "&", "&lt;" to "<", "&gt;" to ">",
     "&quot;" to "\"", "&#39;" to "'", "&aacute;" to "á", "&eacute;" to "é",

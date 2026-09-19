@@ -332,6 +332,32 @@
     <string name="import_chain_start">Categorizar</string>
     <string name="import_chain_progress">%1$d de %2$d</string>
 
+    <!-- Búsqueda por similitud (vectores) -->
+    <string name="similar_transactions">Transacciones similares</string>
+    <string name="similar_notifications">Notificaciones parecidas</string>
+    <string name="similar_emails">Emails similares</string>
+    <string name="similar_none">Todavía no hay parecidos</string>
+    <string name="similar_not_embedded">Esta fila no está vectorizada</string>
+    <string name="similar_search">Buscar parecidas</string>
+    <string name="similar_only_this_app">Solo esta app</string>
+    <string name="similar_link">Vincular</string>
+    <string name="similar_linked">Vinculada</string>
+    <string name="similar_link_done">Origen vinculado</string>
+    <string name="similar_distance">d %1$s</string>
+
+    <!-- Detalle de notificación -->
+    <string name="notification_detail_title">Notificación</string>
+
+    <!-- Perfil: vectorización -->
+    <string name="profile_embeddings_title">Búsqueda por similitud</string>
+    <string name="profile_embeddings_subtitle">Calcula un vector por transacción, notificación y correo con monto. Después la búsqueda de parecidos funciona sin conexión.</string>
+    <string name="profile_embeddings_run">Vectorizar pendientes</string>
+    <string name="profile_embeddings_rebuild">Recalcular todo</string>
+    <string name="profile_embeddings_progress">%1$d de %2$d</string>
+    <string name="profile_embeddings_pending">%1$d pendientes</string>
+    <string name="profile_embeddings_up_to_date">Todo vectorizado</string>
+    <string name="profile_embeddings_done">%1$d filas vectorizadas</string>
+
     <!-- Passkey fallback names -->
     <string name="passkey_name">Passkey %1$s</string>
 </resources>

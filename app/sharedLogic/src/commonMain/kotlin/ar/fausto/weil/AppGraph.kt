@@ -24,6 +24,9 @@ class AppGraph(
     // Swapped by the desktop screenshot harness for a seeded fake; the app
     // always uses the worker-backed [ImportRepository].
     importAnalyzer: DocumentAnalyzer? = null,
+    // Same reason as [importAnalyzer]: the shot harness has no session, so it
+    // substitutes a local deterministic embedder.
+    embedder: TextEmbedder? = null,
     dbContext: CoroutineContext,
     dbFactory: (userId: String, url: String, token: String) -> Database,
     // Optional higher-priority context for pure reads; defaults to dbContext
@@ -46,6 +49,9 @@ class AppGraph(
     val notifications = NotificationsRepository(db)
     val emails = EmailsRepository(db)
     val imports: DocumentAnalyzer = importAnalyzer ?: ImportRepository(store)
+
+    /** Vectors for "parecidos a este"; search itself is offline SQL. */
+    val embeddings = EmbeddingsRepository(db, embedder ?: WorkerEmbedder(store))
 
     /** Linking a phone number so messages to the bot become transactions. */
     val whatsapp = WhatsappRepository(store)

@@ -1,6 +1,7 @@
 package ar.fausto.weil
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,6 +59,7 @@ private const val NOTIFICATION_SKELETON_COUNT = 16
 fun NotificationsScreen(
     state: NotificationsState,
     onNavigateBack: () -> Unit,
+    onOpenNotification: (String) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
 
@@ -142,7 +144,10 @@ fun NotificationsScreen(
                 } else {
                     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                         items(state.items, key = { it.id }) { notificationItem ->
-                            NotificationCard(notificationItem = notificationItem)
+                            NotificationCard(
+                                notificationItem = notificationItem,
+                                onClick = { onOpenNotification(notificationItem.id) },
+                            )
                             Spacer(Modifier.height(8.dp))
                         }
                         if (state.hasMore) {
@@ -189,13 +194,13 @@ private fun NotificationAccessBanner() {
 }
 
 @Composable
-private fun NotificationCard(notificationItem: NotificationItem) {
+private fun NotificationCard(notificationItem: NotificationItem, onClick: () -> Unit) {
     val typography = MaterialTheme.typography
 
     Surface(
         shape = RoundedCornerShape(GroupRadius),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

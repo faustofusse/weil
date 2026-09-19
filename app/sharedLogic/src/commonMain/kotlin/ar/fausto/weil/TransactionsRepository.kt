@@ -85,12 +85,18 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         val postings = resolvePostings(drafts).map { it.copy(transactionId = id) }
         writeAtomically {
             execute(
+                // The embedding is dropped because payee/note/accounts are
+                // exactly what it was computed from; the next sweep
+                // recomputes it. Cheaper and safer than keeping a vector that
+                // describes a transaction the user just rewrote.
                 if (note.isNullOrBlank()) {
                     "update ledger_transactions set date = :date, payee = :payee, note = null," +
-                        " time_known = :time_known where id = :id"
+                        " time_known = :time_known, embedding = null, embedding_model = null" +
+                        " where id = :id"
                 } else {
                     "update ledger_transactions set date = :date, payee = :payee, note = :note," +
-                        " time_known = :time_known where id = :id"
+                        " time_known = :time_known, embedding = null, embedding_model = null" +
+                        " where id = :id"
                 },
                 buildMap {
                     put(":date", date)
@@ -277,6 +283,19 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     }
 
     /** Every origin recorded for one transaction, oldest first. */
+    /**
+     * The other direction of [sources]: which transactions already record this
+     * origin. Used by the message detail screens to show a neighbour as
+     * already linked instead of offering the link again.
+     */
+    suspend fun transactionsForSource(kind: EventSource, ref: String): Set<String> =
+        db.useForRead { d ->
+            d.query(
+                "select transaction_id from transaction_sources where kind = :kind and ref = :ref",
+                mapOf(":kind" to kind.db, ":ref" to ref),
+            ) { rows -> rows.mapNotNull { it.firstOrNull()?.toString() }.toSet() }
+        }
+
     suspend fun sources(transactionId: String): List<StoredSource> = db.useForRead { d ->
         d.query(
             "select kind, ref, event_key, created_at from transaction_sources" +
