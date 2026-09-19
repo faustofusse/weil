@@ -224,44 +224,82 @@ fun AccountPickerSheet(
     }
 }
 
-/** Depth-first flattened rows; children always visible below their parent. */
+/** Marker row for a type section in the depth-first list below. */
+private data class TypeHeaderRow(val type: AccountType, val divider: Boolean)
+
+/**
+ * Depth-first flattened rows; children always visible below their parent.
+ * Top-level roots are grouped by [AccountType] with a [SectionHeader] when
+ * more than one type is present in [tree] (e.g. the full-tree picker used by
+ * [TransactionEditScreen]) — otherwise two same-named roots of different
+ * types ("Gastos:Otros" vs "Ingresos:Otros") are indistinguishable once
+ * reduced to just their leaf name and indentation.
+ */
 private fun LazyListScope.itemsIndented(
     tree: List<AccountNode>,
     exclude: Set<String>,
     onPick: (AccountNode) -> Unit,
 ) {
-    val flat = buildList {
-        fun visit(node: AccountNode, depth: Int) {
-            add(node to depth)
-            node.children.forEach { visit(it, depth + 1) }
+    val showHeaders = tree.map { it.account.type }.distinct().size > 1
+    val rows = buildList {
+        var firstHeader = true
+        for (type in AccountType.entries) {
+            val roots = tree.filter { it.account.type == type }
+            if (roots.isEmpty()) continue
+            if (showHeaders) {
+                add(TypeHeaderRow(type, divider = !firstHeader))
+                firstHeader = false
+            }
+            fun visit(node: AccountNode, depth: Int) {
+                if (node.account.id !in exclude) add(node to depth)
+                node.children.forEach { visit(it, depth + 1) }
+            }
+            roots.forEach { visit(it, 0) }
         }
-        tree.forEach { visit(it, 0) }
-    }.filter { it.first.account.id !in exclude }
-    items(flat, key = { it.first.account.id }) { (node, depth) ->
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onPick(node) }
-                .padding(vertical = 12.dp),
-        ) {
-            Spacer(Modifier.width((depth * 16).dp))
-            Text(
-                node.account.name,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp),
+    }
+    items(
+        rows,
+        key = { row ->
+            when (row) {
+                is TypeHeaderRow -> "header-${row.type}"
+                else -> (row as Pair<*, *>).let { (it.first as AccountNode).account.id }
+            }
+        },
+    ) { row ->
+        when (row) {
+            is TypeHeaderRow -> SectionHeader(
+                title = accountTypeLabel(row.type),
+                divider = row.divider,
             )
-            if (node.children.isNotEmpty()) {
-                Text(
-                    node.children.size.toString(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 12.dp),
-                )
+            else -> {
+                @Suppress("UNCHECKED_CAST")
+                val (node, depth) = row as Pair<AccountNode, Int>
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(node) }
+                        .padding(vertical = 12.dp),
+                ) {
+                    Spacer(Modifier.width((depth * 16).dp))
+                    Text(
+                        node.account.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 16.dp),
+                    )
+                    if (node.children.isNotEmpty()) {
+                        Text(
+                            node.children.size.toString(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(end = 12.dp),
+                        )
+                    }
+                }
             }
         }
     }
