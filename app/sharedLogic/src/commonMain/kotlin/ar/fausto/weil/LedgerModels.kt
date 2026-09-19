@@ -32,6 +32,14 @@ data class Account(
      * descendant — see [LedgerState.excludedFromNetWorth].
      */
     val inNetWorth: Boolean = true,
+    /**
+     * Key of the icon this account shows in the UI (see `AccountIcons` in
+     * sharedUI). A *key*, not a glyph: the catalog is a UI concern and can
+     * grow or be re-drawn without touching stored rows, and an unknown key
+     * (written by a newer app version on another device) degrades to the
+     * per-type default instead of breaking the row.
+     */
+    val icon: String? = null,
 )
 
 /** Node of the in-memory account tree; [path] is the colon-joined chain to it. */
@@ -106,6 +114,41 @@ fun formatMinorUnits(units: Long): String {
     val frac = magnitude % 100
     val wholeText = whole.toString().reversed().chunked(3).joinToString(".").reversed()
     return (if (negative) "-" else "") + wholeText + "," + frac.toString().padStart(2, '0')
+}
+
+/**
+ * The symbol a person reads money in. USD keeps the "US" prefix on purpose:
+ * in Argentina a bare "$" means pesos, so an unqualified dollar figure is not
+ * ambiguous, it is wrong. Anything without a known symbol shows its code,
+ * which is never worse than a guess.
+ */
+fun currencySymbol(commodity: String): String = when (commodity.uppercase()) {
+    "ARS" -> "$"
+    "USD" -> "US$"
+    "EUR" -> "\u20ac"
+    "BRL" -> "R$"
+    else -> commodity
+}
+
+/**
+ * Money as it is shown to the user: "$ 1.234,56".
+ *
+ * Unsigned by default, on purpose: wherever the app prints an amount it also
+ * colors it (red leaving, green arriving), and a minus next to a red number
+ * says the same thing twice while making every debit one character wider than
+ * its neighbours. [signed] is for the few places where color can't carry it —
+ * a balance that is negative by bookkeeping convention (income, liabilities)
+ * is *not* painted red, so there the sign is the only cue left.
+ *
+ * Display only. Anything that has to be parsed back (editor drafts, the
+ * amount field) keeps [formatMinorUnits], which is symbol-free by design.
+ */
+fun formatMoney(minorUnits: Long, commodity: String, signed: Boolean = false): String {
+    val symbol = currencySymbol(commodity)
+    val negative = minorUnits < 0
+    val magnitude = if (negative) -minorUnits else minorUnits
+    val sign = if (signed && negative) "-" else ""
+    return "$sign$symbol ${formatMinorUnits(magnitude)}"
 }
 
 /** Commodity quick-picks shown in the editor; ARS is the default. */

@@ -33,6 +33,15 @@ class LedgerState(
     /** Survives navigation because the state lives above the nav host. */
     var expandedIds by mutableStateOf<Set<String>>(emptySet())
         private set
+
+    /**
+     * Masks every amount on Home (hero, tiles and movements alike) behind
+     * dots. Deliberately *not* persisted: it's a "someone is looking over my
+     * shoulder" gesture, not a preference, and a hidden balance surviving a
+     * restart would read as data that failed to load.
+     */
+    var amountsHidden by mutableStateOf(false)
+        private set
     var busy by mutableStateOf(false)
         private set
     /**
@@ -139,11 +148,15 @@ class LedgerState(
         }
     }
 
-    fun addAccount(name: String, type: AccountType, parentId: String?) =
-        mutate { accounts.add(name, type, parentId) }
+    fun addAccount(name: String, type: AccountType, parentId: String?, icon: String? = null) =
+        mutate { accounts.add(name, type, parentId, icon) }
 
     fun rename(id: String, name: String) =
         mutate { accounts.rename(id, name) }
+
+    /** Icon key from the [AccountIcons] catalog; null clears it back to the type default. */
+    fun setIcon(id: String, icon: String?) =
+        mutate { accounts.setIcon(id, icon) }
 
     /** [parentId] null moves the account to the root of its type. */
     fun reparent(id: String, parentId: String?) =
@@ -165,6 +178,10 @@ class LedgerState(
     /** Only meaningful for Asset/Liability; see [excludedFromNetWorth]. */
     fun setInNetWorth(id: String, included: Boolean) =
         mutate { accounts.setInNetWorth(id, included) }
+
+    fun toggleAmountsHidden() {
+        amountsHidden = !amountsHidden
+    }
 
     fun toggleExpanded(id: String) {
         expandedIds = if (id in expandedIds) expandedIds - id else expandedIds + id
@@ -239,11 +256,14 @@ class LedgerState(
     }
 }
 
-/** "USD 1,234.56 · ARS -500.00"; empty map renders "0". */
+/**
+ * "US$ 1.234,56 · $ -500,00"; empty map renders "$ 0,00". Signed, because a
+ * bare total line is never colored by its caller.
+ */
 fun formatTotals(totals: Map<String, Long>): String =
     if (totals.isEmpty()) {
-        "0"
+        formatMoney(0L, Money.DEFAULT_COMMODITY)
     } else {
         totals.entries.sortedByDescending { it.value }
-            .joinToString(" · ") { (c, v) -> "$c ${formatMinorUnits(v)}" }
+            .joinToString(" · ") { (c, v) -> formatMoney(v, c, signed = true) }
     }

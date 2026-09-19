@@ -2,18 +2,55 @@ package ar.fausto.weil
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
 /**
- * The handful of Material icons this app needs, built in-source. The Compose
- * Multiplatform icons artifacts are frozen at 1.7.3, so we inline the official
- * Material path data instead of adding a stale dependency.
+ * The handful of icons this app needs, built in-source. The Compose
+ * Multiplatform icons artifacts are frozen at 1.7.3, so we inline the path
+ * data instead of adding a stale dependency.
+ *
+ * They are **outlines**, not filled silhouettes: 24×24, a 2-unit stroke with
+ * round caps and joins, drawn on the same grid as the account icons in
+ * [AccountIcons]. Filled Material glyphs next to a line-art UI read as two
+ * icon sets on one screen, which is exactly what the design isn't.
+ *
+ * Note this is genuinely different path data, not the filled paths stroked:
+ * stroking a silhouette outlines its *edge* (you get a double line around a
+ * solid shape), so each icon is line geometry from the start.
  */
 object Icons {
 
-    private fun materialIcon(name: String, d: String): ImageVector =
+    /** Stroked, round-capped line icon; [d] paths are drawn in order. */
+    private fun lineIcon(name: String, vararg d: String): ImageVector =
+        ImageVector.Builder(
+            name = name,
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            d.forEach { path ->
+                addPath(
+                    pathData = addPathNodes(path),
+                    fill = null,
+                    stroke = SolidColor(Color.Black),
+                    strokeLineWidth = 1.9f,
+                    strokeLineCap = StrokeCap.Round,
+                    strokeLineJoin = StrokeJoin.Round,
+                )
+            }
+        }.build()
+
+    /**
+     * Solid shape, kept for the two icons a line version would ruin: the
+     * overflow dots (a stroked dot is a ring) and the "this is the default
+     * account" star, whose whole job is to differ from its outline sibling.
+     */
+    private fun solidIcon(name: String, d: String): ImageVector =
         ImageVector.Builder(
             name = name,
             defaultWidth = 24.dp,
@@ -25,146 +62,232 @@ object Icons {
         }.build()
 
     object Filled {
-        val Notifications: ImageVector = materialIcon(
+        val Notifications: ImageVector = lineIcon(
             "Notifications",
-            "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z",
+            "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9z",
+            "M13.73 21a2 2 0 0 1-3.46 0",
         )
 
-        val Refresh: ImageVector = materialIcon(
+        val Refresh: ImageVector = lineIcon(
             "Refresh",
-            "M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z",
+            "M23 4v6h-6",
+            "M1 20v-6h6",
+            "M3.51 9a9 9 0 0 1 14.85-3.36L23 10",
+            "M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
         )
 
-        val Warning: ImageVector = materialIcon(
+        val Warning: ImageVector = lineIcon(
             "Warning",
-            "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z",
+            "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z",
+            "M12 9v4",
+            "M12 17h.01",
         )
 
-        val ArrowBack: ImageVector = materialIcon(
+        val ArrowBack: ImageVector = lineIcon(
             "ArrowBack",
-            "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z",
+            "M19 12H5",
+            "M12 19l-7-7 7-7",
         )
 
-        val AccountCircle: ImageVector = materialIcon(
+        val AccountCircle: ImageVector = lineIcon(
             "AccountCircle",
-            "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z",
+            "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z",
+            "M12 12.5a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5z",
+            "M5.9 19a6.4 6.4 0 0 1 12.2 0",
         )
 
-        val Email: ImageVector = materialIcon(
+        val Email: ImageVector = lineIcon(
             "Email",
-            "M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z",
+            "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
+            "M22 6.5l-10 7-10-7",
         )
 
-        /** Material "chat" — stands in for WhatsApp, whose mark is trademarked. */
-        val Chat: ImageVector = materialIcon(
+        /** Stands in for WhatsApp, whose mark is trademarked. */
+        val Chat: ImageVector = lineIcon(
             "Chat",
-            "M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z",
+            "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
         )
 
-        val Logout: ImageVector = materialIcon(
+        val Logout: ImageVector = lineIcon(
             "Logout",
-            "M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z",
+            "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4",
+            "M16 17l5-5-5-5",
+            "M21 12H9",
         )
 
-        val MenuBook: ImageVector = materialIcon(
+        val MenuBook: ImageVector = lineIcon(
             "MenuBook",
-            "M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.25 20.45 5.25 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z",
+            "M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z",
+            "M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z",
         )
 
-        /** Material "document_scanner": the image/PDF import entry point. */
-        val DocumentScanner: ImageVector = materialIcon(
+        /** The image/PDF import entry point. */
+        val DocumentScanner: ImageVector = lineIcon(
             "DocumentScanner",
-            "M4 4h3V2H4c-1.1 0-2 .9-2 2v3h2V4zm16 0v3h2V4c0-1.1-.9-2-2-2h-3v2h3zM4 17H2v3c0 1.1.9 2 2 2h3v-2H4v-3zm16 3h-3v2h3c1.1 0 2-.9 2-2v-3h-2v3zM17 6H7v12h10V6zm-2 10H9V8h6v8z",
+            "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
+            "M14 2v6h6",
+            "M9 13h6",
+            "M9 17h6",
         )
 
-        /** Material "bolt": movements detected in notifications and mail. */
-        val Bolt: ImageVector = materialIcon(
+        /** Movements detected in notifications and mail. */
+        val Bolt: ImageVector = lineIcon(
             "Bolt",
-            "M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z",
+            "M13 2L4 14h7l-1 8 9-12h-7l1-8z",
         )
 
-        val MoreVert: ImageVector = materialIcon(
+        val MoreVert: ImageVector = solidIcon(
             "MoreVert",
-            "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
+            "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" +
+                "m0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
         )
 
-        val Search: ImageVector = materialIcon(
+        val Search: ImageVector = lineIcon(
             "Search",
-            "M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z",
+            "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z",
+            "M21 21l-4.35-4.35",
         )
 
-        val Add: ImageVector = materialIcon(
+        val Add: ImageVector = lineIcon(
             "Add",
-            "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+            "M12 5v14",
+            "M5 12h14",
         )
 
-        val Remove: ImageVector = materialIcon(
+        val Remove: ImageVector = lineIcon(
             "Remove",
-            "M19 13H5v-2h14v2z",
+            "M5 12h14",
         )
 
-        val ExpandMore: ImageVector = materialIcon(
+        val ExpandMore: ImageVector = lineIcon(
             "ExpandMore",
-            "M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z",
+            "M6 9.5l6 6 6-6",
         )
 
-        val ChevronRight: ImageVector = materialIcon(
+        val ChevronRight: ImageVector = lineIcon(
             "ChevronRight",
-            "M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z",
+            "M9 18l6-6-6-6",
         )
 
-        val Check: ImageVector = materialIcon(
+        val Check: ImageVector = lineIcon(
             "Check",
-            "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z",
+            "M20 6L9 17l-5-5",
         )
 
-        val Edit: ImageVector = materialIcon(
+        val Edit: ImageVector = lineIcon(
             "Edit",
-            "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34" +
-                "c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
+            "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7",
+            "M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z",
         )
 
-        val Delete: ImageVector = materialIcon(
+        val Delete: ImageVector = lineIcon(
             "Delete",
-            "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
+            "M3 6h18",
+            "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
+            "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
+            "M10 11v6",
+            "M14 11v6",
         )
 
-        /** Phone body with the screen punched out by the reverse-wound subpath. */
-        val Smartphone: ImageVector = materialIcon(
+        val Smartphone: ImageVector = lineIcon(
             "Smartphone",
-            "M7 1h10c1.1 0 2 .9 2 2v18c0 1.1-.9 2-2 2H7c-1.1 0-2-.9-2-2V3c0-1.1.9-2 2-2z" +
-                "M17 5H7v14h10V5z",
+            "M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z",
+            "M12 18h.01",
         )
 
-        /** Viewfinder corners around QR-ish blocks — used for "scan to approve". */
-        val QrScan: ImageVector = materialIcon(
+        /** Viewfinder corners around QR blocks — "scan to approve". */
+        val QrScan: ImageVector = lineIcon(
             "QrScan",
-            "M3 3h7v2H5v5H3V3zm11 0h7v7h-2V5h-5V3zM3 14h2v5h5v2H3v-7zm16 0h2v7h-7v-2h5v-5z" +
-                "M7 7h3v3H7V7zm7 7h3v3h-3v-3zm-7 0h3v3H7v-3zm7-7h3v3h-3V7z",
+            "M3 8V5a2 2 0 0 1 2-2h3",
+            "M16 3h3a2 2 0 0 1 2 2v3",
+            "M21 16v3a2 2 0 0 1-2 2h-3",
+            "M8 21H5a2 2 0 0 1-2-2v-3",
+            "M7.5 7.5h3v3h-3z",
+            "M13.5 7.5h3v3h-3z",
+            "M7.5 13.5h3v3h-3z",
+            "M13.5 13.5h3v3h-3z",
         )
 
-        /** Material "tune": sliders, used as the net-worth picker affordance. */
-        val Star: ImageVector = materialIcon(
+        /** Filled on purpose: the "default account" badge, next to [StarOutline]. */
+        val Star: ImageVector = solidIcon(
             "Star",
             "M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z",
         )
 
-        val StarOutline: ImageVector = materialIcon(
+        val StarOutline: ImageVector = lineIcon(
             "StarOutline",
-            "M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24z" +
-                "M12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z",
+            "M12 2.8l2.85 5.77 6.37.93-4.61 4.49 1.09 6.34L12 17.33l-5.7 3-1.09-6.34L.6 9.5l6.37-.93z",
         )
 
-        val Tune: ImageVector = materialIcon(
+        val Tune: ImageVector = lineIcon(
             "Tune",
-            "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z",
+            "M4 21v-7",
+            "M4 10V3",
+            "M12 21v-9",
+            "M12 8V3",
+            "M20 21v-5",
+            "M20 12V3",
+            "M1 14h6",
+            "M9 8h6",
+            "M17 16h6",
         )
 
-        val AccountTree: ImageVector = materialIcon(
+        val AccountTree: ImageVector = lineIcon(
             "AccountTree",
-            "M17,11h3c1.11,0,2-0.9,2-2V5c0-1.11-0.9-2-2-2h-3c-1.11,0-2,0.9-2,2v1H9.01V5c0-1.11-0.9-2-2-2H4C2.9,3,2,3.9,2,5v4 " +
-                "c0,1.11,0.9,2,2,2h3c1.11,0,2-0.9,2-2V8H11v7.01c0,1.65,1.34,2.99,2.99,2.99H15v1c0,1.11,0.9,2,2,2h3c1.11,0,2-0.9,2-2v-4 " +
-                "c0-1.11-0.9-2-2-2h-3c-1.11,0-2,0.9-2,2v1h-1.01C13.45,16,13,15.55,13,15.01V8h2v1C15,10.1,15.9,11,17,11z",
+            "M6 4.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+            "M19 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+            "M19 22a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+            "M6 4.5V17a3 3 0 0 0 3 3h8",
+            "M6 8.5a3 3 0 0 0 3 3h8",
+        )
+
+        /** Bottom bar: the home tab. */
+        val Home: ImageVector = lineIcon(
+            "Home",
+            "M3 9.5l9-7 9 7V20a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+            "M9.5 22v-8h5v8",
+        )
+
+        /** Bottom bar: the movements tab. */
+        val ListAlt: ImageVector = lineIcon(
+            "ListAlt",
+            "M8 6h13",
+            "M8 12h13",
+            "M8 18h13",
+            "M3.5 6h.01",
+            "M3.5 12h.01",
+            "M3.5 18h.01",
+        )
+
+        /** Bottom bar: the categories tab — the mock's triangle/square/circle. */
+        val Category: ImageVector = lineIcon(
+            "Category",
+            "M12 3l4 6.5H8z",
+            "M4 14h6.5v6.5H4z",
+            "M17.5 21a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
+        )
+
+        /** Bottom bar: the profile tab. */
+        val Person: ImageVector = lineIcon(
+            "Person",
+            "M20 21v-1.5a4.5 4.5 0 0 0-4.5-4.5h-7A4.5 4.5 0 0 0 4 19.5V21",
+            "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+        )
+
+        /** Balance hero: the amounts are visible. */
+        val Visibility: ImageVector = lineIcon(
+            "Visibility",
+            "M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z",
+            "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+        )
+
+        /** Balance hero: the amounts are masked. */
+        val VisibilityOff: ImageVector = lineIcon(
+            "VisibilityOff",
+            "M17.94 17.94A10.1 10.1 0 0 1 12 19.5C5.5 19.5 1.5 12 1.5 12a18.5 18.5 0 0 1 5.06-5.94",
+            "M9.9 4.74A9.1 9.1 0 0 1 12 4.5c6.5 0 10.5 7.5 10.5 7.5a18.5 18.5 0 0 1-2.16 3.19",
+            "M14.12 14.12a3 3 0 1 1-4.24-4.24",
+            "M2 2l20 20",
         )
     }
 }

@@ -93,6 +93,7 @@ import weil.app.sharedui.generated.resources.account_type_income
 import weil.app.sharedui.generated.resources.account_type_label
 import weil.app.sharedui.generated.resources.account_type_liability
 import weil.app.sharedui.generated.resources.account_unset_default
+import weil.app.sharedui.generated.resources.category_icon_label
 import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.action_delete
@@ -503,6 +504,7 @@ internal fun AccountActionsSheet(
 ) {
     var sheetOpen by remember { mutableStateOf(true) }
     var renaming by remember { mutableStateOf(false) }
+    var pickingIcon by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf(account.name) }
     val deleteMessage = stringResource(Res.string.account_delete_message, account.name)
@@ -527,6 +529,22 @@ internal fun AccountActionsSheet(
                     modifier = Modifier.clickable {
                         sheetOpen = false
                         renaming = true
+                    },
+                )
+                ListItem(
+                    colors = itemColors,
+                    // The icon itself is the leading content: the row shows
+                    // what it edits, which no label can do as well.
+                    leadingContent = {
+                        AccountAvatar(
+                            icon = AccountIcons.resolve(account.icon, account.type),
+                            size = 28.dp,
+                        )
+                    },
+                    headlineContent = { Text(stringResource(Res.string.category_icon_label)) },
+                    modifier = Modifier.clickable {
+                        sheetOpen = false
+                        pickingIcon = true
                     },
                 )
                 ListItem(
@@ -614,6 +632,16 @@ internal fun AccountActionsSheet(
             }
         }
     }
+    if (pickingIcon) {
+        IconPickerDialog(
+            selected = account.icon,
+            onDismiss = onDismiss,
+            onPick = {
+                state.setIcon(account.id, it)
+                onDismiss()
+            },
+        )
+    }
     if (renaming) {
         fun save() {
             if (name.isBlank()) return
@@ -699,7 +727,9 @@ private fun TypeTotals(totals: Map<String, Long>) {
     ) {
         entries.forEach { (commodity, minor) ->
             Text(
-                "$commodity ${formatMinorUnits(minor)}",
+                // A type total is never colored (a negative income total is
+                // normal bookkeeping), so this one keeps its sign.
+                formatMoney(minor, commodity, signed = true),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 maxLines = 1,

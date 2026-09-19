@@ -2,6 +2,7 @@ package ar.fausto.weil
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -10,6 +11,68 @@ import androidx.compose.ui.graphics.Color
  * The UI reads colors only via MaterialTheme.colorScheme; nothing else holds colors.
  */
 enum class AppTheme(val displayName: String, val colorScheme: ColorScheme) {
+    /**
+     * The dashboard palette: a pale lavender page, one mint hero card and
+     * slate tiles. Three roles carry the whole look, which is why the screens
+     * can stay color-free: `primaryContainer` is the hero, `inverseSurface`
+     * the account tiles, `background` the page.
+     */
+    Menta(
+        displayName = "Menta",
+        // Five colors carry the whole app: F3F3F8 page, C0D9D7 mint hero,
+        // 5F6F7B mid slate, 394751 dark slate, 363636 ink. Everything else
+        // below is one of those five, an alpha of one, or a neutral derived
+        // from the page — no sixth hue gets introduced by accident.
+        colorScheme = lightColorScheme(
+            // Ink: the FAB outline, links, the selected-tab mark.
+            primary = Color(0xFF363636),
+            onPrimary = Color(0xFFF3F3F8),
+            // The mint of the balance hero; ink on it clears contrast at
+            // display size without needing a darker mint.
+            primaryContainer = Color(0xFFC0D9D7),
+            onPrimaryContainer = Color(0xFF363636),
+            // Mid slate: the second account tile, and any tonal control that
+            // must read as "filled" without going as dark as a tile.
+            secondary = Color(0xFF5F6F7B),
+            onSecondary = Color(0xFFF3F3F8),
+            secondaryContainer = Color(0xFFC0D9D7),
+            onSecondaryContainer = Color(0xFF394751),
+            // Money arriving in an asset account. The palette has no green,
+            // and direction of money is the one thing color must say, so
+            // this is the single deliberate addition — desaturated to sit
+            // beside the slates instead of shouting over them.
+            tertiary = Color(0xFF2F6B4F),
+            onTertiary = Color(0xFFF3F3F8),
+            tertiaryContainer = Color(0xFFC6E2D2),
+            onTertiaryContainer = Color(0xFF14301F),
+            // Same reasoning as tertiary, in the other direction.
+            error = Color(0xFF9E3B32),
+            onError = Color(0xFFF3F3F8),
+            errorContainer = Color(0xFFF3DCD9),
+            onErrorContainer = Color(0xFF3B100C),
+            background = Color(0xFFF3F3F8),
+            onBackground = Color(0xFF363636),
+            surface = Color(0xFFF3F3F8),
+            onSurface = Color(0xFF363636),
+            surfaceVariant = Color(0xFFE4E5EC),
+            // Secondary text (routes, captions): the mid slate, which is
+            // exactly what it's for.
+            onSurfaceVariant = Color(0xFF5F6F7B),
+            surfaceContainerLowest = Color(0xFFFFFFFF),
+            surfaceContainerLow = Color(0xFFFAFAFD),
+            surfaceContainer = Color(0xFFEDEDF3),
+            surfaceContainerHigh = Color(0xFFE7E7EF),
+            surfaceContainerHighest = Color(0xFFE1E1EA),
+            outline = Color(0xFF5F6F7B),
+            outlineVariant = Color(0xFFCBCDD6),
+            // The account tiles: dark slate on the pale page, page-colored text.
+            inverseSurface = Color(0xFF394751),
+            inverseOnSurface = Color(0xFFF3F3F8),
+            inversePrimary = Color(0xFFC0D9D7),
+            surfaceTint = Color(0xFF5F6F7B),
+            scrim = Color(0xFF363636),
+        ),
+    ),
     Weil(
         displayName = "Weil",
         // `error` was left to the darkColorScheme() default, which is

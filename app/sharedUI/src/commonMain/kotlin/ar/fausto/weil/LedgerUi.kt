@@ -173,7 +173,10 @@ internal fun BalanceText(
         }
         entries.forEach { (commodity, minor) ->
             Text(
-                "$commodity ${formatMinorUnits(minor)}",
+                // Signed only when nothing else says "negative": with
+                // [signalNegative] the color already does, and a minus beside
+                // a red figure is the same fact printed twice.
+                formatMoney(minor, commodity, signed = !signalNegative),
                 style = style,
                 color = if (signalNegative) amountColor(minor) else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,

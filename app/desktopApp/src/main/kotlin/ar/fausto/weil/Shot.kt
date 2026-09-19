@@ -25,6 +25,8 @@ import org.jetbrains.skia.Image
  *   ./gradlew :app:desktopApp:shot -Pshot.route=account  (register of the seeded
  *       bank account, which holds both ARS and USD postings)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=tree     (full account tree)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=categories (expense categories
+ *     with their icons)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=notification (captured
  *     notification + its neighbours by vector similarity)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=email    (email detail)
@@ -92,6 +94,7 @@ fun main(args: Array<String>) {
                     "tx-new" -> TransactionNewRoute()
                     "account" -> AccountDetailRoute("seed-asset-bank")
                     "tree" -> AccountsTreeRoute
+                    "categories" -> CategoriesRoute
                     "inbox" -> InboxReviewRoute
                     "tx" -> TransactionDetailRoute("seed-tx-2")
                     "notification" -> NotificationDetailRoute("seed-notif-1")

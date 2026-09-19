@@ -99,6 +99,24 @@ class AuthApi(
     suspend fun setEmail(email: String): JsonObject =
         authedPost("/email", kotlinx.serialization.json.buildJsonObject { put("email", email) }.toString())
 
+    // ---- display name (the app's greeting) ----
+
+    /**
+     * The name the user picked for themselves, or null when they never did.
+     * It lives in the auth worker, not in the app's Turso database, because
+     * it belongs to the account: a device that has just paired can greet its
+     * owner before any app data has synced.
+     */
+    suspend fun getName(): String? {
+        val v = authedGet<JsonObject>("/profile")["name"] ?: return null
+        val p = v as? kotlinx.serialization.json.JsonPrimitive ?: return null
+        return if (p.isString) p.content else null
+    }
+
+    /** Empty clears the name; the worker treats blank as "no name". */
+    suspend fun setName(name: String): JsonObject =
+        authedPost("/profile", kotlinx.serialization.json.buildJsonObject { put("name", name) }.toString())
+
     suspend fun chainRequestStatus(requestId: String): ChainRequestStatus {
         val resp = client.get(url("/chain/request/$requestId"))
         throwOnStatus(resp)

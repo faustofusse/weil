@@ -72,6 +72,12 @@ import weil.app.sharedui.generated.resources.passkey_name
 import weil.app.sharedui.generated.resources.profile_add_device
 import weil.app.sharedui.generated.resources.profile_approve_device
 import weil.app.sharedui.generated.resources.profile_contact_email_subtitle
+import weil.app.sharedui.generated.resources.profile_name_edit
+import weil.app.sharedui.generated.resources.profile_name_label
+import weil.app.sharedui.generated.resources.profile_name_not_set
+import weil.app.sharedui.generated.resources.profile_name_subtitle
+import weil.app.sharedui.generated.resources.profile_name_title
+import weil.app.sharedui.generated.resources.nav_profile
 import weil.app.sharedui.generated.resources.profile_contact_email_title
 import weil.app.sharedui.generated.resources.profile_device_approved
 import weil.app.sharedui.generated.resources.profile_device_revoked
@@ -133,20 +139,33 @@ fun ProfileScreen(
     chainState: ChainState,
     whatsappState: WhatsappState,
     embeddings: EmbeddingsRepository,
+    userState: UserState,
     onNavigateBack: () -> Unit,
     onSignOut: () -> Unit,
+    /** Non-null when the profile is a bottom-bar root (no back arrow then). */
+    bottomBar: (@Composable () -> Unit)? = null,
 ) {
     var confirmSignOut by remember { mutableStateOf(false) }
     Scaffold(
+        bottomBar = bottomBar ?: {},
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.profile_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
-                    }
-                },
-            )
+            // Shared header as a tab root, stock bar (with back arrow) when
+            // pushed; see JournalScreen for the same split.
+            if (bottomBar != null) {
+                AppTopBar(title = stringResource(Res.string.nav_profile))
+            } else {
+                TopAppBar(
+                    title = { Text(stringResource(Res.string.profile_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                Icons.Filled.ArrowBack,
+                                contentDescription = stringResource(Res.string.action_back),
+                            )
+                        }
+                    },
+                )
+            }
         },
     ) { innerPadding ->
         Column(
@@ -157,6 +176,8 @@ fun ProfileScreen(
                 .padding(horizontal = 16.dp)
                 .padding(top = 8.dp, bottom = 32.dp),
         ) {
+            DisplayNameSection(userState)
+            Spacer(Modifier.height(16.dp))
             AccountEmailSection(chain)
             Spacer(Modifier.height(16.dp))
             ChainSection(chainState)
@@ -908,6 +929,81 @@ private fun ChainDeviceRow(
                 )
             }
         }
+    }
+}
+
+/**
+ * The name the app greets you with. Lives next to the contact email because
+ * both belong to the *account* rather than to the ledger, and both are edited
+ * the same way: a value, a pencil, a one-field dialog.
+ */
+@Composable
+private fun DisplayNameSection(state: UserState) {
+    var editing by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { state.load() }
+
+    SectionCard(
+        title = stringResource(Res.string.profile_name_title),
+        icon = Icons.Filled.Person,
+        subtitle = stringResource(Res.string.profile_name_subtitle),
+    ) {
+        state.error?.let { ErrorBanner(it) }
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                state.name ?: stringResource(Res.string.profile_name_not_set),
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (state.name == null) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(
+                onClick = {
+                    draft = state.name ?: ""
+                    editing = true
+                },
+            ) {
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = stringResource(Res.string.profile_name_edit),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+
+    if (editing) {
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text(stringResource(Res.string.profile_name_title)) },
+            text = {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    singleLine = true,
+                    label = { Text(stringResource(Res.string.profile_name_label)) },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        editing = false
+                        // Blank is a valid edit: it clears the name and the
+                        // greeting falls back to a plain "Hola".
+                        state.setName(draft)
+                    },
+                ) { Text(stringResource(Res.string.action_save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { editing = false }) { Text(stringResource(Res.string.action_cancel)) }
+            },
+        )
     }
 }
 

@@ -301,12 +301,14 @@ private fun RegisterRowView(
         }
         Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
             Text(
-                formatMinorUnits(entry.posting.amountMinor),
+                formatMoney(entry.posting.amountMinor, entry.posting.commodity),
                 style = MaterialTheme.typography.bodyLarge,
                 color = postingColor(accountType, entry.posting.amountMinor),
             )
             Text(
-                entry.balanceAfter.commodity + " " + entry.balanceAfter.format(),
+                // The running balance carries no color of its own, so it
+                // keeps its sign: an overdrawn account must look overdrawn.
+                formatMoney(entry.balanceAfter.minorUnits, entry.balanceAfter.commodity, signed = true),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

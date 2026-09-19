@@ -87,7 +87,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 7L
+private const val SCHEMA_VERSION = 8L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -142,6 +142,14 @@ fun Database.migrateSchema() {
         // excluded parent's children are never counted either, regardless
         // of their own flag) — see LedgerState.excludedFromNetWorth.
         addColumn("alter table accounts add column in_net_worth integer not null default 1")
+    }
+    if ("icon" !in columns) {
+        // Icon *key* from the UI catalog (AccountIcons), not a glyph or a
+        // blob: the drawing lives in the app, so re-drawing it or renaming a
+        // vector never rewrites synced rows, and a key this build doesn't
+        // know (written by a newer install on another device) falls back to
+        // the account type's default icon.
+        addColumn("alter table accounts add column icon text")
     }
     val txColumns = query("pragma table_info(ledger_transactions)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()

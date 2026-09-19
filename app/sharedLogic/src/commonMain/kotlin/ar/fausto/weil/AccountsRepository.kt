@@ -15,7 +15,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
     /** One flat query turned into a node tree with colon-joined paths. */
     suspend fun tree(): List<AccountNode> = db.useForRead { d ->
         val all = d.query(
-            "select id, name, parent_id, type, in_net_worth from accounts order by lower(name), id",
+            "select id, name, parent_id, type, in_net_worth, icon from accounts order by lower(name), id",
             null,
         ) { rows ->
             rows.mapNotNull { row ->
@@ -29,6 +29,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
                     type = type,
                     // null only mid-migration on a lagging replica; treat as included.
                     inNetWorth = (row.getOrNull(4) as? Number)?.toLong() != 0L,
+                    icon = row.getOrNull(5)?.toString()?.takeIf { it.isNotBlank() },
                 )
             }.toList()
         }
@@ -45,14 +46,21 @@ class AccountsRepository(private val db: DatabaseProvider) {
         name: String,
         type: AccountType,
         parentId: String? = null,
+        icon: String? = null,
     ): String = db.use { d ->
         val id = Uuid.random().toString()
         val trimmed = name.trim()
         require(trimmed.isNotEmpty()) { "account name cannot be empty" }
+        // The binder takes non-null values only, so a missing icon is a
+        // literal `null` in the SQL rather than an unbound parameter (an
+        // unknown/unbound name silently binds nothing on this engine).
+        val iconSql = if (icon.isNullOrBlank()) "null" else ":icon"
+        val iconParam: Map<String, Any> =
+            if (icon.isNullOrBlank()) emptyMap() else mapOf(":icon" to icon)
         if (parentId == null) {
             d.execute(
-                "insert into accounts(id, name, parent_id, type) values(:id, :name, null, :type)",
-                mapOf(":id" to id, ":name" to trimmed, ":type" to type.db),
+                "insert into accounts(id, name, parent_id, type, icon) values(:id, :name, null, :type, $iconSql)",
+                mapOf(":id" to id, ":name" to trimmed, ":type" to type.db) + iconParam,
             )
         } else {
             val parent = fetch(d, parentId) ?: throw IllegalArgumentException("parent account not found")
@@ -60,13 +68,13 @@ class AccountsRepository(private val db: DatabaseProvider) {
                 throw IllegalArgumentException("children must share the parent's type (${parent.type.db})")
             }
             d.execute(
-                "insert into accounts(id, name, parent_id, type) values(:id, :name, :parent, :type)",
+                "insert into accounts(id, name, parent_id, type, icon) values(:id, :name, :parent, :type, $iconSql)",
                 mapOf(
                     ":id" to id,
                     ":name" to trimmed,
                     ":parent" to parentId,
                     ":type" to type.db,
-                ),
+                ) + iconParam,
             )
         }
         d.sync()
@@ -80,6 +88,23 @@ class AccountsRepository(private val db: DatabaseProvider) {
             "update accounts set in_net_worth = :v where id = :id",
             mapOf(":v" to (if (included) 1L else 0L), ":id" to id),
         )
+        d.sync()
+    }
+
+    /**
+     * Sets (or clears, with null) the account's icon key. Unvalidated on
+     * purpose: the catalog lives in the UI module, and a key this build
+     * doesn't know still has to round-trip through sync untouched.
+     */
+    suspend fun setIcon(id: String, icon: String?) = db.use { d ->
+        if (icon.isNullOrBlank()) {
+            d.execute("update accounts set icon = null where id = :id", mapOf(":id" to id))
+        } else {
+            d.execute(
+                "update accounts set icon = :icon where id = :id",
+                mapOf(":icon" to icon, ":id" to id),
+            )
+        }
         d.sync()
     }
 
@@ -159,7 +184,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
 
     private fun fetch(d: Database, id: String): Account? =
         d.query(
-            "select id, name, parent_id, type, in_net_worth from accounts where id = :id",
+            "select id, name, parent_id, type, in_net_worth, icon from accounts where id = :id",
             mapOf(":id" to id),
         ) { rows ->
             rows.filter { it.size >= 4 }
@@ -171,6 +196,7 @@ class AccountsRepository(private val db: DatabaseProvider) {
                             parentId = row[2]?.toString(),
                             type = type,
                             inNetWorth = (row.getOrNull(4) as? Number)?.toLong() != 0L,
+                            icon = row.getOrNull(5)?.toString()?.takeIf { it.isNotBlank() },
                         )
                     }
                 }

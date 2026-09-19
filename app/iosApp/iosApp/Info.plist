@@ -6,6 +6,10 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- The app ships one light palette (Menta). Without this, a phone in
+	     dark mode gets a white status bar clock over our near-white page. -->
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan the pairing QR code shown on your other device to link it to your account.</string>
 </dict>

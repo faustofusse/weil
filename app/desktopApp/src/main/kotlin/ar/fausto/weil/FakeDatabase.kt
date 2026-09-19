@@ -87,6 +87,12 @@ class FakeDatabase(
             "insert or ignore into accounts(id, name, parent_id, type) values (:id, :name, null, :type)",
             mapOf(":id" to id, ":name" to name, ":type" to type),
         )
+        // Cached display name: the harness has no reachable auth worker, and
+        // the greeting reads from this mirror first (see UserState).
+        execute(
+            "insert or replace into settings(key, value, updated_at) values ('profile.name', 'Agostina', :at)",
+            mapOf(":at" to System.currentTimeMillis()),
+        )
         account(cash, "Efectivo", "asset")
         account(bank, "Banco", "asset")
         account(food, "Comida", "expense")

@@ -281,11 +281,7 @@ fun TransactionDetailScreen(
                     val flow = flowOf(transaction, types)
                     if (flow != null) {
                         Text(
-                            if (flow.commodity == Money.DEFAULT_COMMODITY) {
-                                formatMinorUnits(flow.amountMinor)
-                            } else {
-                                "${flow.commodity} ${formatMinorUnits(flow.amountMinor)}"
-                            },
+                            formatMoney(flow.amountMinor, flow.commodity),
                             style = MaterialTheme.typography.displaySmall,
                             color = flowColor(flow.direction),
                         )
@@ -343,11 +339,11 @@ fun TransactionDetailScreen(
                                         modifier = Modifier.weight(1f),
                                     )
                                     Text(
-                                        if (posting.commodity == Money.DEFAULT_COMMODITY) {
-                                            formatMinorUnits(posting.amountMinor)
-                                        } else {
-                                            "${posting.commodity} ${formatMinorUnits(posting.amountMinor)}"
-                                        },
+                                        // A posting line is the raw
+                                        // double-entry view, where which side
+                                        // of the book a leg sits on is the
+                                        // whole point: signed, always.
+                                        formatMoney(posting.amountMinor, posting.commodity, signed = true),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = postingColor(types[posting.accountId], posting.amountMinor),
                                         modifier = Modifier.padding(start = 12.dp),
@@ -368,7 +364,7 @@ fun TransactionDetailScreen(
                         ) {
                             totals.forEach { (commodity, amount) ->
                                 Text(
-                                    "$commodity ${formatMinorUnits(amount)}",
+                                    formatMoney(amount, commodity, signed = true),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

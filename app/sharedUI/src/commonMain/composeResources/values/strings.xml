@@ -25,6 +25,28 @@
     <string name="home_see_all">Ver todo</string>
     <string name="home_no_recent">Sin movimientos todavía. Tocá + para registrar un gasto.</string>
     <string name="more_options">Más opciones</string>
+    <string name="home_greeting">Hola</string>
+    <string name="home_greeting_named">Hola, %1$s</string>
+    <string name="home_balance_title">Balance total</string>
+    <string name="home_balance_hide">Ocultar importes</string>
+    <string name="home_balance_show">Mostrar importes</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_home">Inicio</string>
+    <string name="nav_movements">Movimientos</string>
+    <string name="nav_categories">Categorías</string>
+    <string name="nav_profile">Mi perfil</string>
+
+    <!-- Categories (expense accounts) -->
+    <string name="categories_title">Categorías</string>
+    <string name="categories_empty">Todavía no hay categorías de gasto</string>
+    <string name="category_new_title">Nueva categoría</string>
+    <string name="category_edit_title">Editar categoría</string>
+    <string name="category_icon_label">Cambiar ícono</string>
+    <string name="category_parent_label">Categoría padre</string>
+    <string name="category_parent_none">Ninguna</string>
+    <string name="category_pick_parent">Elegir categoría padre</string>
+    <string name="icon_pick_title">Elegir ícono</string>
 
     <!-- Top bar destinations -->
     <string name="open_journal">Ver diario</string>
@@ -195,6 +217,11 @@
     <string name="profile_qr_scan_hint">Escaneá con el dispositivo nuevo — se une con su propio passkey. Un solo uso.</string>
     <string name="profile_invite_expired">La invitación expiró</string>
     <string name="profile_new_invite">Nueva invitación</string>
+    <string name="profile_name_title">Tu nombre</string>
+    <string name="profile_name_subtitle">Con este nombre te saluda la app.</string>
+    <string name="profile_name_label">Nombre</string>
+    <string name="profile_name_not_set">Sin nombre</string>
+    <string name="profile_name_edit">Editar nombre</string>
     <string name="profile_contact_email_title">Correo de contacto</string>
     <string name="profile_contact_email_subtitle">Los correos enviados acá se ingieren en la base de datos de tu cuenta (y se reenvían a Gmail).</string>
     <string name="profile_email_not_set">Sin configurar</string>

@@ -82,6 +82,7 @@ import weil.app.sharedui.generated.resources.journal_empty
 import weil.app.sharedui.generated.resources.journal_more_postings
 import weil.app.sharedui.generated.resources.journal_title
 import weil.app.sharedui.generated.resources.months_short
+import weil.app.sharedui.generated.resources.nav_movements
 import weil.app.sharedui.generated.resources.more_options
 import weil.app.sharedui.generated.resources.weekdays_short
 import weil.app.sharedui.generated.resources.new_transaction
@@ -100,6 +101,12 @@ fun JournalScreen(
     onNavigateBack: () -> Unit,
     onNavigateToNew: () -> Unit,
     onOpenTransaction: (id: String) -> Unit,
+    /**
+     * Non-null when this screen is a bottom-bar root, which also means there
+     * is nothing to go back to: the back arrow is dropped in that case rather
+     * than left on screen as a no-op.
+     */
+    bottomBar: (@Composable () -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
     var showDeleteRangeDialog by remember { mutableStateOf(false) }
@@ -142,43 +149,56 @@ fun JournalScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.journal_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
+            // As a tab root it wears the shared header (same height and title
+            // style as Inicio/Categorías/Mi perfil); pushed from elsewhere it
+            // keeps the stock bar with its back arrow.
+            val actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
+                IconButton(onClick = { state.refresh() }, enabled = !state.pullRefreshing) {
+                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.action_sync))
+                }
+                Box {
+                    var menuOpen by remember { mutableStateOf(false) }
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.more_options))
                     }
-                },
-                actions = {
-                    IconButton(onClick = { state.refresh() }, enabled = !state.pullRefreshing) {
-                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.action_sync))
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(Res.string.journal_dev_delete_range)) },
+                            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                            onClick = {
+                                menuOpen = false
+                                showDeleteRangeDialog = true
+                            },
+                        )
                     }
-                    Box {
-                        var menuOpen by remember { mutableStateOf(false) }
-                        IconButton(onClick = { menuOpen = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.more_options))
+                }
+            }
+            if (bottomBar != null) {
+                AppTopBar(title = stringResource(Res.string.nav_movements), actions = actions)
+            } else {
+                TopAppBar(
+                    title = { Text(stringResource(Res.string.journal_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                         }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(Res.string.journal_dev_delete_range)) },
-                                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
-                                onClick = {
-                                    menuOpen = false
-                                    showDeleteRangeDialog = true
-                                },
-                            )
-                        }
-                    }
-                },
-            )
+                    },
+                    actions = actions,
+                )
+            }
         },
+        bottomBar = bottomBar ?: {},
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToNew,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.new_transaction))
+            // As a tab root the bar carries the create button already; a
+            // second one in the corner would be the same action twice.
+            if (bottomBar == null) {
+                FloatingActionButton(
+                    onClick = onNavigateToNew,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.new_transaction))
+                }
             }
         },
     ) { innerPadding ->
@@ -594,15 +614,10 @@ internal fun TransactionRow(
                 ) {
                     if (flow != null) {
                         Text(
-                            // The commodity is spelled out only when it isn't
-                            // the default one — an all-ARS ledger doesn't need
-                            // "ARS" on every row, a USD movement must never be
-                            // mistaken for one.
-                            if (flow.commodity == Money.DEFAULT_COMMODITY) {
-                                formatMinorUnits(flow.amountMinor)
-                            } else {
-                                "${flow.commodity} ${formatMinorUnits(flow.amountMinor)}"
-                            },
+                            // Symbol always, sign never: "$" vs "US$" is what
+                            // keeps a dollar row from being read as pesos,
+                            // and the direction is already in the color.
+                            formatMoney(flow.amountMinor, flow.commodity),
                             style = MaterialTheme.typography.titleSmall,
                             color = flowColor(flow.direction),
                             maxLines = 1,

@@ -22,6 +22,9 @@ object JournalRoute
 /** The full account tree, reachable from the Home top bar. */
 object AccountsTreeRoute
 
+/** Expense categories only — a bottom-bar root; the full plan is [AccountsTreeRoute]. */
+object CategoriesRoute
+
 /** Simplified transaction kinds shown on the Home FAB menu. */
 enum class TxnKind { Expense, Income, Transfer }
 

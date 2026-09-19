@@ -225,11 +225,7 @@ private fun SimilarRow(
         val amount = item.amountMinor
         if (amount != null) {
             Text(
-                if (item.commodity == null || item.commodity == Money.DEFAULT_COMMODITY) {
-                    formatMinorUnits(amount)
-                } else {
-                    "${item.commodity} ${formatMinorUnits(amount)}"
-                },
+                formatMoney(amount, item.commodity ?: Money.DEFAULT_COMMODITY),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(start = 12.dp),
             )

@@ -922,7 +922,10 @@ private fun CandidateCard(
         ImportDirection.Income -> "+"
         // Neither sign fits: the user's net worth didn't move.
         ImportDirection.Transfer -> "⇄ "
-    } + formatMinorUnits(draft.totalMinor)
+        // The review screen keeps its own −/+ marks: these rows are not yet
+        // in the ledger and carry no direction color, so the glyph is the
+        // only thing saying which way the money goes.
+    } + formatMoney(draft.totalMinor, draft.commodity)
     val amountColor = when {
         !draft.include -> MaterialTheme.colorScheme.onSurfaceVariant
         draft.direction == ImportDirection.Income -> MaterialTheme.colorScheme.primary

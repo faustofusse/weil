@@ -139,6 +139,9 @@ fun RootScreen(
                     val emailsState = remember(loggedIn) { EmailsState(graph.emails) }
                     val notificationsState = remember(loggedIn) { NotificationsState(graph.notifications) }
                     val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
+                    // Home greets with the name and Profile edits it; one
+                    // holder above the nav host keeps the two in step.
+                    val userState = remember(loggedIn) { UserState(graph.chain, graph.settings) }
                     val whatsappState = remember(loggedIn) { WhatsappState(graph.whatsapp) }
                     val snackbarHostState = remember(loggedIn) { SnackbarHostState() }
                     val backStack = remember(loggedIn) {
@@ -147,12 +150,50 @@ fun RootScreen(
                         }
                     }
 
+                    // A tab switch is a sideways move, a push is a step into
+                    // something: they must not animate alike. NavDisplay only
+                    // exposes one transitionSpec, so the last navigation's
+                    // kind is recorded here and the spec branches on it.
+                    var lateralMove by remember(loggedIn) { mutableStateOf(false) }
+
                     fun navigate(route: Any) {
+                        lateralMove = false
                         backStack.add(route)
                     }
 
                     fun pop() {
                         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
+                    }
+
+                    // Tabs are roots, not pushes: selecting one replaces the
+                    // whole stack, so the bar never accumulates a back trail
+                    // of sideways moves (Inicio → Categorías → Inicio would
+                    // otherwise need two backs to leave).
+                    fun selectTab(tab: AppTab) {
+                        lateralMove = true
+                        val route: Any = when (tab) {
+                            AppTab.Home -> HomeRoute
+                            AppTab.Movements -> JournalRoute
+                            AppTab.Categories -> CategoriesRoute
+                            AppTab.Profile -> ProfileRoute
+                        }
+                        if (backStack.size == 1 && backStack.first() == route) return
+                        backStack.clear()
+                        backStack.add(route)
+                    }
+
+                    // The bar, bound to whichever root is rendering it. A
+                    // lambda, not a local fun: the Compose compiler doesn't
+                    // take @Composable on local declarations.
+                    val tabs: @Composable (AppTab) -> Unit = { current ->
+                        AppBottomBar(
+                            current = current,
+                            onSelect = { tab -> selectTab(tab) },
+                            // The bar's create button does the same thing from
+                            // every root: open the quick entry on Gasto (the
+                            // kind is switchable there).
+                            onNew = { navigate(TransactionQuickRoute(TxnKind.Expense)) },
+                        )
                     }
 
                     // Documents shared into the app from outside (Android
@@ -193,8 +234,12 @@ fun RootScreen(
                                     // in a callback, not in composition.
                                     val handoffFailed = stringResource(Res.string.qr_pay_handoff_failed)
                                     val noWallet = stringResource(Res.string.qr_pay_no_wallet)
-                                    HomeScreen(
+                                    // The classic list-shaped Home is still
+                                    // in HomeScreen.kt and takes the same
+                                    // arguments; swap the call to compare.
+                                    HomeDashboardScreen(
                                         ledgerState = ledgerState,
+                                        userState = userState,
                                         documents = { graph.documents },
                                         onImportDocument = { navigate(ImportReviewRoute(it)) },
                                         onNavigateToInbox = { navigate(InboxReviewRoute) },
@@ -232,13 +277,20 @@ fun RootScreen(
                                         },
                                         onNavigateToTree = { navigate(AccountsTreeRoute) },
                                         onNewTransaction = { kind -> navigate(TransactionQuickRoute(kind)) },
-                                        onNavigateToProfile = { navigate(ProfileRoute) },
                                         onNavigateToNotifications = { navigate(NotificationsRoute) },
                                         onNavigateToEmails = { navigate(EmailsRoute) },
                                         onNavigateToJournal = { navigate(JournalRoute) },
                                         onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                         onNavigateToAddAccount = { navigate(AccountAddRoute(AccountType.Asset)) },
+                                        bottomBar = { tabs(AppTab.Home) },
+                                    )
+                                }
+                                entry<CategoriesRoute> {
+                                    CategoriesScreen(
+                                        ledgerState = ledgerState,
+                                        onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
+                                        bottomBar = { tabs(AppTab.Categories) },
                                     )
                                 }
                                 entry<AccountsTreeRoute> {
@@ -271,6 +323,14 @@ fun RootScreen(
                                     JournalScreen(
                                         state = journalState,
                                         onNavigateBack = { pop() },
+                                        // Only a back arrow when it *is* a
+                                        // pushed screen; as a tab root the bar
+                                        // is how you leave.
+                                        bottomBar = if (backStack.size == 1) {
+                                            { tabs(AppTab.Movements) }
+                                        } else {
+                                            null
+                                        },
                                         onNavigateToNew = { navigate(TransactionNewRoute()) },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                     )
@@ -383,14 +443,27 @@ fun RootScreen(
                                         chainState = chainState,
                                         whatsappState = whatsappState,
                                         embeddings = graph.embeddings,
+                                        userState = userState,
                                         onNavigateBack = { pop() },
+                                        bottomBar = if (backStack.size == 1) {
+                                            { tabs(AppTab.Profile) }
+                                        } else {
+                                            null
+                                        },
                                         onSignOut = { scope.launch { graph.auth.signOut() } },
                                     )
                                 }
                             },
                             transitionSpec = {
-                                (slideInHorizontally(initialOffsetX = slideIn) + fadeIn()) togetherWith
-                                    (slideOutHorizontally(targetOffsetX = slideOut) + fadeOut())
+                                if (lateralMove) {
+                                    // Tabs cross-fade in place: nothing slid
+                                    // in from the side, you just swapped which
+                                    // root you're looking at.
+                                    fadeIn(tween(180)) togetherWith fadeOut(tween(140))
+                                } else {
+                                    (slideInHorizontally(initialOffsetX = slideIn) + fadeIn()) togetherWith
+                                        (slideOutHorizontally(targetOffsetX = slideOut) + fadeOut())
+                                }
                             },
                             popTransitionSpec = {
                                 (slideInHorizontally(initialOffsetX = slideOut) + fadeIn()) togetherWith
