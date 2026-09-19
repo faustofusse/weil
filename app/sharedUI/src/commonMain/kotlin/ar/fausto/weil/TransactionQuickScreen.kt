@@ -86,15 +86,8 @@ fun TransactionQuickScreen(
     accounts: AccountsRepository,
     settings: SettingsRepository,
     kind: TxnKind,
-    /** Receives the id of the transaction just written. */
-    onSaved: (id: String) -> Unit,
+    onSaved: () -> Unit,
     onNavigateBack: () -> Unit,
-    /** Seeds the amount field (QR pay); the user can still edit it. */
-    prefillAmount: String? = null,
-    /** Seeds the description, which is what `ledger.add` stores as payee. */
-    prefillPayee: String? = null,
-    /** Provenance rows written with the transaction (QR pay attaches one). */
-    sources: List<TransactionSource> = emptyList(),
 ) {
     var currentKind by remember { mutableStateOf(kind) }
     val kindLabel = kindTitle(currentKind)
@@ -113,8 +106,8 @@ fun TransactionQuickScreen(
     val chooseLabel = stringResource(Res.string.quick_choose)
     val newCategoryLabel = stringResource(Res.string.picker_create)
 
-    var amountText by remember { mutableStateOf(prefillAmount.orEmpty()) }
-    var description by remember { mutableStateOf(prefillPayee.orEmpty()) }
+    var amountText by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
     var fromId by remember { mutableStateOf<String?>(null) }
     var toId by remember { mutableStateOf<String?>(null) }
     var tree by remember { mutableStateOf<List<AccountNode>>(emptyList()) }
@@ -205,14 +198,8 @@ fun TransactionQuickScreen(
                     DraftPosting(from, formatMinorUnits(-amount.minorUnits)),
                     DraftPosting(to, formatMinorUnits(amount.minorUnits)),
                 )
-                val id = ledger.add(
-                    epochMillis(),
-                    description.trim().ifBlank { kindLabel },
-                    null,
-                    drafts,
-                    sources = sources,
-                )
-                onSaved(id)
+                ledger.add(epochMillis(), description.trim().ifBlank { kindLabel }, null, drafts)
+                onSaved()
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()

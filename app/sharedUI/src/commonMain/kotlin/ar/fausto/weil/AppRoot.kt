@@ -189,13 +189,42 @@ fun RootScreen(
                                     )
                                 }
                                 entry<HomeRoute> {
+                                    // Captured for the QR handoff, which runs
+                                    // in a callback, not in composition.
+                                    val handoffFailed = stringResource(Res.string.qr_pay_handoff_failed)
+                                    val noWallet = stringResource(Res.string.qr_pay_no_wallet)
                                     HomeScreen(
                                         ledgerState = ledgerState,
                                         documents = { graph.documents },
                                         onImportDocument = { navigate(ImportReviewRoute(it)) },
                                         onNavigateToInbox = { navigate(InboxReviewRoute) },
                                         scanner = { graph.scanner },
-                                        onPayWithQr = { navigate(QrPayRoute(it.raw, it.merchant, it.amountMinor)) },
+                                        // Straight to the wallet: nothing is
+                                        // written here. MP's own push lands
+                                        // seconds later with the real amount and
+                                        // merchant, and Ingest.kt already
+                                        // recognizes it — so the ledger entry
+                                        // comes from the movement that actually
+                                        // happened, not from one we guessed
+                                        // before the user even paid.
+                                        onPayWithQr = { qr ->
+                                            val wallet = graph.wallet
+                                            val opened = wallet?.payWithMercadoPago(qr.raw) == true
+                                            // The payload outlives the handoff in
+                                            // one synced row, so a failure in a
+                                            // shop is still debuggable at home.
+                                            scope.launch {
+                                                runCatching {
+                                                    graph.settings.set(
+                                                        QR_PAY_LAST_KEY,
+                                                        "${epochMillis()}|${if (opened) "ok" else "fail"}|${qr.raw}",
+                                                    )
+                                                }
+                                            }
+                                            if (!opened) {
+                                                Feedback.show(if (wallet == null) noWallet else handoffFailed)
+                                            }
+                                        },
                                         onNavigateToTree = { navigate(AccountsTreeRoute) },
                                         onNewTransaction = { kind -> navigate(TransactionQuickRoute(kind)) },
                                         onNavigateToProfile = { navigate(ProfileRoute) },
@@ -230,56 +259,6 @@ fun RootScreen(
                                         settings = graph.settings,
                                         kind = route.kind,
                                         onSaved = { pop() },
-                                        onNavigateBack = { pop() },
-                                    )
-                                }
-                                entry<QrPayRoute> { route ->
-                                    // Captured here so the failure path (a
-                                    // callback, not composition) can use them.
-                                    val handoffFailed = stringResource(Res.string.qr_pay_handoff_failed)
-                                    val noWallet = stringResource(Res.string.qr_pay_no_wallet)
-                                    TransactionQuickScreen(
-                                        ledger = graph.ledger,
-                                        accounts = graph.accounts,
-                                        settings = graph.settings,
-                                        kind = TxnKind.Expense,
-                                        prefillAmount = route.amountMinor?.let { formatMinorUnits(it) },
-                                        prefillPayee = route.merchant,
-                                        // The payload is the ref: it is unique
-                                        // per order for dynamic QRs, and it is
-                                        // what phase 2 looks for when the
-                                        // wallet's push arrives with the amount
-                                        // the QR never carried.
-                                        sources = listOf(TransactionSource(EventSource.Qr, route.raw)),
-                                        // Record first, then hand off: there is no
-                                        // result callback from the wallet. An
-                                        // abandoned payment leaves an ordinary
-                                        // transaction, one tap to delete.
-                                        onSaved = { id ->
-                                            val wallet = graph.wallet
-                                            val opened = wallet?.payWithMercadoPago(route.raw) == true
-                                            // A handoff that fails in a shop is
-                                            // only debuggable if the payload
-                                            // outlives the back stack: park it
-                                            // on the transaction's note (visible
-                                            // in the journal) and in one synced
-                                            // settings row.
-                                            scope.launch {
-                                                runCatching {
-                                                    graph.settings.set(
-                                                        QR_PAY_LAST_KEY,
-                                                        "${epochMillis()}|${if (opened) "ok" else "fail"}|${route.raw}",
-                                                    )
-                                                }
-                                                if (!opened) {
-                                                    runCatching { graph.ledger.setNote(id, "QR: ${route.raw}") }
-                                                }
-                                            }
-                                            if (!opened) {
-                                                Feedback.show(if (wallet == null) noWallet else handoffFailed)
-                                            }
-                                            pop()
-                                        },
                                         onNavigateBack = { pop() },
                                     )
                                 }

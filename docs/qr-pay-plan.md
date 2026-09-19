@@ -2,12 +2,13 @@
 
 ## Goal
 
-Scan a merchant QR in Weil, record the expense, and land the user on Mercado
-Pago's payment confirmation screen. One scan, no camera in MP.
+Scan a merchant QR in Weil and land on Mercado Pago's payment confirmation
+screen. One scan, no camera in MP.
 
-This phase is a **spike to prove the handoff works on a real merchant QR**.
-Reconciliation with the incoming MP notification is explicitly out of scope and
-is phase 2.
+The expense is *not* recorded here: MP's push notification arrives right after
+the payment and the existing «Detectar movimientos» flow turns it into the
+ledger entry. So the app never guesses an amount, and there is exactly one
+record of each payment.
 
 ## Why this is possible
 
@@ -36,19 +37,24 @@ paths. Confirmed live on device that the intent is accepted from an external uid
 ```
 Home overflow → «Pagar con QR»
   → QrScanner.scan()                    (existing, Google code scanner)
-  → EmvcoQr.parse(raw)                  (new, pure Kotlin)
-  → QrPayRoute(raw, merchant, amountMinor)
-  → TransactionQuickScreen prefilled (Gasto, amount, payee)
-  → user taps Registrar → ledger.add(...)
+  → EmvcoQr.parse(raw)                  (new, pure Kotlin — only to log/report)
   → WalletLauncher.payWithMercadoPago(raw) → MP opens on confirm screen
-  → pop back to Home
+  → that's it. Weil writes nothing.
 ```
 
-Record-then-hand-off is deliberate for the spike: there is no result callback
-from MP, so the alternative (hand off, then confirm on return) needs state we
-don't have yet. Cost: if the user abandons the payment in MP, Weil holds a
-transaction that didn't happen. Acceptable — it's an ordinary transaction, the
-existing Snackbar undo and the journal both remove it in one tap.
+**The app records nothing on this path.** The ledger entry comes from MP's own
+push notification, which lands seconds after the payment and which `Ingest.kt`
+already recognizes (`mp.paid.to`, `mp.paid.amount.to`, `mp.paid.approved`), so
+it surfaces in «Detectar movimientos» with the real amount and merchant.
+
+That is strictly better than recording up front, and the live test is what
+showed why: MP's QRs carry no amount (see below), so recording first means
+asking the user to type a number *before* seeing it, then storing a guess for a
+payment that may never happen. Waiting costs nothing — the notification is the
+movement that actually occurred.
+
+The parse survives only to describe what was scanned; nothing downstream
+depends on it.
 
 ## Work
 
@@ -109,55 +115,20 @@ exposed as `val wallet: WalletLauncher?`. Android builds it in
 
 Package visibility is already covered by the existing `QUERY_ALL_PACKAGES`.
 
-### 4. Route + screen prefill
+### 4. No route, no screen
 
-`Routes.kt`:
-
-```kotlin
-data class QrPayRoute(
-    val raw: String,
-    val merchant: String?,
-    val amountMinor: Long?,
-)
-```
-
-`TransactionQuickScreen` gains two optional params, defaulted so every existing
-call site is untouched:
-
-```kotlin
-prefillAmount: String? = null,
-prefillPayee: String? = null,
-```
-
-seeded into the existing `amountText` / `description` `remember` initializers.
-`description` is already what `ledger.add` passes as payee, so the merchant name
-lands in the right column. Autofocus stays on the amount field — on a static QR
-that's exactly where the user needs to be.
-
-`AppRoot.kt` entry:
-
-```kotlin
-entry<QrPayRoute> { route ->
-    TransactionQuickScreen(
-        ledger = graph.ledger, accounts = graph.accounts, settings = graph.settings,
-        kind = TxnKind.Expense,
-        prefillAmount = route.amountMinor?.let { formatMinorUnits(it) },
-        prefillPayee = route.merchant,
-        onSaved = {
-            graph.wallet?.payWithMercadoPago(route.raw)
-            pop()
-        },
-        onNavigateBack = { pop() },
-    )
-}
-```
+The scan callback calls the wallet directly; there is nothing to navigate to.
+Every attempt (success or failure) writes `qr_pay.last` in `settings`
+(`<epochMs>|ok|fail|<payload>`) so a handoff that fails in a shop is still
+diagnosable at home, and a failure shows a Snackbar.
 
 ### 5. Entry point — Home overflow
 
 New `OverflowItem` «Pagar con QR» above «Detectar movimientos». On tap:
-`graph.scanner?.scan()` in a coroutine, then `parseEmvcoQr(raw)` and navigate to
-`QrPayRoute`. A payload we can't parse still navigates — with null prefills —
-because the handoff works regardless of whether *we* understood the QR.
+`graph.scanner?.scan()` in a coroutine, then `parseEmvcoQr(raw)` (for the
+record only) and `graph.wallet?.payWithMercadoPago(raw)`. A payload we can't
+parse is handed off anyway — the handoff works regardless of whether *we*
+understood the QR.
 
 Hidden when `graph.scanner == null` (desktop), same as the existing
 scanner-dependent affordances.
@@ -173,19 +144,13 @@ scanner-dependent affordances.
 |---|---|
 | `app/sharedLogic/.../EmvcoQr.kt` | new, parser |
 | `app/sharedLogic/src/commonTest/.../EmvcoQrTest.kt` | new, tests |
-| `app/sharedLogic/.../WalletLauncher.kt` | new, expect |
-| `app/sharedLogic/src/androidMain/.../AndroidWalletLauncher.kt` | new, actual |
-| `app/sharedLogic/src/iosMain/.../WalletLauncher.ios.kt` | new, no-op actual |
-| `app/sharedUI/src/desktopMain/.../WalletLauncher.desktop.kt` | new, no-op actual |
-| `app/sharedLogic/.../AppGraph.kt` | `wallet` provider |
+| `app/sharedLogic/.../WalletLauncher.kt` | new, interface + `QR_PAY_LAST_KEY` |
+| `app/sharedLogic/src/androidMain/.../AndroidWalletLauncher.kt` | new, Android impl |
+| `app/sharedLogic/.../AppGraph.kt` | `wallet` provider (null off Android) |
 | `app/androidApp/.../WeilApplication.kt` | build the launcher |
-| `app/sharedUI/.../Routes.kt` | `QrPayRoute` |
-| `app/sharedUI/.../TransactionQuickScreen.kt` | two optional prefill params |
-| `app/sharedUI/.../AppRoot.kt` | mount `QrPayRoute` |
+| `app/sharedUI/.../AppRoot.kt` | scan callback → wallet + `qr_pay.last` |
 | `app/sharedUI/.../HomeScreen.kt` | overflow item + scan callback |
-| `app/sharedLogic/.../Reconcile.kt` | `EventSource.Qr` |
-| `app/sharedLogic/.../TransactionsRepository.kt` | `setNote` (failed-handoff capture) |
-| `.../composeResources/values/strings.xml` | one string |
+| `.../composeResources/values/strings.xml` | three strings |
 
 No schema change, so **no `SCHEMA_VERSION` bump**.
 
@@ -194,8 +159,10 @@ No schema change, so **no `SCHEMA_VERSION` bump**.
 - `./gradlew :app:sharedLogic:jvmTest` — parser tests.
 - `./gradlew :app:androidApp:assembleDebug` — compiles.
 - `./gradlew :app:sharedUI:compileKotlinIosSimulatorArm64` — iOS actual compiles.
-- On device: scan a real merchant QR in a shop. Expect MP's app-lock prompt,
-  then the spinner, then the confirm screen with the right amount and merchant.
+- On device (done, Pixel 8): Home ⋮ → «Pagar con QR» → scanner → MP opened on
+  its own and answered "No es posible pagar a tu propia cuenta" for the test
+  payload, which is the resolver confirming it read the QR. A merchant QR that
+  isn't yours lands on the confirm screen instead.
 
 ## What a real MP QR actually contains
 
@@ -213,25 +180,19 @@ order behind tag 43's uuid and MP resolves it server-side, so the amount
 prefill is null for precisely the QRs a shop shows. The user types what the
 merchant says, or leaves an estimate.
 
-That could have argued for handing off first and recording on return, but
-there is no result callback, so that needs pending state phase 1 doesn't have.
-Decision: **keep record-then-hand-off, and let phase 2's reconciliation correct
-the amount** rather than only deduplicate. The hook is already written — every
-QR-paid transaction carries a `transaction_sources` row with
-`kind='qr'` and the payload as `ref` (`EventSource.Qr`), so the matcher can
-find it without guessing.
-
-Phase 2 therefore needs an amount-tolerant tier: `CandidateEvent.eventKey`
-includes `amountMinor`, so a typed estimate will *not* fingerprint-match the
-wallet's push. Matching a push against a recent `kind='qr'` transaction on the
-same account within a few minutes, then rewriting both postings to the push's
-amount, is the shape.
+This is what settled the flow. Recording first would mean asking for a number
+the user hasn't seen, so the app now hands off immediately and writes nothing:
+MP's push arrives with the real amount and merchant, `Ingest.kt` recognizes it,
+and «Detectar movimientos» is where the transaction gets created. No pending
+state, no phantom rows, no duplicates — there is only ever one record of the
+payment.
 
 ## Explicit non-goals (phase 2+)
 
-- Reconciling the MP push notification against the transaction we just wrote —
-  **this phase will produce duplicates**, knowingly, and leaves the amount as
-  whatever the user typed.
+- Recognizing the push as *this* scan's payment specifically. Today the push
+  is reviewed like any other detected movement; linking it back to the scan
+  (to attach the merchant name from tag 59, say) would need the payload kept
+  as pending state.
 - Pending / provisional transaction state.
 - MCC → category mapping (parsed and dropped for now).
 - iOS (`LSApplicationQueriesSchemes` + `UIApplication.openURL`).
@@ -243,8 +204,9 @@ amount, is the shape.
 | Risk | Handling |
 |---|---|
 | Undocumented deep link; MP can change it | Three-step fallback chain, never crashes; worst case the user scans in MP as today |
-| Duplicate transaction once the push arrives | Known and accepted for the spike; it's the whole point of phase 2 |
-| Abandoned payment leaves a phantom transaction | Ordinary transaction, one-tap delete |
+| Duplicate transaction once the push arrives | Gone: the push *is* the record, the app writes nothing on scan |
+| Abandoned payment leaves a phantom transaction | Gone for the same reason — no payment, no push, no row |
+| The push never arrives (notification access off) | The payment is simply unrecorded, as before this feature; «Detectar movimientos» has nothing to offer |
 | MP app lock adds a biometric prompt | Unavoidable, MP's own security layer |
 | `Barcode.rawValue` is null for non-UTF8 payloads | Treat null as a cancelled scan; EMVCo is ASCII so it shouldn't bite |
 | Re-encoding corrupts the payload | Pass the scanner's string through untouched; only `Uri.encode` for transport |
