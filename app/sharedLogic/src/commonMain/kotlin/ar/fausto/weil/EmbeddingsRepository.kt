@@ -15,6 +15,8 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlin.math.abs
+import kotlin.math.ln
 
 /**
  * "Parecidos a este": one vector per transaction, captured notification and
@@ -215,6 +217,7 @@ class EmbeddingsRepository(
         into: EmbedKind = kind,
         k: Int = 10,
         samePackageOnly: Boolean = false,
+        amountWeight: Double = AMOUNT_WEIGHT,
     ): List<SimilarItem> = db.useForRead { d ->
         val query = d.query(
             "select vector_extract(embedding) from ${kind.table}" +
@@ -235,11 +238,15 @@ class EmbeddingsRepository(
             null
         }
 
+        // Over-fetch when the amount gets a vote: the row whose money matches
+        // can sit just outside the top k by cosine alone.
+        val want = k.coerceIn(1, 50)
+        val scan = if (amountWeight > 0.0) (want * 4).coerceAtMost(50) else want
         val distances = d.query(
             "select id, vector_distance_cos(embedding, vector32(:q)) as d from ${into.table}" +
                 " where embedding is not null and embedding_model = :model and id <> :self" +
                 (if (pkg != null) " and package_name = :pkg" else "") +
-                " order by d limit ${k.coerceIn(1, 50)}",
+                " order by d limit $scan",
             buildMap {
                 put(":q", query)
                 put(":model", embedder.tag)
@@ -253,7 +260,68 @@ class EmbeddingsRepository(
                 rowId to distance
             }.toList()
         }
-        hydrate(d, into, distances)
+        val items = hydrate(d, into, distances)
+        if (amountWeight <= 0.0) return@useForRead items.take(want)
+        val self = rowAmount(d, kind, id)
+        items
+            .sortedBy { it.distance + amountWeight * amountPenalty(self, it) }
+            .take(want)
+    }
+
+    /**
+     * How much the money argues *against* two rows being the same event, as a
+     * number on the same scale as a cosine distance (0 = identical, 1 = as bad
+     * as it gets).
+     *
+     * The amount is deliberately **not** in the embedded text: the model has no
+     * notion of magnitude, so `$46.210` and `$46.500` tokenize into unrelated
+     * pieces while `$46.210` and `$462.100` can land next to each other. It is
+     * a re-rank instead, on the log of the ratio so it is scale-free — 300 vs
+     * 330 is as close as 30.000 vs 33.000, which is what "parecido" means for
+     * money.
+     *
+     * Unknown on either side, or two different commodities, votes zero rather
+     * than guessing: cosine keeps the ordering it had.
+     */
+    private fun amountPenalty(self: ParsedMoney?, other: SimilarItem): Double {
+        val a = self?.amountMinor?.takeIf { it > 0L } ?: return 0.0
+        val b = other.amountMinor?.takeIf { it > 0L } ?: return 0.0
+        if (other.commodity != null && other.commodity != self.commodity) return 0.0
+        val ratio = a.toDouble() / b.toDouble()
+        val penalty = abs(ln(ratio))
+        return if (penalty > 1.0) 1.0 else penalty
+    }
+
+    /** The money of one row, whatever table it lives in. Null when unreadable. */
+    private fun rowAmount(d: Database, kind: EmbedKind, id: String): ParsedMoney? = when (kind) {
+        EmbedKind.Transaction -> d.query(
+            "select amount_minor, commodity from postings where transaction_id = :id",
+            mapOf(":id" to id),
+        ) { rows ->
+            rows.filter { it.size >= 2 }.mapNotNull { row ->
+                val minor = (row[0] as? Number)?.toLong() ?: return@mapNotNull null
+                ParsedMoney(if (minor < 0) -minor else minor, row[1]?.toString() ?: Money.DEFAULT_COMMODITY)
+            }.maxByOrNull { it.amountMinor }
+        }
+
+        EmbedKind.Notification -> d.query(
+            "select title, text from notifications where id = :id",
+            mapOf(":id" to id),
+        ) { rows -> rows.firstOrNull()?.joinToString(" ") { it?.toString().orEmpty() } }
+            ?.let { biggestMoney(it) }
+
+        EmbedKind.Email -> d.query(
+            "select subject, body_text, body_html from emails where id = :id",
+            mapOf(":id" to id),
+        ) { rows -> rows.firstOrNull() }
+            ?.let { row ->
+                val subject = decodeMimeHeader(row.getOrNull(0)?.toString().orEmpty())
+                val body = emailPlainText(
+                    row.getOrNull(2)?.toString()?.takeIf { it.isNotBlank() }
+                        ?: row.getOrNull(1)?.toString().orEmpty(),
+                )
+                biggestMoney("$subject $body")
+            }
     }
 
     /** Drops every vector, so the next sweep recomputes all of them. */
@@ -482,33 +550,42 @@ class EmbeddingsRepository(
             ) { rows ->
                 rows.filter { it.size >= 5 }.mapNotNull { row ->
                     val id = row[0]?.toString() ?: return@mapNotNull null
+                    val title = row[1]?.toString().orEmpty()
+                    val text = row[2]?.toString().orEmpty()
+                    val money = biggestMoney("$title $text")
                     id to SimilarItem(
                         kind = kind,
                         id = id,
-                        title = row[1]?.toString().orEmpty(),
-                        subtitle = row[2]?.toString().orEmpty(),
+                        title = title,
+                        subtitle = text,
                         date = (row[3] as? Number)?.toLong() ?: 0L,
-                        amountMinor = null,
-                        commodity = null,
+                        amountMinor = money?.amountMinor,
+                        commodity = money?.commodity,
                         distance = 0.0,
                     )
                 }.toMap()
             }
 
             EmbedKind.Email -> d.query(
-                "select id, from_email, subject, received_at from emails where id in ($inList)",
+                "select id, from_email, subject, received_at, body_text, body_html" +
+                    " from emails where id in ($inList)",
                 null,
             ) { rows ->
-                rows.filter { it.size >= 4 }.mapNotNull { row ->
+                rows.filter { it.size >= 6 }.mapNotNull { row ->
                     val id = row[0]?.toString() ?: return@mapNotNull null
+                    val subject = decodeMimeHeader(row[2]?.toString().orEmpty())
+                    val body = emailPlainText(
+                        row[5]?.toString()?.takeIf { it.isNotBlank() } ?: row[4]?.toString().orEmpty(),
+                    )
+                    val money = biggestMoney("$subject $body")
                     id to SimilarItem(
                         kind = kind,
                         id = id,
-                        title = decodeMimeHeader(row[2]?.toString().orEmpty()),
+                        title = subject,
                         subtitle = row[1]?.toString().orEmpty(),
                         date = (row[3] as? Number)?.toLong() ?: 0L,
-                        amountMinor = null,
-                        commodity = null,
+                        amountMinor = money?.amountMinor,
+                        commodity = money?.commodity,
                         distance = 0.0,
                     )
                 }.toMap()
@@ -520,6 +597,13 @@ class EmbeddingsRepository(
     }
 
     private companion object {
+        /**
+         * How loud the money is allowed to be next to the text. At 0.35 an
+         * amount twice as big costs ~0.24 — enough to drop a neighbour a few
+         * places, never enough to promote a row that reads like nothing.
+         */
+        const val AMOUNT_WEIGHT = 0.35
+
         /** Texts per worker call; the endpoint caps at 128. */
         const val BATCH = 100
 
@@ -545,6 +629,18 @@ class EmbeddingsRepository(
  * the sync engine takes the literal as text and Kotlin's default Double
  * rendering ("1.0E-4") is not something SQLite's parser accepts.
  */
+/**
+ * The largest amount mentioned in [text], which on a bank message is the
+ * movement itself — the smaller numbers around it are balances, instalments or
+ * card digits. Used to put money next to a notification or a mail, for the
+ * reader and for the re-rank.
+ */
+private fun biggestMoney(text: String): ParsedMoney? =
+    MONEY_TEXT.findAll(text)
+        .mapNotNull { parseMoney(it.value) }
+        .maxByOrNull { it.amountMinor }
+        ?.takeIf { it.amountMinor > 0L }
+
 internal fun List<Double>.toVectorLiteral(): String =
     joinToString(",", prefix = "[", postfix = "]") { it.toFixedLiteral() }
 
