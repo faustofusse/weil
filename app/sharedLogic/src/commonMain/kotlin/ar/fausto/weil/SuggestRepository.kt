@@ -169,6 +169,17 @@ class SuggestRepository(
                         account = read.account,
                     ),
                     precedents = wirePrecedents,
+                    // Neighbours from the ledger's own text. Nothing links
+                    // them to this message, so they are weaker than a
+                    // precedent — but they exist from the first run, and
+                    // precedents do not until the user has linked one by hand.
+                    similar = similarTransactions.take(MAX_PRECEDENTS).map {
+                        WirePrecedent(
+                            text = it.title + (it.subtitle.take(80).let { s -> if (s.isBlank()) "" else " — $s" }),
+                            payee = it.title,
+                            `when` = relativeDay(item.postTime, it.date),
+                        )
+                    },
                     nearby = nearby,
                     // Own accounts carry their currency: that is what tells
                     // "Santander Dolares" from "Santander Pesos" when the
@@ -361,6 +372,7 @@ private data class AccountsRequest(
     val message: MessageWire,
     val extracted: ExtractedWire,
     val precedents: List<WirePrecedent>,
+    val similar: List<WirePrecedent>,
     val nearby: List<NearbyWire>,
     val own: List<PathOption>,
     val expense: List<PathOption>,

@@ -67,7 +67,7 @@ const SCHEMA = {
     payee: {
       type: 'STRING',
       description:
-        "Merchant, person or institution on the other side, cleaned up and capitalised ('COTO CICSA 4821' → 'Coto'). Never the amount, never the bank sending the alert unless the bank itself charged the fee.",
+        "Merchant, person or institution on the other side, cleaned up and capitalised ('COTO CICSA 4821' \u2192 'Coto'). Never the amount, never the bank sending the alert unless the bank itself charged the fee. Return an EMPTY STRING when the message names no counterparty \u2014 never a placeholder like 'Desconocido', which would be written into the ledger as if it were a merchant.",
     },
     amount: {
       type: 'STRING',

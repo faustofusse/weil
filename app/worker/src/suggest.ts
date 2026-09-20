@@ -218,6 +218,13 @@ export interface AccountsBody {
   /** What the reader (message.ts) got out of the text. */
   extracted?: Record<string, unknown>;
   precedents?: MessagePrecedent[];
+  /**
+   * Transactions that *read* like this message, from the ledger's own text.
+   * Weaker evidence than a precedent (nothing links them to this message) but
+   * available from the first run: precedents only exist once the user has
+   * linked a notification by hand, and on a fresh device there are none.
+   */
+  similar?: MessagePrecedent[];
   nearby?: NearbyTransaction[];
   own?: OwnOption[];
   expense?: SuggestOption[];
@@ -244,7 +251,7 @@ function describeOwn(option: OwnOption): string | null {
 }
 
 const MESSAGE_CONTEXT =
-  'A push notification an Argentine user received from a bank or wallet app, already read by another model: `extracted` holds the amount, the direction and the merchant it found. `precedents` shows how similar notifications from the same app were recorded in this ledger before, which is usually the answer.';
+  'A push notification an Argentine user received from a bank or wallet app, already read by another model: `extracted` holds the amount, the direction and the merchant it found. `precedents` shows how similar notifications were recorded in this ledger before, which is usually the answer; `similar_transactions` are ledger rows that merely read alike, which is weaker evidence but often enough to show the habit.';
 
 function accountChoice(
   instructions: unknown,
@@ -312,14 +319,22 @@ export function messageQuestions(body: AccountsBody): Record<string, unknown> {
     // Asked as its own question rather than folded into my_account: "where it
     // left from" and "where it landed" are two plain questions, and one
     // question split by a sign is where the model starts hedging.
+    //
+    // The account the money *left* is dropped from the options rather than
+    // forbidden in prose: told only in words, the model answered with it
+    // anyway (0.74 on a plain card payment). An option that cannot be chosen
+    // needs no instruction.
+    const left = String(body.extracted?.account ?? '');
+    const destinations = own.filter((option) => option.path !== left);
     questions.transfer_destination = accountChoice(
       {
         question:
           "Assuming this is a transfer between two accounts the recipient owns, which account did the money ARRIVE in?",
         context: MESSAGE_CONTEXT,
-        not_for: 'It is not the same account the money left, which is asked separately.',
+        not_for:
+          'Most of these messages are not transfers at all — a purchase, a fee or a salary has no destination account of theirs. Answer none-of-these unless both sides are accounts they own.',
       },
-      own,
+      destinations,
       'This is not a transfer between their own accounts, or the destination is not one of these'
     );
   }
@@ -371,6 +386,7 @@ export function messageState(body: AccountsBody): Record<string, unknown> {
     message: body.message,
     extracted: body.extracted ?? {},
     precedents: body.precedents ?? [],
+    similar_transactions: body.similar ?? [],
     nearby_transactions: body.nearby ?? [],
   };
 }
