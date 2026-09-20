@@ -10,6 +10,9 @@ fun MainViewController() = ComposeUIViewController {
             passkeys = { bridgedPasskeys() },
             qrScanner = { IosBridges.qrScanner },
             documentPicker = { IosBridges.documentPicker },
+            // No foreground activity to wait for, unlike Android: opening a
+            // URL only needs the shared application.
+            wallet = { IosWalletLauncher() },
             dbContext = DbDispatcher,
             dbFactory = { userId, url, token ->
                 IosTursoDatabase(path = tursoDatabasePath(userId), url = url, authToken = token)

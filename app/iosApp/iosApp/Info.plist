@@ -11,6 +11,14 @@
 	<key>UIUserInterfaceStyle</key>
 	<string>Light</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Scan the pairing QR code shown on your other device to link it to your account.</string>
+	<string>Scan the pairing QR code shown on your other device, or a merchant QR to pay it.</string>
+	<!-- canOpenURL answers false for any scheme not listed here, with no
+	     error, so the QR handoff would report "no wallet installed" on a
+	     phone that has Mercado Pago. See IosWalletLauncher. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>mercadopago</string>
+		<string>meli</string>
+	</array>
 </dict>
 </plist>

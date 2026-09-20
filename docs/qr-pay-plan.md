@@ -110,7 +110,26 @@ Android (`AndroidWalletLauncher`, built with the **application** context):
    then `getLaunchIntentForPackage`, then return false.
 3. Catch `ActivityNotFoundException` at every step — never crash on a handoff.
 
-iOS/desktop actuals return `false` (phase 1 is Android-only).
+iOS (`IosWalletLauncher`, sharedLogic iosMain — no Swift bridge, opening a URL
+needs no foreground activity):
+
+1. `UIApplication.sharedApplication.openURL` on the same deep link, with the
+   payload percent-encoded by hand (`percentEncode`, unreserved-set only):
+   `stringByAddingPercentEncoding` wants an `NSString` a Kotlin `String` cannot
+   be cast to, and `NSURLComponents` leaves `+` literal in a query value.
+2. `mercadopago` **must** be listed under `LSApplicationQueriesSchemes` in
+   `Info.plist` or `canOpenURL` returns false with no error and the app reports
+   "no wallet installed" on a phone that has MP.
+3. iOS only ever answers about the **scheme**: neither `canOpenURL` nor the
+   open completion handler can say whether MP routes the `qr_code` host. So
+   `true` means "MP was opened", not "MP understood the payload" — the guard
+   `resolveActivity` gives Android has no equivalent here.
+
+What does *not* port is phase 2: iOS has no way to read another app's
+notifications, so a static QR's placeholder (0,00) is never completed from
+MP's push. Dynamic QRs, which carry tag 54, are unaffected.
+
+Desktop returns `false`.
 
 Wired into `AppGraph` next to `scanner`: `wallet: () -> WalletLauncher? = { null }`,
 exposed as `val wallet: WalletLauncher?`. Android builds it in
