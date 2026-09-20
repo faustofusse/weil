@@ -308,7 +308,7 @@ export async function loadPayeeHistory(
   // No bind parameters in queryUserDb; `since` is a locally computed number.
   const rows = await queryUserDb(
     `select t.payee as payee, p.account_id as account_id, count(*) as n, max(t.date) as last_date
-     from ledger_transactions t
+     from transactions t
      join postings p on p.transaction_id = t.id
      where t.payee is not null and t.payee <> '' and t.date >= ${Math.floor(since)}
      group by t.payee, p.account_id`

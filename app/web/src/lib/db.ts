@@ -370,7 +370,7 @@ export async function loadFacts(db: ReadOnlyDb, from: number, to: number): Promi
 	const legs = await db.select(
 		`select t.id as tx, t.date as date, t.payee as payee, p.id as posting,
 		        p.account_id as account, a.type as type, p.amount_minor as amount, p.commodity as commodity
-		 from ledger_transactions t
+		 from transactions t
 		 join postings p on p.transaction_id = t.id
 		 left join accounts a on a.id = p.account_id
 		 where t.date >= ? and t.date <= ?`,

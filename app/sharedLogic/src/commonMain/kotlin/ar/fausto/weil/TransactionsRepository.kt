@@ -90,11 +90,11 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 // recomputes it. Cheaper and safer than keeping a vector that
                 // describes a transaction the user just rewrote.
                 if (note.isNullOrBlank()) {
-                    "update ledger_transactions set date = :date, payee = :payee, note = null," +
+                    "update transactions set date = :date, payee = :payee, note = null," +
                         " time_known = :time_known, embedding = null, embedding_model = null" +
                         " where id = :id"
                 } else {
-                    "update ledger_transactions set date = :date, payee = :payee, note = :note," +
+                    "update transactions set date = :date, payee = :payee, note = :note," +
                         " time_known = :time_known, embedding = null, embedding_model = null" +
                         " where id = :id"
                 },
@@ -117,7 +117,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             // postings first: cross-connection FK cascades are not enforced
             execute("delete from postings where transaction_id = :id", mapOf(":id" to id))
             execute("delete from transaction_sources where transaction_id = :id", mapOf(":id" to id))
-            execute("delete from ledger_transactions where id = :id", mapOf(":id" to id))
+            execute("delete from transactions where id = :id", mapOf(":id" to id))
         }
         emitChange()
     }
@@ -210,7 +210,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     suspend fun reconcileFacts(from: Long, to: Long): List<LedgerFact> = db.useForRead { d ->
         val legs = d.query(
             "select t.id, t.date, t.payee, p.id, p.account_id, a.type, p.amount_minor, p.commodity" +
-                " from ledger_transactions t" +
+                " from transactions t" +
                 " join postings p on p.transaction_id = t.id" +
                 " left join accounts a on a.id = p.account_id" +
                 " where t.date >= :from and t.date <= :to",
@@ -323,7 +323,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     suspend fun deleteRange(from: Long, to: Long): Int {
         val ids = db.useForRead { d ->
             d.query(
-                "select id from ledger_transactions where date >= :from and date <= :to",
+                "select id from transactions where date >= :from and date <= :to",
                 mapOf(":from" to from, ":to" to to),
             ) { rows -> rows.mapNotNull { it.firstOrNull()?.toString() }.toList() }
         }
@@ -332,7 +332,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             val idList = quoteList(ids)
             execute("delete from postings where transaction_id in ($idList)", null)
             execute("delete from transaction_sources where transaction_id in ($idList)", null)
-            execute("delete from ledger_transactions where id in ($idList)", null)
+            execute("delete from transactions where id in ($idList)", null)
         }
         emitChange()
         return ids.size
@@ -362,7 +362,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             )
             val txs = d.query(
                 "select t.id, t.date, t.payee, t.note, t.created_at, t.time_known" +
-                    " from ledger_transactions t" +
+                    " from transactions t" +
                     (if (where.isEmpty()) "" else where.joinToString(" and ", prefix = " where ")) +
                     " order by t.date desc, t.id desc limit $limit",
                 cursorParams(before),
@@ -413,7 +413,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     suspend fun get(id: String): Transaction? = db.useForRead { d ->
         val safe = quoteList(listOf(id))
         val tx = d.query(
-            "select id, date, payee, note, created_at, time_known from ledger_transactions" +
+            "select id, date, payee, note, created_at, time_known from transactions" +
                 " where id in ($safe)",
             null,
         ) { rows ->
@@ -468,7 +468,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             val entries = d.query(
                 "select p.id, p.transaction_id, p.account_id, p.amount_minor, p.commodity," +
                     " t.date, t.payee, t.time_known" +
-                    " from postings p join ledger_transactions t on p.transaction_id = t.id" +
+                    " from postings p join transactions t on p.transaction_id = t.id" +
                     " where p.account_id in ($idList)" +
                     (if (before == null) "" else " and ($TX_CURSOR_FILTER)") +
                     " order by t.date desc, t.id desc limit $limit",
@@ -500,7 +500,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             } else {
                 d.query(
                     "select p.commodity, sum(p.amount_minor) from postings p" +
-                        " join ledger_transactions t on p.transaction_id = t.id" +
+                        " join transactions t on p.transaction_id = t.id" +
                         " where p.account_id in ($idList) and ($TX_CURSOR_FILTER)" +
                         " group by p.commodity",
                     cursorParams(oldest),
@@ -603,7 +603,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             params[":source_document"] = sourceDocumentId
         }
         execute(
-            "insert into ledger_transactions(${columns.joinToString(", ")})" +
+            "insert into transactions(${columns.joinToString(", ")})" +
                 " values(${values.joinToString(", ")})",
             params,
         )

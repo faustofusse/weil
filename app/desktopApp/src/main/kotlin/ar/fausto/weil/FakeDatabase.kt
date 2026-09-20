@@ -75,7 +75,7 @@ class FakeDatabase(
      * non-default commodity, and a second day so day grouping shows up.
      */
     private fun seedDemoData() {
-        val count = query("select count(*) from ledger_transactions", null) { rows ->
+        val count = query("select count(*) from transactions", null) { rows ->
             (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L
         }
         if (count > 0) return
@@ -139,7 +139,7 @@ class FakeDatabase(
             timeKnown: Boolean = true,
         ) {
             execute(
-                "insert into ledger_transactions(id, date, payee, note, created_at, time_known)" +
+                "insert into transactions(id, date, payee, note, created_at, time_known)" +
                     " values (:id, :date, :payee, null, :created, :time_known)",
                 mapOf(
                     ":id" to id,

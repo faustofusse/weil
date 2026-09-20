@@ -368,7 +368,7 @@ async function defaultAssetAccount(db: Client, accounts: PostableAccountLike[]):
   if (assets.length === 0) return null;
   const rs = await db.execute({
     sql: `select p.account_id as id, count(*) as n
-            from postings p join ledger_transactions t on t.id = p.transaction_id
+            from postings p join transactions t on t.id = p.transaction_id
            where t.date > ?
            group by p.account_id
            order by n desc`,
@@ -465,7 +465,7 @@ async function createTransaction(
   await db.batch(
     [
       {
-        sql: 'insert into ledger_transactions(id, date, payee, note, created_at) values (?, ?, ?, ?, ?)',
+        sql: 'insert into transactions(id, date, payee, note, created_at) values (?, ?, ?, ?, ?)',
         args: [txId, date, payee, parsed.note?.trim() || null, now],
       },
       {
@@ -504,7 +504,7 @@ async function undoLast(db: Client): Promise<string> {
   const rs = await db.execute({
     sql: `select t.id, t.payee, p.amount_minor, p.commodity
             from transaction_sources s
-            join ledger_transactions t on t.id = s.transaction_id
+            join transactions t on t.id = s.transaction_id
             left join postings p on p.transaction_id = t.id and p.amount_minor < 0
            where s.kind = 'whatsapp' and s.created_at > ?
            order by s.created_at desc
@@ -519,7 +519,7 @@ async function undoLast(db: Client): Promise<string> {
     [
       { sql: 'delete from postings where transaction_id = ?', args: [row.id] },
       { sql: 'delete from transaction_sources where transaction_id = ?', args: [row.id] },
-      { sql: 'delete from ledger_transactions where id = ?', args: [row.id] },
+      { sql: 'delete from transactions where id = ?', args: [row.id] },
     ],
     'write'
   );

@@ -5,18 +5,27 @@ package ar.fausto.weil
  * The Turso engine replicates row state (including deletes), so unlike the
  * old app there is no device_id/modified_at/deleted_at/synced_at bookkeeping.
  */
-const val SCHEMA_SQL =
-    "drop table if exists cuentas;" +
-    "create table if not exists accounts(id text primary key not null, name text not null);" +
-    "create table if not exists ledger_transactions(" +
+/**
+ * Base shape of the ledger table, shared by [SCHEMA_SQL] and the
+ * `ledger_transactions` -> `transactions` migration (which has to create the
+ * table itself, before [SCHEMA_SQL] runs). The columns added later by
+ * [migrateSchema] are deliberately not here.
+ */
+private const val TRANSACTIONS_TABLE_SQL =
+    "create table if not exists transactions(" +
     "id text primary key not null," +
     "date integer not null," +
     "payee text not null," +
     "note text," +
     "source_notification_id text," +
     "source_email_id text," +
-    "created_at integer not null);" +
-    "create index if not exists idx_ledger_tx_date on ledger_transactions(date desc, id desc);" +
+    "created_at integer not null);"
+
+const val SCHEMA_SQL =
+    "drop table if exists cuentas;" +
+    "create table if not exists accounts(id text primary key not null, name text not null);" +
+    TRANSACTIONS_TABLE_SQL +
+    "create index if not exists idx_transactions_date on transactions(date desc, id desc);" +
     "create table if not exists postings(" +
     "id text primary key not null," +
     "transaction_id text not null," +
@@ -87,13 +96,20 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 10L
+private const val SCHEMA_VERSION = 11L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
  * database's `user_version` already matches [SCHEMA_VERSION].
  */
 fun Database.applySchemaIfNeeded() {
+    // Before the version short-circuit, and before SCHEMA_SQL: the table has
+    // to be moved out of the way while it still exists, and a device left on
+    // an older build re-creates `ledger_transactions` and writes into it (the
+    // rows sync, invisibly to everyone else), so this stays a permanent
+    // per-open check rather than a one-shot migration. It is one sqlite_master
+    // lookup when there is nothing to do.
+    migrateLegacyTransactionsTable()
     val current = query("pragma user_version", null) { rows ->
         (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L
     }
@@ -105,6 +121,66 @@ fun Database.applySchemaIfNeeded() {
     migrateSchema()
     execute("pragma user_version = $SCHEMA_VERSION")
 }
+
+/**
+ * Moves `ledger_transactions` onto `transactions`, copy-and-drop.
+ *
+ * Not `alter table ... rename to`: on the sync engine a rename applies to the
+ * local file and is **never pushed** — sync() returns OK and the device
+ * diverges from the server forever (verified on-device against a scratch
+ * database; create/insert/drop replicate normally, rename does not).
+ *
+ * Ordering matters: this runs before [SCHEMA_SQL], whose
+ * `create table if not exists transactions` would otherwise create an empty
+ * table and strand every row under the old name.
+ *
+ * Concurrency: two devices that migrate offline converge, because the copy is
+ * `insert or ignore` on the primary key and the rows carry their own ids.
+ */
+private fun Database.migrateLegacyTransactionsTable() {
+    val legacy = query(
+        "select count(*) from sqlite_master where type = 'table' and name = 'ledger_transactions'",
+        null,
+    ) { rows -> (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L }
+    if (legacy == 0L) return
+
+    // Dropping a table that still holds unsynced row changes makes the next
+    // push fail to render them (`SQL_PARSE_ERROR: near RP, "None"`); it
+    // recovers on the following sync, but only after surfacing an error to
+    // the user. Best-effort: offline, the drop goes ahead anyway.
+    try {
+        sync()
+    } catch (_: Exception) {
+    }
+
+    execute(TRANSACTIONS_TABLE_SQL)
+    val legacyColumns = query("pragma table_info(ledger_transactions)", null) { rows ->
+        rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
+    }
+    // Columns [migrateSchema] adds after the fact. They exist on the old table
+    // only if that device got far enough, and an embedding is expensive to
+    // regenerate, so whatever is there is carried over.
+    val optional = listOf(
+        "source_document_id" to "text",
+        "time_known" to "integer not null default 1",
+        "embedding" to "F32_BLOB($EMBEDDING_DIMS)",
+        "embedding_model" to "text",
+    )
+    for ((column, type) in optional) {
+        if (column in legacyColumns) addColumn("alter table transactions add column $column $type")
+    }
+    val carried = (BASE_TRANSACTION_COLUMNS + optional.map { it.first })
+        .filter { it in legacyColumns }
+        .joinToString(", ")
+    execute(
+        "insert or ignore into transactions($carried) select $carried from ledger_transactions",
+    )
+    execute("drop table ledger_transactions")
+}
+
+private val BASE_TRANSACTION_COLUMNS = listOf(
+    "id", "date", "payee", "note", "source_notification_id", "source_email_id", "created_at",
+)
 
 /**
  * Column migration for the account tree: parent_id + type on pre-existing
@@ -175,26 +251,26 @@ fun Database.migrateSchema() {
         // AccountsRepository instead.
         addColumn("alter table accounts add column commodity text")
     }
-    val txColumns = query("pragma table_info(ledger_transactions)", null) { rows ->
+    val txColumns = query("pragma table_info(transactions)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
     }
     if ("source_document_id" !in txColumns) {
         // Provenance of AI-imported transactions: the R2 content hash of the
         // analyzed document (see the worker's /import/analyze).
-        addColumn("alter table ledger_transactions add column source_document_id text")
+        addColumn("alter table transactions add column source_document_id text")
     }
     if ("time_known" !in txColumns) {
         // A statement row states a day, not a moment: `date` still holds a
         // timestamp (local midnight) but the time half of it is made up, so
         // the UI must not print it. Manual entries and notification/email
         // ingest carry a real clock time and keep the default 1.
-        addColumn("alter table ledger_transactions add column time_known integer not null default 1")
+        addColumn("alter table transactions add column time_known integer not null default 1")
         // Rows already imported from a document were stamped noon UTC by the
         // worker (09:00 in ART), which is exactly the phantom time this
         // column exists to hide. Runs only on the open that adds the column,
         // so a time the user set by hand afterwards is never demoted.
         execute(
-            "update ledger_transactions set time_known = 0 where source_document_id is not null",
+            "update transactions set time_known = 0 where source_document_id is not null",
         )
     }
     val emailColumns = query("pragma table_info(emails)", null) { rows ->
@@ -206,7 +282,7 @@ fun Database.migrateSchema() {
     // libsql_vector_idx, and the index DDL does not even parse on the device
     // (see plans/embeddings-prueba-jev.md). Search is an exact scan over a few
     // hundred candidate rows, which is milliseconds.
-    for (table in listOf("ledger_transactions", "notifications", "emails")) {
+    for (table in listOf("transactions", "notifications", "emails")) {
         addColumn("alter table $table add column embedding F32_BLOB($EMBEDDING_DIMS)")
         addColumn("alter table $table add column embedding_model text")
     }
@@ -235,7 +311,7 @@ private fun Database.backfillTransactionSources() {
     ).forEach { (column, source) ->
         execute(
             "insert or ignore into transaction_sources(transaction_id, kind, ref, created_at) " +
-                "select id, '${source.db}', $column, created_at from ledger_transactions " +
+                "select id, '${source.db}', $column, created_at from transactions " +
                 "where $column is not null and $column <> ''",
         )
     }

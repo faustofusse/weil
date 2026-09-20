@@ -79,7 +79,7 @@ reimplementing it. They are deliberate, not incidental:
 
 ## Data model
 
-`transaction_sources` replaces the three `ledger_transactions.source_*`
+`transaction_sources` replaces the three `transactions.source_*`
 columns' one-transaction-one-origin assumption. A single purchase legitimately
 has a push notification *and* an email receipt *and* a statement row.
 

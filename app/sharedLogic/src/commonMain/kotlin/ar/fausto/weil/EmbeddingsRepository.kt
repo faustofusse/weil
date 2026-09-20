@@ -54,7 +54,7 @@ const val EMBEDDING_TAG = "$EMBEDDING_MODEL/$EMBEDDING_DIMS"
 
 /** The three embedded tables, and the column that identifies them in SQL. */
 enum class EmbedKind(val table: String) {
-    Transaction("ledger_transactions"),
+    Transaction("transactions"),
     Notification("notifications"),
     Email("emails"),
 }
@@ -371,10 +371,10 @@ class EmbeddingsRepository(
             // movement by construction.
             EmbedKind.Transaction -> d.query(
                 "select t.id, t.payee, t.note, p.amount_minor, a.name" +
-                    " from ledger_transactions t" +
+                    " from transactions t" +
                     " left join postings p on p.transaction_id = t.id" +
                     " left join accounts a on a.id = p.account_id" +
-                    " where t.id in (select id from ledger_transactions where $stale" +
+                    " where t.id in (select id from transactions where $stale" +
                     " order by date desc limit $limit)",
                 params,
             ) { rows -> transactionsFrom(rows) }
@@ -424,7 +424,7 @@ class EmbeddingsRepository(
     private fun textOf(d: Database, kind: EmbedKind, id: String): Pending? = when (kind) {
         EmbedKind.Transaction -> d.query(
             "select t.id, t.payee, t.note, p.amount_minor, a.name" +
-                " from ledger_transactions t" +
+                " from transactions t" +
                 " left join postings p on p.transaction_id = t.id" +
                 " left join accounts a on a.id = p.account_id" +
                 " where t.id = :id",
@@ -516,7 +516,7 @@ class EmbeddingsRepository(
             EmbedKind.Transaction -> {
                 val legs = d.query(
                     "select t.id, t.date, t.payee, t.note, p.amount_minor, p.commodity" +
-                        " from ledger_transactions t left join postings p on p.transaction_id = t.id" +
+                        " from transactions t left join postings p on p.transaction_id = t.id" +
                         " where t.id in ($inList)",
                     null,
                 ) { rows -> rows.filter { it.size >= 6 }.map { it.toList() }.toList() }
