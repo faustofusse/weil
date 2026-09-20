@@ -269,9 +269,6 @@ private fun altText(alt: AltReading, trace: SuggestTrace): String = buildString 
     // A parsed view of an empty object reads exactly like a model that said
     // nothing at all, which is the failure this comparison keeps hitting.
     alt.raw?.let { append("\ncrudo: ${it.take(500)}") }
-    // The parsed view hides an answer that came back shaped but empty, which
-    // is the failure this comparison keeps running into.
-    alt.raw?.let { append("\ncrudo: ${it.take(500)}") }
 }
 
 private fun retrievalText(trace: SuggestTrace): String = buildString {

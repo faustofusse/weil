@@ -84,7 +84,7 @@ const SCHEMA = {
     normalized: {
       type: 'STRING',
       description:
-        "One short Spanish sentence describing the movement without the bank's boilerplate: 'compra en Coto con Mercado Pago', 'transferencia recibida de Juan Pérez'. No amounts, no dates.",
+        "A short Spanish noun phrase naming WHAT the movement was and through which account, with the bank's boilerplate removed: 'compra en Coto con Mercado Pago', 'transferencia recibida de Juan Pérez'. This text is embedded to find past movements that read alike, so it must contain NO DIGITS at all — no amount, no date, no card number. An amount here is the one thing that makes it useless.",
     },
   },
   required: ['isMovement', 'direction', 'payee', 'amount', 'commodity', 'normalized'],
@@ -160,7 +160,11 @@ const JSON_SCHEMA = {
     commodity: { type: 'string' },
     account: { type: ['string', 'null'] },
     note: { type: ['string', 'null'] },
-    normalized: { type: 'string' },
+    normalized: {
+      type: 'string',
+      description:
+        'A short Spanish noun phrase naming what the movement was and through which account. No digits: no amount, no date, no card number.',
+    },
   },
   required: ['isMovement', 'direction', 'payee', 'amount', 'commodity', 'normalized'],
 } as const;
@@ -229,7 +233,7 @@ export async function readMessageWithGlm(
   gateway?: string
 ): Promise<AltReading> {
   const started = Date.now();
-  const prompt = `${messagePrompt(body)}\n\nAnswer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount, commodity, account, note, normalized.`;
+  const prompt = `${messagePrompt(body)}\n\nAnswer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount (a string, e.g. "21389.00"), commodity, account, note, normalized.`;
   // Through the gateway when there is one, straight at the binding when the
   // gateway answers that there is not. The id is a var, and a var can name
   // something that was never created — which is exactly what it did here, and
