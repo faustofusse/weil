@@ -73,10 +73,15 @@ class SuggestRepository(
         val readStarted = epochMillis()
         val readWire = try {
             postJson(
-                // compare=1 asks the worker to read the same message with
-                // Workers AI beside Gemini. Only the bench does this; the
+                // compare=<model> asks the worker to read the same message
+                // with Workers AI beside Gemini. Only the bench does this; the
                 // candidate is still built from the Gemini reading.
-                "$baseUrl/suggest/message?debug=1&compare=1",
+                //
+                // schema=0: glm-4.7-flash under json_schema returned the mould
+                // with nothing in it (17 s, every string empty, twice). A
+                // model that reasons out loud does better writing the object
+                // itself, and the parser digs it out of whatever it says.
+                "$baseUrl/suggest/message?debug=1&compare=$ALT_READER&schema=0",
                 ReadRequest(
                     origin = item.appName,
                     title = item.title,
@@ -258,6 +263,9 @@ class SuggestRepository(
     }
 
     private companion object {
+        /** The model being weighed against Gemini in the bench. */
+        const val ALT_READER = "@cf/zai-org/glm-5.3-flash"
+
         const val TIMEOUT_MS = 90_000L
         const val WINDOW_MS = 20L * 60 * 60 * 1000
         const val MAX_PRECEDENTS = 3

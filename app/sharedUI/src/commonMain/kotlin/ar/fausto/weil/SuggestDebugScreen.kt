@@ -230,7 +230,10 @@ private fun readText(read: ReadResponse?): String {
         appendLine("payee:       ${read.payee}")
         appendLine("account:     ${read.account ?: "—"}")
         appendLine("note:        ${read.note ?: "—"}")
-        append("normalized:  ${read.normalized}")
+        appendLine("normalized:  ${read.normalized}")
+    // The parsed view hides an answer that came back shaped but empty, which
+    // is the failure this comparison keeps running into.
+    alt.raw?.let { append("\ncrudo: ${it.take(500)}") }
     }
 }
 
@@ -265,7 +268,10 @@ private fun altText(alt: AltReading, trace: SuggestTrace): String = buildString 
     line("amount:     ", "${read.amount} ${read.commodity}", mine?.let { "${it.amount} ${it.commodity}" })
     line("payee:      ", read.payee, mine?.payee)
     line("account:    ", read.account, mine?.account)
-    append("normalized:  ${read.normalized}")
+    appendLine("normalized:  ${read.normalized}")
+    // The parsed view hides an answer that came back shaped but empty, which
+    // is the failure this comparison keeps running into.
+    alt.raw?.let { append("\ncrudo: ${it.take(500)}") }
 }
 
 private fun retrievalText(trace: SuggestTrace): String = buildString {
