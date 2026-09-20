@@ -297,11 +297,6 @@ fun JournalScreen(
                             colors = state.colors,
                             hidden = false,
                             onOpen = { onOpenTransaction(tx.id) },
-                            // The full journal is every category at once, so
-                            // the glyph/color here would be N different
-                            // things wearing N different marks — useful on
-                            // Home's short preview, noisy at this length.
-                            plain = true,
                         )
                     }
                 }
