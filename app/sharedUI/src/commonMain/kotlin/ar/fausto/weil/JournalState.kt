@@ -136,9 +136,16 @@ class JournalState(
         }
     }
 
-    fun refresh() {
+    /**
+     * [userInitiated] drives the pull-to-refresh spinner, same rule as
+     * [LedgerState.refresh]: the indicator answers a gesture. Recording a
+     * transaction also reconciles with the server, but the row is already on
+     * screen by then, so a spinner would only say "something is happening"
+     * about work nobody asked for.
+     */
+    fun refresh(userInitiated: Boolean = false) {
         scope.launch {
-            pullRefreshing = true
+            if (userInitiated) pullRefreshing = true
             error = null
             try {
                 ledger.syncNow()

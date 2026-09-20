@@ -228,7 +228,7 @@ fun JournalScreen(
             )
             PullToRefreshBox(
                 isRefreshing = state.pullRefreshing,
-                onRefresh = { state.refresh() },
+                onRefresh = { state.refresh(userInitiated = true) },
                 modifier = Modifier.fillMaxSize().weight(1f),
             ) {
             LazyColumn(
