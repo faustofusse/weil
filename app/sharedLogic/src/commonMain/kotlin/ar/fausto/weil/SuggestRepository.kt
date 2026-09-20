@@ -51,6 +51,9 @@ class SuggestRepository(
     private val baseUrl: String = AuthConfig.API_BASE_URL,
 ) : SuggestTracer {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+
+    /** For the other model's answer, which follows no contract of ours. */
+    private val lenient = Json { ignoreUnknownKeys = true; isLenient = true }
     private val client = platformHttpClient {
         install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         install(HttpTimeout) {
@@ -95,7 +98,16 @@ class SuggestRepository(
             return SuggestTrace(notification = item, error = "lectura: ${e.message ?: e.toString()}")
         }
         val read = decodeBody<ReadResponse>(json, readWire)
-        val alt = readWire["alt"]?.let { decodeBody<AltReading>(json, it.jsonObject) }
+        // The comparison is an observation and must never take the run with
+        // it: a second model answers in whatever shape it feels like (this one
+        // sent `amount` as a number and the strict decoder threw), and the
+        // suggestion does not depend on a single field of it.
+        val alt = readWire["alt"]?.let {
+            runCatching { decodeBody<AltReading>(lenient, it.jsonObject) }
+                .getOrElse { failure ->
+                    AltReading(error = "no se pudo leer la respuesta: ${failure.message}")
+                }
+        }
         val readMs = epochMillis() - readStarted
 
         // ---- 2. what the device knows ------------------------------------
