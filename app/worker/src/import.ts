@@ -556,6 +556,13 @@ export interface GeminiCandidateTx {
  * generateContent through the account's AI Gateway when it exists, falling
  * back to the Google API directly (same request shape, same key header).
  */
+/**
+ * Whether the account's AI Gateway is answering at all, remembered for the
+ * life of the isolate. It fails as a unit: wrong id, no provider enabled, or
+ * authentication on without `cf-aig-authorization`.
+ */
+let gatewayWorks = true;
+
 export async function geminiJson<T>(
   env: ImportEnv,
   parts: Array<Record<string, unknown>>,
@@ -578,8 +585,8 @@ export async function geminiJson<T>(
   // Through the account's AI Gateway when one exists (logs, caching, limits);
   // its own errors (missing/unauthorized gateway) fall back to Google directly
   // instead of failing an import the user already paid an upload for.
-  let viaGateway = true;
-  if (debug) debug.viaGateway = true;
+  let viaGateway = gatewayWorks;
+  if (debug) debug.viaGateway = viaGateway;
   const send = async (model: string): Promise<Response> => {
     const path = `v1beta/models/${model}:generateContent`;
     const direct = () =>
@@ -600,6 +607,11 @@ export async function geminiJson<T>(
       return direct();
     }
     if (res.ok || !(await res.clone().text()).includes('AiGatewayError')) return res;
+    // A gateway that refuses this account refuses it for every call, so stop
+    // asking: a misconfigured (or authenticated-without-a-token) gateway was
+    // charging every single request a wasted round trip before the real one.
+    // Sticky per isolate, not forever — a redeploy tries again.
+    gatewayWorks = false;
     viaGateway = false;
     if (debug) debug.viaGateway = false;
     return direct();

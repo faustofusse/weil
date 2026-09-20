@@ -12,6 +12,7 @@
  * replicating forever.
  */
 import { createClient, type Client } from '@libsql/client';
+import { platformToken } from '../../scripts/turso';
 import { canonicalText, decodeMimeHeader, emailPlainText, type Kind, type Message } from './text';
 
 export const DEFAULT_DB = 'finance-00mtqgh7qtjguu7n6902';
@@ -27,27 +28,19 @@ export function labClient(): Client {
   return createClient({ url: `file:${LAB_PATH}` });
 }
 
-/** Platform token for the user's DB, minted the same way `turso db tokens
- * create` does. `TURSO_TOKEN` short-circuits it when one is already at hand. */
+/** Platform token for the user's DB (minting lives in `scripts/turso.ts`,
+ * shared with the import scripts and the `db.ts` CLI). `TURSO_TOKEN`
+ * short-circuits it when one is already at hand. */
 export async function remoteClient(dbName = process.env.TURSO_DB || DEFAULT_DB): Promise<Client> {
   const url = `libsql://${dbName}-faustofusse.aws-us-east-1.turso.io`;
   const direct = process.env.TURSO_TOKEN;
   if (direct) return createClient({ url, authToken: direct });
-
-  const org = process.env.TURSO_ORG || 'faustofusse';
-  const api = process.env.TURSO_API_TOKEN;
-  if (!api) {
+  if (!process.env.TURSO_API_TOKEN) {
     throw new Error(
       'set TURSO_TOKEN (turso db tokens create ' + dbName + ') or TURSO_API_TOKEN in prueba-jev/.env',
     );
   }
-  const res = await fetch(
-    `https://api.turso.tech/v1/organizations/${org}/databases/${dbName}/auth/tokens`,
-    { method: 'POST', headers: { authorization: `Bearer ${api}` } },
-  );
-  if (!res.ok) throw new Error(`turso token: ${res.status} ${await res.text()}`);
-  const { jwt } = (await res.json()) as { jwt: string };
-  return createClient({ url, authToken: jwt });
+  return createClient({ url, authToken: await platformToken({ dbName }) });
 }
 
 /**
