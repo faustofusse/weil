@@ -189,14 +189,22 @@ function extractJson(text: string): ReadMessage | null {
   }
 }
 
-export async function readMessageWithGlm(ai: Ai, body: MessageBody): Promise<AltReading> {
+export async function readMessageWithGlm(
+  ai: Ai,
+  body: MessageBody,
+  model: string = GLM_MODEL,
+  schema = true
+): Promise<AltReading> {
   const started = Date.now();
   const prompt = `${messagePrompt(body)}\n\nAnswer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount, commodity, account, note, normalized.`;
   try {
-    const result = (await ai.run(GLM_MODEL as never, {
+    const result = (await ai.run(model as never, {
       messages: [{ role: 'user', content: prompt }],
-      response_format: { type: 'json_schema', json_schema: JSON_SCHEMA },
-      max_tokens: 400,
+      ...(schema ? { response_format: { type: 'json_schema', json_schema: JSON_SCHEMA } } : {}),
+      // A reasoning model spends tokens thinking before it writes anything,
+      // and a budget sized for the answer alone buys a well-formed object
+      // with every field empty: it ran out before the content arrived.
+      max_tokens: 1200,
     } as never)) as { response?: unknown };
     const raw =
       typeof result?.response === 'string' ? result.response : JSON.stringify(result?.response ?? result);
@@ -236,7 +244,12 @@ export async function handleReadMessage(
 ): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const wantsDebug = params.get('debug') === '1';
-  const wantsAlt = params.get('compare') === '1' && ai != null;
+  const compare = params.get('compare');
+  const wantsAlt = compare != null && compare !== '0' && ai != null;
+  // `?compare=@cf/zai-org/glm-5.3-flash` tries another model without a
+  // deploy; `?compare=1` uses the default. `&schema=0` drops the structured
+  // output, which is worth trying on a model that reasons before answering.
+  const altModel = compare && compare !== '1' ? compare : GLM_MODEL;
   const body = (await request.json()) as MessageBody;
   if (!body?.title && !body?.text) return json({ error: 'empty message' }, 400);
 
@@ -246,10 +259,16 @@ export async function handleReadMessage(
   // both models see the exact same prompt.
   const [read, alt] = await Promise.all([
     readMessage(env, body, debug),
-    wantsAlt ? readMessageWithGlm(ai, body) : Promise.resolve(undefined),
+    wantsAlt
+      ? readMessageWithGlm(ai, body, altModel, params.get('schema') !== '0')
+      : Promise.resolve(undefined),
   ]);
   return json({
     ...read,
+    // The reader's own latency, separate from the request's: the two models
+    // run in parallel, so the wall clock the device sees is the slower one
+    // and says nothing about either.
+    readerMs: debug?.latencyMs ?? Date.now() - started,
     ...(alt ? { alt } : {}),
     ...(debug
       ? {

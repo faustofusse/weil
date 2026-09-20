@@ -277,6 +277,8 @@ data class ReadResponse(
     val account: String? = null,
     val note: String? = null,
     val normalized: String = "",
+    /** What the reader itself took, without the trip to the worker. */
+    val readerMs: Long = 0,
 )
 
 /** One Choice answer, flattened: null [path] means "none of these fits". */

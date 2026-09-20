@@ -240,7 +240,11 @@ private fun readText(read: ReadResponse?): String {
  * comparing their *disagreements*: the fields both get right say nothing.
  */
 private fun altText(alt: AltReading, trace: SuggestTrace): String = buildString {
-    appendLine("${alt.latencyMs} ms   (gemini: ${trace.readMs} ms, incluye la red al worker)")
+    appendLine(
+        "${alt.latencyMs} ms   contra ${trace.read?.readerMs ?: 0} ms de gemini " +
+            "(los dos medidos dentro del worker; ${trace.readMs} ms es la etapa entera, " +
+            "y con compare=1 es la del más lento de los dos)",
+    )
     alt.error?.let {
         append("error: $it")
         return@buildString
