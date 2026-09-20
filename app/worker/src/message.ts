@@ -190,6 +190,29 @@ function extractJson(text: string): ReadMessage | null {
 }
 
 /**
+ * The model's actual text, whatever envelope Workers AI wrapped it in.
+ *
+ * Some models answer `{ response }` and others an OpenAI chat completion
+ * (`choices[0].message.content`). Stringifying the envelope and fishing for
+ * braces finds the *envelope's* braces, which parses fine and yields an
+ * object with none of the asked-for keys — indistinguishable, downstream,
+ * from a model that answered nothing. That is what every empty comparison
+ * here has been.
+ */
+function contentOf(result: unknown): string {
+  if (typeof result === 'string') return result;
+  const envelope = result as {
+    response?: unknown;
+    choices?: Array<{ message?: { content?: unknown }; text?: unknown }>;
+  };
+  if (typeof envelope?.response === 'string') return envelope.response;
+  const choice = envelope?.choices?.[0];
+  if (typeof choice?.message?.content === 'string') return choice.message.content;
+  if (typeof choice?.text === 'string') return choice.text;
+  return JSON.stringify(result ?? null);
+}
+
+/**
  * Routed **through the AI Gateway**, not straight at the binding.
  *
  * On the free Workers plan the frontier models answer "upgrade to Workers
@@ -240,19 +263,19 @@ export async function readMessageWithGlm(
       console.log(`workers ai: gateway '${gateway}' unusable (${message}), trying direct`);
       result = await attempt(false);
     }
-    const raw =
-      typeof result?.response === 'string'
-        ? result.response
-        : JSON.stringify(result?.response ?? result);
+    const raw = contentOf(result);
     return {
-      model: GLM_MODEL,
+      // The model that actually answered, not the default: ?compare=<model>
+      // picks it, and a trace labelled with the wrong one is worse than an
+      // unlabelled one.
+      model,
       latencyMs: Date.now() - started,
       reading: extractJson(raw) ?? undefined,
       raw,
     };
   } catch (e) {
     return {
-      model: GLM_MODEL,
+      model,
       latencyMs: Date.now() - started,
       error: e instanceof Error ? e.message : String(e),
     };
