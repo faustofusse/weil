@@ -322,6 +322,27 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     }
 
     /**
+     * Drops one origin row ([source], as returned by [sources]) from a
+     * transaction — the undo side of an accidental "Vincular" tap.
+     * [source]'s `eventKey` is carried along so the caller can re-attach it
+     * exactly (via [associate]) if the user hits undo.
+     */
+    suspend fun unlink(transactionId: String, source: StoredSource) {
+        writeAtomically {
+            execute(
+                "delete from transaction_sources where transaction_id = :tx" +
+                    " and kind = :kind and ref = :ref",
+                mapOf(
+                    ":tx" to transactionId,
+                    ":kind" to source.kind.db,
+                    ":ref" to source.ref,
+                ),
+            )
+        }
+        emitChange()
+    }
+
+    /**
      * Dev utility: hard-deletes every transaction (and its postings) whose
      * date falls within [from, to] (both inclusive, epoch ms). Returns the
      * number of transactions removed. Irreversible — no undo, unlike

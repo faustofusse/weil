@@ -425,6 +425,8 @@
     <string name="similar_link">Vincular</string>
     <string name="similar_linked">Vinculada</string>
     <string name="similar_link_done">Origen vinculado</string>
+    <string name="txn_source_unlink">Desvincular</string>
+    <string name="txn_source_unlinked">Origen desvinculado</string>
     <string name="similar_distance">d %1$s</string>
 
     <!-- Detalle de notificación -->

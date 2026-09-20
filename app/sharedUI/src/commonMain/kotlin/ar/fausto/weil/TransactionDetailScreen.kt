@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -58,6 +59,8 @@ import weil.app.sharedui.generated.resources.txn_source_email
 import weil.app.sharedui.generated.resources.txn_source_manual
 import weil.app.sharedui.generated.resources.txn_source_notification
 import weil.app.sharedui.generated.resources.txn_source_qr
+import weil.app.sharedui.generated.resources.txn_source_unlink
+import weil.app.sharedui.generated.resources.txn_source_unlinked
 import weil.app.sharedui.generated.resources.txn_source_whatsapp
 import weil.app.sharedui.generated.resources.txn_sources_title
 
@@ -126,6 +129,8 @@ fun TransactionDetailScreen(
     val deletedMessage = stringResource(Res.string.editor_transaction_deleted)
     val deletedPayee = stringResource(Res.string.editor_deleted_payee_fallback)
     val linkedMessage = stringResource(Res.string.similar_link_done)
+    val unlinkLabel = stringResource(Res.string.txn_source_unlink)
+    val unlinkedMessage = stringResource(Res.string.txn_source_unlinked)
     // Refs already attached to this transaction, so the neighbour lists show
     // "vinculada" instead of offering the same link twice.
     val linkedRefs = sources.map { it.ref }.toSet()
@@ -416,6 +421,39 @@ fun TransactionDetailScreen(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
+                                        IconButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    ledger.unlink(id, origin)
+                                                    sources = ledger.sources(id)
+                                                    Feedback.undoable(unlinkedMessage, undoLabel) {
+                                                        ledger.associate(
+                                                            listOf(
+                                                                AssociateOp(
+                                                                    id,
+                                                                    listOf(
+                                                                        TransactionSource(
+                                                                            origin.kind,
+                                                                            origin.ref,
+                                                                            origin.eventKey,
+                                                                        ),
+                                                                    ),
+                                                                ),
+                                                            ),
+                                                        )
+                                                        sources = ledger.sources(id)
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.size(36.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Close,
+                                                contentDescription = unlinkLabel,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
                                     }
                                 }
                             }
