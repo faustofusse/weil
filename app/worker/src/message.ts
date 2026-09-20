@@ -207,8 +207,12 @@ export async function readMessageWithGlm(
 ): Promise<AltReading> {
   const started = Date.now();
   const prompt = `${messagePrompt(body)}\n\nAnswer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount, commodity, account, note, normalized.`;
-  try {
-    const result = (await ai.run(model as never, {
+  // Through the gateway when there is one, straight at the binding when the
+  // gateway answers that there is not. The id is a var, and a var can name
+  // something that was never created — which is exactly what it did here, and
+  // what a 401 from the gateway had been hiding.
+  const attempt = async (viaGateway: boolean) =>
+    (await ai.run(model as never, {
       messages: [{ role: 'user', content: prompt }],
       ...(schema ? { response_format: { type: 'json_schema', json_schema: JSON_SCHEMA } } : {}),
       // A reasoning model spends tokens thinking before it writes anything,
@@ -219,9 +223,27 @@ export async function readMessageWithGlm(
     // skipCache off: two runs of the same notification *should* hit the
     // cache, and on a bench that is a feature, not a distortion — the
     // latency to compare is the one in the trace's first run.
-    gateway ? ({ gateway: { id: gateway } } as never) : undefined)) as { response?: unknown };
+    viaGateway && gateway ? ({ gateway: { id: gateway } } as never) : undefined)) as {
+      response?: unknown;
+    };
+
+  try {
+    let result: { response?: unknown };
+    try {
+      result = await attempt(true);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      // Without the gateway the frontier models are Workers Paid only, so
+      // this second try usually fails too — on purpose: its error names the
+      // real problem instead of the gateway's 401.
+      if (!gateway) throw e;
+      console.log(`workers ai: gateway '${gateway}' unusable (${message}), trying direct`);
+      result = await attempt(false);
+    }
     const raw =
-      typeof result?.response === 'string' ? result.response : JSON.stringify(result?.response ?? result);
+      typeof result?.response === 'string'
+        ? result.response
+        : JSON.stringify(result?.response ?? result);
     return {
       model: GLM_MODEL,
       latencyMs: Date.now() - started,
