@@ -132,6 +132,7 @@
     <string name="editor_off_by">%1$s difiere por %2$s</string>
 
     <!-- Quick transaction -->
+    <string name="journal_filter_all">Todos</string>
     <string name="quick_expense_title">Gasto</string>
     <string name="quick_income_title">Ingreso</string>
     <string name="quick_transfer_title">Traspaso</string>

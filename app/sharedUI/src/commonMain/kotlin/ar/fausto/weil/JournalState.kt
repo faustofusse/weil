@@ -20,6 +20,9 @@ import kotlinx.coroutines.launch
  * the app already painted a second ago — it only has to fetch what Home
  * didn't: the rest of the first page, then further ones.
  */
+/** Gasto / Ingreso / Traspaso, or no filter at all. */
+enum class JournalFilter { All, Expense, Income, Transfer }
+
 @Stable
 class JournalState(
     private val ledger: TransactionsRepository,
@@ -27,6 +30,19 @@ class JournalState(
 ) {
     var items by mutableStateOf<List<Transaction>>(emptyList())
         private set
+
+    /**
+     * Hoisted with everything else here, not `remember`ed inside the screen:
+     * a plain `remember` lives only as long as the composable stays on the
+     * back stack, so leaving Movimientos for a transaction and coming back
+     * would silently reset the pick.
+     */
+    var filter by mutableStateOf(JournalFilter.All)
+        private set
+
+    fun pickFilter(next: JournalFilter) {
+        filter = next
+    }
     var cursor by mutableStateOf<LedgerCursor?>(null)
         private set
     var hasMore by mutableStateOf(true)

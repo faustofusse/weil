@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -80,8 +82,12 @@ import weil.app.sharedui.generated.resources.journal_dev_delete_range_invalid
 import weil.app.sharedui.generated.resources.journal_dev_delete_range_title
 import weil.app.sharedui.generated.resources.journal_dev_delete_range_to
 import weil.app.sharedui.generated.resources.journal_empty
+import weil.app.sharedui.generated.resources.journal_filter_all
 import weil.app.sharedui.generated.resources.journal_more_postings
 import weil.app.sharedui.generated.resources.journal_title
+import weil.app.sharedui.generated.resources.quick_expense_title
+import weil.app.sharedui.generated.resources.quick_income_title
+import weil.app.sharedui.generated.resources.quick_transfer_title
 import weil.app.sharedui.generated.resources.months_full
 import weil.app.sharedui.generated.resources.nav_movements
 import weil.app.sharedui.generated.resources.more_options
@@ -117,11 +123,21 @@ fun JournalScreen(
     // grouping there would redo the work — and worse, lose its identity —
     // on every recomposition). Items arrive newest-first from the server, so
     // a day only ever starts one run: no need to merge non-adjacent slices.
-    val dayRuns = remember(state.items) {
+    // The filter narrows what's grouped, not what's fetched: paging still
+    // walks the whole journal, and "Gasto" is a lens over pages already on
+    // screen rather than a different query.
+    val filteredItems = remember(state.items, state.filter, state.types) {
+        if (state.filter == JournalFilter.All) {
+            state.items
+        } else {
+            state.items.filter { matchesFilter(it, state.filter, state.types) }
+        }
+    }
+    val dayRuns = remember(filteredItems) {
         buildList {
             var current: DayGroup? = null
             var bucket = mutableListOf<Transaction>()
-            for (tx in state.items) {
+            for (tx in filteredItems) {
                 val group = dayGroup(tx.date)
                 if (group != current) {
                     current?.let { add(it to bucket) }
@@ -139,12 +155,14 @@ fun JournalScreen(
     // — the state survives navigation because it's hoisted above the nav host.
     LaunchedEffect(Unit) { state.ensureLoaded() }
 
-    // Infinite scroll.
-    LaunchedEffect(listState, state.hasMore, state.items.size) {
+    // Infinite scroll, against the *filtered* count: the list on screen is
+    // shorter than the fetched one, so scrolling to its end has to be what
+    // triggers the next page, not the size of data the filter is hiding.
+    LaunchedEffect(listState, state.hasMore, filteredItems.size) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .distinctUntilChanged()
             .collect { last ->
-                if (last != null && last >= state.items.size - 5) state.loadMore()
+                if (last != null && last >= filteredItems.size - 5) state.loadMore()
             }
     }
 
@@ -203,13 +221,17 @@ fun JournalScreen(
             }
         },
     ) { innerPadding ->
-        PullToRefreshBox(
-            isRefreshing = state.pullRefreshing,
-            onRefresh = { state.refresh() },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            MovementFilterBar(
+                current = state.filter,
+                onSelect = { state.pickFilter(it) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            PullToRefreshBox(
+                isRefreshing = state.pullRefreshing,
+                onRefresh = { state.refresh() },
+                modifier = Modifier.fillMaxSize().weight(1f),
+            ) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -234,7 +256,7 @@ fun JournalScreen(
                         )
                     }
                 }
-                if (state.items.isEmpty() && !state.isInitialLoading && state.error == null) {
+                if (filteredItems.isEmpty() && !state.isInitialLoading && state.error == null) {
                     item(key = "empty") {
                         Column(
                             modifier = Modifier
@@ -287,12 +309,104 @@ fun JournalScreen(
                     }
                 }
             }
+            }
         }
     }
 
     if (showDeleteRangeDialog) {
         DeleteRangeDialog(state = state, onDismiss = { showDeleteRangeDialog = false })
     }
+}
+
+private fun matchesFilter(
+    tx: Transaction,
+    filter: JournalFilter,
+    types: Map<String, AccountType>,
+): Boolean {
+    if (filter == JournalFilter.All) return true
+    // The same signal the row's own color comes from: +1 money came in, -1
+    // went out, 0 an internal move. "Gasto"/"Ingreso"/"Traspaso" is that
+    // reading turned into a filter instead of a tint.
+    val direction = flowOf(tx, types)?.direction ?: return false
+    return when (filter) {
+        JournalFilter.Expense -> direction < 0
+        JournalFilter.Income -> direction > 0
+        JournalFilter.Transfer -> direction == 0
+        JournalFilter.All -> true
+    }
+}
+
+/**
+ * Todos / Gasto / Ingreso / Traspaso, the same segmented track the new-
+ * movement panel switches kind with (same track color, same lit-segment
+ * pill, same direction glyphs) — one control for choosing among states of a
+ * thing reads the same whether that thing is being entered or being found.
+ */
+@Composable
+private fun MovementFilterBar(
+    current: JournalFilter,
+    onSelect: (JournalFilter) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondary,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+        modifier = modifier,
+    ) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            JournalFilter.entries.forEach { option ->
+                val selected = option == current
+                Surface(
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.inverseSurface
+                    } else {
+                        Color.Transparent
+                    },
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fadeOnPress { onSelect(option) }
+                            .heightIn(min = 44.dp)
+                            .fillMaxWidth(),
+                    ) {
+                        filterIcon(option)?.let {
+                            Icon(it, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(
+                            filterTitle(option),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (selected) {
+                                androidx.compose.ui.text.font.FontWeight.SemiBold
+                            } else {
+                                androidx.compose.ui.text.font.FontWeight.Normal
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun filterTitle(filter: JournalFilter): String = when (filter) {
+    JournalFilter.All -> stringResource(Res.string.journal_filter_all)
+    JournalFilter.Expense -> stringResource(Res.string.quick_expense_title)
+    JournalFilter.Income -> stringResource(Res.string.quick_income_title)
+    JournalFilter.Transfer -> stringResource(Res.string.quick_transfer_title)
+}
+
+private fun filterIcon(filter: JournalFilter) = when (filter) {
+    JournalFilter.All -> null
+    JournalFilter.Expense -> Icons.Filled.ArrowDownLeft
+    JournalFilter.Income -> Icons.Filled.ArrowUpRight
+    JournalFilter.Transfer -> Icons.Filled.Remove
 }
 
 /**
