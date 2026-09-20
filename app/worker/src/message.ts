@@ -189,11 +189,21 @@ function extractJson(text: string): ReadMessage | null {
   }
 }
 
+/**
+ * Routed **through the AI Gateway**, not straight at the binding.
+ *
+ * On the free Workers plan the frontier models answer "upgrade to Workers
+ * Paid" — unless the request carries a gateway id, in which case it is billed
+ * against the account's prepaid AI Gateway credits (Unified Billing) and the
+ * same models are available. The gateway's "Workers AI Billing" setting has to
+ * be on **Unified billing** for this to take effect.
+ */
 export async function readMessageWithGlm(
   ai: Ai,
   body: MessageBody,
   model: string = GLM_MODEL,
-  schema = true
+  schema = true,
+  gateway?: string
 ): Promise<AltReading> {
   const started = Date.now();
   const prompt = `${messagePrompt(body)}\n\nAnswer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount, commodity, account, note, normalized.`;
@@ -205,7 +215,11 @@ export async function readMessageWithGlm(
       // and a budget sized for the answer alone buys a well-formed object
       // with every field empty: it ran out before the content arrived.
       max_tokens: 1200,
-    } as never)) as { response?: unknown };
+    } as never,
+    // skipCache off: two runs of the same notification *should* hit the
+    // cache, and on a bench that is a feature, not a distortion — the
+    // latency to compare is the one in the trace's first run.
+    gateway ? ({ gateway: { id: gateway } } as never) : undefined)) as { response?: unknown };
     const raw =
       typeof result?.response === 'string' ? result.response : JSON.stringify(result?.response ?? result);
     return {
@@ -260,7 +274,7 @@ export async function handleReadMessage(
   const [read, alt] = await Promise.all([
     readMessage(env, body, debug),
     wantsAlt
-      ? readMessageWithGlm(ai, body, altModel, params.get('schema') !== '0')
+      ? readMessageWithGlm(ai, body, altModel, params.get('schema') !== '0', env.AI_GATEWAY)
       : Promise.resolve(undefined),
   ]);
   return json({

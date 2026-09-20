@@ -25,6 +25,7 @@ interface Env {
   TYPESAFE_API_KEY: string;
   BRIDGE_SECRET: string;
   AI: Ai;
+  AI_GATEWAY_TOKEN?: string;
   BRIDGE_URL?: string;
   WHATSAPP_NUMBER?: string;
 }

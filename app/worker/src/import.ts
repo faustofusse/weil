@@ -6,6 +6,8 @@
  */
 
 export interface ImportEnv {
+  /** Gateway token; only needed when the gateway requires authentication. */
+  AI_GATEWAY_TOKEN?: string;
   AUTH_DB: D1Database;
   DOCS: R2Bucket;
   APP_SLUG: string;
@@ -580,7 +582,17 @@ export async function geminiJson<T>(
   };
   if (debug) debug.request = request;
   const body = JSON.stringify(request);
-  const headers = { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' };
+  const headers: Record<string, string> = {
+    'x-goog-api-key': env.GEMINI_API_KEY,
+    'content-type': 'application/json',
+  };
+  // An authenticated gateway rejects every request without this, which is
+  // what the account's gateway was doing: 401 AiGatewayError on each call,
+  // then a fall back to Google. Optional, so the worker runs the same without
+  // the secret set (the fallback still covers it).
+  const gatewayHeaders = env.AI_GATEWAY_TOKEN
+    ? { ...headers, 'cf-aig-authorization': `Bearer ${env.AI_GATEWAY_TOKEN}` }
+    : headers;
 
   // Through the account's AI Gateway when one exists (logs, caching, limits);
   // its own errors (missing/unauthorized gateway) fall back to Google directly
@@ -594,7 +606,7 @@ export async function geminiJson<T>(
     if (!viaGateway) return direct();
     const res = await fetch(
       `https://gateway.ai.cloudflare.com/v1/${env.ACCOUNT_ID}/${env.AI_GATEWAY}/google-ai-studio/${path}`,
-      { method: 'POST', headers, body }
+      { method: 'POST', headers: gatewayHeaders, body }
     );
     // 524 is Cloudflare's own timeout, not the model's: a long generation (a
     // 135-row CSV is minutes of output tokens) outlives the gateway's budget
