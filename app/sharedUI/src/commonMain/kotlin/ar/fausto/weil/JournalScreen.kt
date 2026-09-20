@@ -379,10 +379,6 @@ private fun MovementFilterBar(
                             .heightIn(min = 44.dp)
                             .fillMaxWidth(),
                     ) {
-                        filterIcon(option)?.let {
-                            Icon(it, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                        }
                         Text(
                             filterTitle(option),
                             style = MaterialTheme.typography.bodyMedium,
@@ -407,13 +403,6 @@ private fun filterTitle(filter: JournalFilter): String = when (filter) {
     JournalFilter.Expense -> stringResource(Res.string.journal_filter_expense)
     JournalFilter.Income -> stringResource(Res.string.journal_filter_income)
     JournalFilter.Transfer -> stringResource(Res.string.journal_filter_transfer)
-}
-
-private fun filterIcon(filter: JournalFilter) = when (filter) {
-    JournalFilter.All -> null
-    JournalFilter.Expense -> Icons.Filled.ArrowDownLeft
-    JournalFilter.Income -> Icons.Filled.ArrowUpRight
-    JournalFilter.Transfer -> Icons.Filled.Remove
 }
 
 /**
