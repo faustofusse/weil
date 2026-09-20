@@ -24,6 +24,7 @@ interface Env {
   GEMINI_API_KEY: string;
   TYPESAFE_API_KEY: string;
   BRIDGE_SECRET: string;
+  AI: Ai;
   BRIDGE_URL?: string;
   WHATSAPP_NUMBER?: string;
 }
@@ -134,7 +135,7 @@ export default {
       if (user instanceof Response) return user;
       try {
         return url.pathname === '/suggest/message'
-          ? await handleReadMessage(request, env)
+          ? await handleReadMessage(request, env, env.AI)
           : await handleSuggestAccounts(request, env);
       } catch (e) {
         console.error(`${url.pathname} failed:`, e);

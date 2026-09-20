@@ -137,6 +137,84 @@ function liteFirst(env: ImportEnv): ImportEnv {
   };
 }
 
+/**
+ * The same job on Workers AI, for comparison.
+ *
+ * Reading a two-line alert is the smallest language task in the app and it is
+ * the slowest step of the suggestion (~2-3 s), so it is worth knowing what a
+ * model one hop away — same datacenter as the Worker, no public-internet
+ * round trip — does with it. Run from the bench beside Gemini, never instead
+ * of it: the candidate is still built from the Gemini reading until the
+ * numbers say otherwise.
+ */
+export const GLM_MODEL = '@cf/zai-org/glm-4.7-flash';
+
+/** JSON Schema (not Gemini's OpenAPI dialect) for the Workers AI reader. */
+const JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    isMovement: { type: 'boolean' },
+    direction: { type: 'string', enum: ['expense', 'income', 'transfer'] },
+    payee: { type: 'string' },
+    amount: { type: 'string' },
+    commodity: { type: 'string' },
+    account: { type: ['string', 'null'] },
+    note: { type: ['string', 'null'] },
+    normalized: { type: 'string' },
+  },
+  required: ['isMovement', 'direction', 'payee', 'amount', 'commodity', 'normalized'],
+} as const;
+
+export interface AltReading {
+  model: string;
+  latencyMs: number;
+  reading?: ReadMessage;
+  raw?: string;
+  error?: string;
+}
+
+/**
+ * A reasoning model answers with prose around the JSON often enough that
+ * fishing the object out is cheaper than fighting it: take the outermost
+ * braces. Returns null when there is nothing parseable.
+ */
+function extractJson(text: string): ReadMessage | null {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1)) as ReadMessage;
+  } catch {
+    return null;
+  }
+}
+
+export async function readMessageWithGlm(ai: Ai, body: MessageBody): Promise<AltReading> {
+  const started = Date.now();
+  const prompt = `${messagePrompt(body)}\n\nAnswer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount, commodity, account, note, normalized.`;
+  try {
+    const result = (await ai.run(GLM_MODEL as never, {
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_schema', json_schema: JSON_SCHEMA },
+      max_tokens: 400,
+    } as never)) as { response?: unknown };
+    const raw =
+      typeof result?.response === 'string' ? result.response : JSON.stringify(result?.response ?? result);
+    return {
+      model: GLM_MODEL,
+      latencyMs: Date.now() - started,
+      reading: extractJson(raw) ?? undefined,
+      raw,
+    };
+  } catch (e) {
+    return {
+      model: GLM_MODEL,
+      latencyMs: Date.now() - started,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
 export async function readMessage(
   env: ImportEnv,
   body: MessageBody,
@@ -151,16 +229,28 @@ export async function readMessage(
  * answered and the raw JSON come back too — that is what the app's test
  * screen shows, and it is the production call, not a copy of it.
  */
-export async function handleReadMessage(request: Request, env: ImportEnv): Promise<Response> {
-  const wantsDebug = new URL(request.url).searchParams.get('debug') === '1';
+export async function handleReadMessage(
+  request: Request,
+  env: ImportEnv,
+  ai?: Ai
+): Promise<Response> {
+  const params = new URL(request.url).searchParams;
+  const wantsDebug = params.get('debug') === '1';
+  const wantsAlt = params.get('compare') === '1' && ai != null;
   const body = (await request.json()) as MessageBody;
   if (!body?.title && !body?.text) return json({ error: 'empty message' }, 400);
 
   const debug: GeminiDebug | undefined = wantsDebug ? {} : undefined;
   const started = Date.now();
-  const read = await readMessage(env, body, debug);
+  // Side by side, so the comparison costs one wall clock instead of two and
+  // both models see the exact same prompt.
+  const [read, alt] = await Promise.all([
+    readMessage(env, body, debug),
+    wantsAlt ? readMessageWithGlm(ai, body) : Promise.resolve(undefined),
+  ]);
   return json({
     ...read,
+    ...(alt ? { alt } : {}),
     ...(debug
       ? {
           debug: {

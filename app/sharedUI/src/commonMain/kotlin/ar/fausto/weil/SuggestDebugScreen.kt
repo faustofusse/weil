@@ -132,6 +132,15 @@ fun SuggestDebugScreen(
             item { Block("1 · aviso", notificationText(current), open = true) }
             item { Block("2 · gemini: pedido y respuesta", current.readDebug ?: "—") }
             item { Block("3 · gemini: lectura", readText(current.read), open = true) }
+            current.alt?.let { alt ->
+                item {
+                    Block(
+                        "3b · ${alt.model.substringAfterLast('/')}: la misma lectura",
+                        altText(alt, current),
+                        open = true,
+                    )
+                }
+            }
             item { Block("4 · recuperación (device)", retrievalText(current), open = true) }
             item { Block("5 · jev: state y questions", current.decisionDebug ?: "—") }
             item { Block("6 · jev: decisión", decisionText(current.decision), open = true) }
@@ -225,6 +234,36 @@ private fun readText(read: ReadResponse?): String {
     }
 }
 
+/**
+ * The second reader's answer next to the first one's, field by field, with a
+ * mark on every field where they differ. Comparing two models on a task is
+ * comparing their *disagreements*: the fields both get right say nothing.
+ */
+private fun altText(alt: AltReading, trace: SuggestTrace): String = buildString {
+    appendLine("${alt.latencyMs} ms   (gemini: ${trace.readMs} ms, incluye la red al worker)")
+    alt.error?.let {
+        append("error: $it")
+        return@buildString
+    }
+    val read = alt.reading
+    if (read == null) {
+        append("sin JSON parseable:\n${alt.raw?.take(600) ?: "—"}")
+        return@buildString
+    }
+    val mine = trace.read
+    fun line(label: String, a: String?, b: String?) {
+        val differs = (a ?: "") != (b ?: "")
+        appendLine("$label ${a ?: "—"}${if (differs) "   ≠ ${b ?: "—"}" else ""}")
+    }
+    appendLine("campo        este modelo   ≠ gemini")
+    line("isMovement: ", read.isMovement.toString(), mine?.isMovement?.toString())
+    line("direction:  ", read.direction, mine?.direction)
+    line("amount:     ", "${read.amount} ${read.commodity}", mine?.let { "${it.amount} ${it.commodity}" })
+    line("payee:      ", read.payee, mine?.payee)
+    line("account:    ", read.account, mine?.account)
+    append("normalized:  ${read.normalized}")
+}
+
 private fun retrievalText(trace: SuggestTrace): String = buildString {
     appendLine("evento para el matcher:")
     trace.event?.let {
@@ -315,6 +354,7 @@ private fun plainText(trace: SuggestTrace): String = buildString {
     appendLine("== aviso =="); appendLine(notificationText(trace)); appendLine()
     appendLine("== gemini (debug) =="); appendLine(trace.readDebug ?: "—"); appendLine()
     appendLine("== lectura =="); appendLine(readText(trace.read)); appendLine()
+    trace.alt?.let { appendLine("== lectura (${it.model}) =="); appendLine(altText(it, trace)); appendLine() }
     appendLine("== recuperación =="); appendLine(retrievalText(trace)); appendLine()
     appendLine("== jev (debug) =="); appendLine(trace.decisionDebug ?: "—"); appendLine()
     appendLine("== decisión =="); appendLine(decisionText(trace.decision)); appendLine()

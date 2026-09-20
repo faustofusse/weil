@@ -14,6 +14,11 @@
       "bucket_name": "finance-docs"
     }
   ],
+  // Workers AI: the second reader for a captured message (GLM), run beside
+  // Gemini from the test bench so the two can be compared on real alerts.
+  "ai": {
+    "binding": "AI"
+  },
   "d1_databases": [
     {
       "binding": "AUTH_DB",

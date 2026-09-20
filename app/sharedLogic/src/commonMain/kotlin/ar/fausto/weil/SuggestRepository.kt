@@ -73,7 +73,10 @@ class SuggestRepository(
         val readStarted = epochMillis()
         val readWire = try {
             postJson(
-                "$baseUrl/suggest/message?debug=1",
+                // compare=1 asks the worker to read the same message with
+                // Workers AI beside Gemini. Only the bench does this; the
+                // candidate is still built from the Gemini reading.
+                "$baseUrl/suggest/message?debug=1&compare=1",
                 ReadRequest(
                     origin = item.appName,
                     title = item.title,
@@ -87,6 +90,7 @@ class SuggestRepository(
             return SuggestTrace(notification = item, error = "lectura: ${e.message ?: e.toString()}")
         }
         val read = decodeBody<ReadResponse>(json, readWire)
+        val alt = readWire["alt"]?.let { decodeBody<AltReading>(json, it.jsonObject) }
         val readMs = epochMillis() - readStarted
 
         // ---- 2. what the device knows ------------------------------------
@@ -227,6 +231,7 @@ class SuggestRepository(
             notification = item,
             read = read,
             readDebug = readWire.debugBlock(json),
+            alt = alt,
             readMs = readMs,
             retrievalMs = retrievalMs,
             precedents = precedents,
@@ -299,6 +304,16 @@ data class AccountsResponse(
     val latencyMs: Long = 0,
 )
 
+/** The same message read by a second model, for comparison only. */
+@Serializable
+data class AltReading(
+    val model: String = "",
+    val latencyMs: Long = 0,
+    val reading: ReadResponse? = null,
+    val raw: String? = null,
+    val error: String? = null,
+)
+
 /** A similar message, and the transactions it ended up attached to. */
 data class Precedent(val item: SimilarItem, val recordedIn: List<String>)
 
@@ -312,6 +327,8 @@ data class SuggestTrace(
     val read: ReadResponse? = null,
     /** Prompt, model, raw JSON and token usage of the reader call. */
     val readDebug: String? = null,
+    /** The same message read by a second model, for comparison. */
+    val alt: AltReading? = null,
     val readMs: Long = 0,
     val retrievalMs: Long = 0,
     val precedents: List<Precedent> = emptyList(),
