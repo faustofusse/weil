@@ -85,9 +85,9 @@ import weil.app.sharedui.generated.resources.journal_empty
 import weil.app.sharedui.generated.resources.journal_filter_all
 import weil.app.sharedui.generated.resources.journal_more_postings
 import weil.app.sharedui.generated.resources.journal_title
-import weil.app.sharedui.generated.resources.quick_expense_title
-import weil.app.sharedui.generated.resources.quick_income_title
-import weil.app.sharedui.generated.resources.quick_transfer_title
+import weil.app.sharedui.generated.resources.journal_filter_expense
+import weil.app.sharedui.generated.resources.journal_filter_income
+import weil.app.sharedui.generated.resources.journal_filter_transfer
 import weil.app.sharedui.generated.resources.months_full
 import weil.app.sharedui.generated.resources.nav_movements
 import weil.app.sharedui.generated.resources.more_options
@@ -297,6 +297,11 @@ fun JournalScreen(
                             colors = state.colors,
                             hidden = false,
                             onOpen = { onOpenTransaction(tx.id) },
+                            // The full journal is every category at once, so
+                            // the glyph/color here would be N different
+                            // things wearing N different marks — useful on
+                            // Home's short preview, noisy at this length.
+                            plain = true,
                         )
                     }
                 }
@@ -394,12 +399,14 @@ private fun MovementFilterBar(
     }
 }
 
+// Plural, unlike the create panel's "Gasto": there this names the one
+// movement being entered, here it names the set of rows on screen.
 @Composable
 private fun filterTitle(filter: JournalFilter): String = when (filter) {
     JournalFilter.All -> stringResource(Res.string.journal_filter_all)
-    JournalFilter.Expense -> stringResource(Res.string.quick_expense_title)
-    JournalFilter.Income -> stringResource(Res.string.quick_income_title)
-    JournalFilter.Transfer -> stringResource(Res.string.quick_transfer_title)
+    JournalFilter.Expense -> stringResource(Res.string.journal_filter_expense)
+    JournalFilter.Income -> stringResource(Res.string.journal_filter_income)
+    JournalFilter.Transfer -> stringResource(Res.string.journal_filter_transfer)
 }
 
 private fun filterIcon(filter: JournalFilter) = when (filter) {

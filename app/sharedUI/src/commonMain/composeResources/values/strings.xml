@@ -133,6 +133,9 @@
 
     <!-- Quick transaction -->
     <string name="journal_filter_all">Todos</string>
+    <string name="journal_filter_expense">Gastos</string>
+    <string name="journal_filter_income">Ingresos</string>
+    <string name="journal_filter_transfer">Traspasos</string>
     <string name="quick_expense_title">Gasto</string>
     <string name="quick_income_title">Ingreso</string>
     <string name="quick_transfer_title">Traspaso</string>
