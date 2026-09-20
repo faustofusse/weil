@@ -170,9 +170,13 @@ class SuggestRepository(
                     ),
                     precedents = wirePrecedents,
                     nearby = nearby,
-                    own = options.filter { it.type == "asset" || it.type == "liability" }.map { it.asOption() },
-                    expense = options.filter { it.type == "expense" }.map { it.asOption() },
-                    income = options.filter { it.type == "income" }.map { it.asOption() },
+                    // Own accounts carry their currency: that is what tells
+                    // "Santander Dolares" from "Santander Pesos" when the
+                    // alert only says U$S.
+                    own = options.filter { it.type == "asset" || it.type == "liability" }
+                        .map { PathOption(it.id, it.path, it.commodity, it.type) },
+                    expense = options.filter { it.type == "expense" }.map { PathOption(it.id, it.path) },
+                    income = options.filter { it.type == "income" }.map { PathOption(it.id, it.path) },
                 ),
             )
         } catch (e: Throwable) {
@@ -305,12 +309,15 @@ private data class AccountOption(
     val path: String,
     val type: String,
     val commodity: String? = null,
-) {
-    fun asOption() = PathOption(id, path)
-}
+)
 
 @Serializable
-private data class PathOption(val id: String, val path: String)
+private data class PathOption(
+    val id: String,
+    val path: String,
+    val commodity: String? = null,
+    val type: String? = null,
+)
 
 @Serializable
 private data class ReadRequest(

@@ -78,7 +78,7 @@ const SCHEMA = {
       type: 'STRING',
       nullable: true,
       description:
-        "The user's own account or payment method the money moved through, verbatim from the list given, or null when the message names none that matches.",
+        "The user's own account or payment method the money moved through, verbatim from the list given. Infer it: the sender names the bank or wallet and the currency picks between that bank's accounts. Null only when even that leaves it open.",
     },
     note: { type: 'STRING', nullable: true, description: 'Extra detail worth keeping (instalments, card last digits), else null.' },
     normalized: {
@@ -109,7 +109,12 @@ export function messagePrompt(body: MessageBody): string {
     'Be strict with isMovement: most messages carrying a "$" are promotions ("¡15% OFF! Compra mínima: $15.000").',
     'A movement says money already left or entered an account: "Pagaste", "Se debitó", "Recibiste", "Compra aprobada".',
     own.length > 0
-      ? `The user's own accounts / payment methods (answer with one verbatim, or null): ${own.join(' | ')}`
+      ? [
+          `The user's own accounts / payment methods, verbatim: ${own.join(' | ')}`,
+          'These alerts almost never name the account, and they do not have to: the sender names the bank or wallet,',
+          "and the currency picks between that bank's accounts. 'Aviso Santander / Pagaste U$S5,00' is the Santander",
+          'account that holds dollars. Answer null only when even that leaves it open.',
+        ].join('\n')
       : '',
     '',
     `App / sender: ${body.origin ?? 'unknown'}`,

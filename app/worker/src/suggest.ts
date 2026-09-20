@@ -214,14 +214,33 @@ export interface NearbyTransaction {
 }
 
 export interface AccountsBody {
-  message: { origin?: string; title?: string; text?: string; when?: string };
+  message: { origin?: string; title?: string; text?: string; when?: number | string };
   /** What the reader (message.ts) got out of the text. */
   extracted?: Record<string, unknown>;
   precedents?: MessagePrecedent[];
   nearby?: NearbyTransaction[];
-  own?: SuggestOption[];
+  own?: OwnOption[];
   expense?: SuggestOption[];
   income?: SuggestOption[];
+}
+
+/** An own account, with what distinguishes two namesakes: the currency. */
+export interface OwnOption extends SuggestOption {
+  commodity?: string | null;
+  type?: 'asset' | 'liability';
+}
+
+/**
+ * What each own account is, in one line. The currency is the whole point: a
+ * Santander alert for "U$S5,00" is the Santander account that holds dollars,
+ * and without this the model is choosing between two strings that differ by a
+ * word it has no reason to weigh.
+ */
+function describeOwn(option: OwnOption): string | null {
+  const bits: string[] = [];
+  if (option.commodity) bits.push(`holds ${option.commodity}`);
+  if (option.type === 'liability') bits.push('a credit card or a debt, not a balance');
+  return bits.length > 0 ? bits.join('; ') : null;
 }
 
 const MESSAGE_CONTEXT =
@@ -229,11 +248,11 @@ const MESSAGE_CONTEXT =
 
 function accountChoice(
   instructions: unknown,
-  options: SuggestOption[],
+  options: OwnOption[],
   noneMeans: string
 ): Record<string, unknown> {
   const criteria: Record<string, string | null> = {};
-  for (const option of options) criteria[option.path] = null;
+  for (const option of options) criteria[option.path] = describeOwn(option);
   criteria[NO_ACCOUNT] = noneMeans;
   return { type: 'choice', instructions, criteria };
 }
@@ -279,11 +298,17 @@ export function messageQuestions(body: AccountsBody): Record<string, unknown> {
         question: "Which of the recipient's own accounts did the money leave from, or arrive in?",
         context: MESSAGE_CONTEXT,
         focus:
-          'the wallet, bank account or card the notification itself belongs to. The app that posted the notification is strong evidence: a Mercado Pago alert is about the Mercado Pago account unless it names a card.',
+          'who sent the alert and what currency it is in. These messages almost never spell the account out, and they do not need to: the sender names the bank or wallet, and the currency picks between that bank\'s accounts. A Santander alert about "U$S5,00" is the Santander account that holds dollars; a Mercado Pago alert is the Mercado Pago account unless it names a card.',
+        also: 'An alert that says "Pagaste" about a card charge belongs to that card, not to the bank balance behind it.',
       },
       own,
-      'The message names no account of theirs, and the precedents do not settle it'
+      // Spelled out at length because the obvious wording ("the message names
+      // no account of theirs") is *true* of almost every alert and was read as
+      // permission to decline: "Aviso Santander / Pagaste U$S5,00" scored 0.71
+      // here against 0.24 for the right account.
+      'There is still no way to tell, even after weighing who sent the alert, the currency and the precedents. Not the right answer merely because the message does not name the account: these alerts almost never do.'
     );
+
     // Asked as its own question rather than folded into my_account: "where it
     // left from" and "where it landed" are two plain questions, and one
     // question split by a sign is where the model starts hedging.
