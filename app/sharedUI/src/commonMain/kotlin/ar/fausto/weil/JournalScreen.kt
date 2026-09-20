@@ -68,7 +68,6 @@ import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.action_delete
 import weil.app.sharedui.generated.resources.action_ok
-import weil.app.sharedui.generated.resources.action_sync
 import weil.app.sharedui.generated.resources.day_date
 import weil.app.sharedui.generated.resources.day_date_year
 import weil.app.sharedui.generated.resources.day_today
@@ -171,10 +170,10 @@ fun JournalScreen(
             // As a tab root it wears the shared header (same height and title
             // style as Inicio/Categorías/Mi perfil); pushed from elsewhere it
             // keeps the stock bar with its back arrow.
+            // Refresh is pull-to-refresh now, same gesture as everywhere
+            // else in the app; a second button doing the same thing was a
+            // second control for one action.
             val actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
-                IconButton(onClick = { state.refresh() }, enabled = !state.pullRefreshing) {
-                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.action_sync))
-                }
                 Box {
                     var menuOpen by remember { mutableStateOf(false) }
                     IconButton(onClick = { menuOpen = true }) {

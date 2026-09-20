@@ -266,7 +266,13 @@ fun RootScreen(
                         onNewTransaction = { kind -> navigate(TransactionQuickRoute(kind)) },
                         onNavigateToNotifications = { navigate(NotificationsRoute) },
                         onNavigateToEmails = { navigate(EmailsRoute) },
-                        onNavigateToJournal = { navigate(JournalRoute) },
+                        // "Ver todo" switches to the Movimientos tab rather
+                        // than pushing Journal on top of Home: it's the same
+                        // screen the bar already opens, so landing there
+                        // should feel like the tab lighting up, not a page
+                        // you now have to back out of to reach the tab bar's
+                        // own Movimientos.
+                        onNavigateToJournal = { selectTab(AppTab.Movements) },
                         onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                         onNavigateToAddAccount = { navigate(AccountAddRoute(AccountType.Asset)) },
