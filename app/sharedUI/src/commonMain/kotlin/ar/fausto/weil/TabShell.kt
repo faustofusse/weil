@@ -6,8 +6,6 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -98,41 +96,38 @@ fun TabShell(
  * so the two never wash over each other at half opacity — a plain cross-fade
  * on two dense pages of rows reads as a smear.
  *
- * The two directions are not mirror images of each other, because they don't
- * mean the same thing. Rightwards along the bar **advances**: the new page
- * comes in small from the right and grows into place, the old one shrinks
- * away. Leftwards **returns**: the new page arrives slightly oversized from
- * the left and settles back down to rest, while the old one swells as it
- * leaves, the way something does when you step back from it. Mirroring a
- * single zoom-in would have made both directions say "forward", and then the
- * drift is the only thing distinguishing them — 16 px that you can miss.
+ * The move is horizontal only: the page slides in from the side the tab it
+ * belongs to sits on in the bar, and the one leaving goes the other way at
+ * half the distance, so the pair reads as one strip shifting rather than two
+ * cards swapping. No scale — a page that grows or shrinks is claiming depth,
+ * and the four tabs are all at the same depth.
  *
- * Going back is also quicker: you already know what's there.
+ * Going back is quicker than going forward: you already know what's there.
  */
 private fun tabTransform(forward: Boolean, drift: Int) = if (forward) {
     (
         fadeIn(tween(220, delayMillis = 60, easing = Decelerate)) +
-            scaleIn(tween(340, delayMillis = 60, easing = Decelerate), initialScale = 0.965f) +
             slideInHorizontally(tween(340, delayMillis = 60, easing = Decelerate)) { drift }
         ) togetherWith (
         fadeOut(tween(110, easing = Accelerate)) +
-            scaleOut(tween(220, easing = Accelerate), targetScale = 0.985f) +
             slideOutHorizontally(tween(220, easing = Accelerate)) { -drift / 2 }
         )
 } else {
     (
         fadeIn(tween(190, delayMillis = 45, easing = Decelerate)) +
-            scaleIn(tween(300, delayMillis = 45, easing = Decelerate), initialScale = 1.035f) +
             slideInHorizontally(tween(300, delayMillis = 45, easing = Decelerate)) { -drift }
         ) togetherWith (
         fadeOut(tween(100, easing = Accelerate)) +
-            scaleOut(tween(200, easing = Accelerate), targetScale = 1.02f) +
             slideOutHorizontally(tween(200, easing = Accelerate)) { drift / 2 }
         )
 }
 
-/** Small enough to be felt rather than watched. */
-private val TabDrift = 16.dp
+/**
+ * Larger now that it is the *only* signal of direction — with the scale gone
+ * 16 px was a twitch. Still far short of a full-width slide, which would put
+ * a whole screen's worth of travel between two siblings.
+ */
+private val TabDrift = 40.dp
 
 private val Decelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
 private val Accelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
