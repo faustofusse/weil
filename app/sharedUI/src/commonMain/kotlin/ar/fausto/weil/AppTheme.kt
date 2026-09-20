@@ -102,6 +102,128 @@ enum class AppTheme(
             scrim = Color(0xFF363636),
         ),
     ),
+
+    /**
+     * The pink sibling of [Menta], built the same way: one pale page, one
+     * pastel hero, one deep plum for the tiles, and the same green/red pair
+     * for money — which is the reason the pink stops at the hero and the
+     * chips. A saturated pink as `primary` would sit in the same family as
+     * the debit red, and "this is tappable" would start reading like "this
+     * went out"; the accent is therefore the plum ink, and the pink is a
+     * surface color.
+     */
+    Rosa(
+        displayName = "Rosa",
+        colorScheme = lightColorScheme(
+            // Plum ink: the FAB, links, the selected-tab mark.
+            primary = Color(0xFF4A2B33),
+            onPrimary = Color(0xFFFDF4F6),
+            // The balance hero: the pastel pink the palette is named after.
+            primaryContainer = Color(0xFFF2C6D2),
+            onPrimaryContainer = Color(0xFF4A2B33),
+            // Mid mauve, Menta's mid slate rotated onto this hue.
+            secondary = Color(0xFF8A6570),
+            onSecondary = Color(0xFFFDF4F6),
+            secondaryContainer = Color(0xFFF2C6D2),
+            onSecondaryContainer = Color(0xFF5B3A44),
+            // Identical to Menta's: direction of money must not change
+            // meaning when the page does.
+            tertiary = Color(0xFF2F6B4F),
+            onTertiary = Color(0xFFFDF4F6),
+            tertiaryContainer = Color(0xFFC6E2D2),
+            onTertiaryContainer = Color(0xFF14301F),
+            error = Color(0xFF9E3B32),
+            onError = Color(0xFFFDF4F6),
+            errorContainer = Color(0xFFF3DCD9),
+            onErrorContainer = Color(0xFF3B100C),
+            background = Color(0xFFFDF4F6),
+            onBackground = Color(0xFF4A2B33),
+            surface = Color(0xFFFDF4F6),
+            onSurface = Color(0xFF4A2B33),
+            surfaceVariant = Color(0xFFEFE2E6),
+            onSurfaceVariant = Color(0xFF8A6570),
+            surfaceContainerLowest = Color(0xFFFDF4F6),
+            surfaceContainerLow = Color(0xFFFFFAFB),
+            surfaceContainer = Color(0xFFF8EBEF),
+            surfaceContainerHigh = Color(0xFFF3E4E9),
+            surfaceContainerHighest = Color(0xFFEDDDE3),
+            outline = Color(0xFF8A6570),
+            outlineVariant = Color(0xFFE0CBD2),
+            // The account tiles: deep plum on the pale page.
+            inverseSurface = Color(0xFF5B3A44),
+            inverseOnSurface = Color(0xFFFDF4F6),
+            inversePrimary = Color(0xFFF2C6D2),
+            surfaceTint = Color(0xFF8A6570),
+            scrim = Color(0xFF4A2B33),
+        ),
+    ),
+
+    /**
+     * [Menta] after dark: the same five colors, re-assigned rather than
+     * re-picked. The page becomes the dark slate the account tiles used to
+     * be, the mint stops being a large filled hero (at that size on a dark
+     * page it glares) and becomes the accent that carries text and outlines,
+     * and the tiles flip to `inverseSurface` = mint with dark ink on it — so
+     * the pale/dark contrast of the light theme survives the inversion
+     * instead of every surface collapsing into one grey.
+     */
+    Noche(
+        displayName = "Noche",
+        colorScheme = darkColorScheme(
+            // Mint: on a dark page it is the legible accent, which is the
+            // role the near-black ink plays in Menta.
+            primary = Color(0xFFC0D9D7),
+            onPrimary = Color(0xFF1B2226),
+            // The balance hero: the mint taken down to where a display-size
+            // figure can sit on it without the card becoming the brightest
+            // thing on screen.
+            primaryContainer = Color(0xFF33504E),
+            onPrimaryContainer = Color(0xFFD9EDEB),
+            // Mid slate, lightened just enough to stay readable on the page.
+            secondary = Color(0xFF9FB3BF),
+            onSecondary = Color(0xFF1B2226),
+            secondaryContainer = Color(0xFF394751),
+            onSecondaryContainer = Color(0xFFD5E2E4),
+            // Same single deliberate green as Menta, one step lighter: the
+            // light theme's 2F6B4F is below the page here, not above it.
+            tertiary = Color(0xFF7FC79E),
+            onTertiary = Color(0xFF0C2C1A),
+            tertiaryContainer = Color(0xFF2F5C43),
+            onTertiaryContainer = Color(0xFFC6E2D2),
+            error = Color(0xFFE98C82),
+            onError = Color(0xFF3B100C),
+            errorContainer = Color(0xFF6B241D),
+            onErrorContainer = Color(0xFFF3DCD9),
+            background = Color(0xFF1B2226),
+            onBackground = Color(0xFFE6EBEC),
+            surface = Color(0xFF1B2226),
+            onSurface = Color(0xFFE6EBEC),
+            surfaceVariant = Color(0xFF2A3339),
+            // Secondary text (routes, captions): the mid slate again, the
+            // way Menta uses 5F6F7B.
+            onSurfaceVariant = Color(0xFFA9BBC4),
+            surfaceContainerLowest = Color(0xFF11171A),
+            surfaceContainerLow = Color(0xFF1F272B),
+            surfaceContainer = Color(0xFF232C31),
+            surfaceContainerHigh = Color(0xFF2A353B),
+            surfaceContainerHighest = Color(0xFF334046),
+            outline = Color(0xFF7D8F9A),
+            outlineVariant = Color(0xFF3A464D),
+            // The account tiles, inverted: mint plate, dark ink.
+            inverseSurface = Color(0xFFC0D9D7),
+            inverseOnSurface = Color(0xFF1B2226),
+            inversePrimary = Color(0xFF394751),
+            surfaceTint = Color(0xFFC0D9D7),
+            scrim = Color(0xFF000000),
+        ),
+        // The one place this theme does not keep Menta's values: the shared
+        // pair is tuned for a pale page and both are too dark to read on
+        // 1B2226. Same two hues, lifted — a debit must stay the debit red.
+        money = MoneyColors(
+            positive = Color(0xFF74C562),
+            negative = Color(0xFFFF6B5E),
+        ),
+    ),
     Weil(
         displayName = "Weil",
         // `error` was left to the darkColorScheme() default, which is
@@ -155,4 +277,86 @@ enum class AppTheme(
             scrim = Color(0xFF000000),
         ),
     ),
+    ;
+
+    companion object {
+        /**
+         * The stored form of a theme is its enum name, not its ordinal: the
+         * preference is synced to every paired device, and an ordinal would
+         * silently re-point at a different palette the moment an entry is
+         * inserted above it. An unknown name (a theme this build doesn't
+         * have yet) resolves to null and the caller keeps its default.
+         */
+        fun byId(id: String?): AppTheme? = entries.firstOrNull { it.name == id }
+    }
+}
+
+/** One Material role as it is inspected: its name and the color it holds. */
+data class ThemeRole(val name: String, val color: Color)
+
+/**
+ * Every role this app assigns, in the order a palette is authored rather
+ * than alphabetically: the page first, then what sits on it, then the
+ * containers, then the inverses. [ColorScheme] has no way to enumerate
+ * itself, so the list is written out — a role missing here is a role nobody
+ * can inspect, which is the failure mode to watch when a new one starts
+ * being used.
+ */
+fun ColorScheme.roles(): List<ThemeRole> = listOf(
+    ThemeRole("background", background),
+    ThemeRole("onBackground", onBackground),
+    ThemeRole("surface", surface),
+    ThemeRole("onSurface", onSurface),
+    ThemeRole("surfaceVariant", surfaceVariant),
+    ThemeRole("onSurfaceVariant", onSurfaceVariant),
+    ThemeRole("primary", primary),
+    ThemeRole("onPrimary", onPrimary),
+    ThemeRole("primaryContainer", primaryContainer),
+    ThemeRole("onPrimaryContainer", onPrimaryContainer),
+    ThemeRole("secondary", secondary),
+    ThemeRole("onSecondary", onSecondary),
+    ThemeRole("secondaryContainer", secondaryContainer),
+    ThemeRole("onSecondaryContainer", onSecondaryContainer),
+    ThemeRole("tertiary", tertiary),
+    ThemeRole("onTertiary", onTertiary),
+    ThemeRole("tertiaryContainer", tertiaryContainer),
+    ThemeRole("onTertiaryContainer", onTertiaryContainer),
+    ThemeRole("error", error),
+    ThemeRole("onError", onError),
+    ThemeRole("errorContainer", errorContainer),
+    ThemeRole("onErrorContainer", onErrorContainer),
+    ThemeRole("surfaceContainerLowest", surfaceContainerLowest),
+    ThemeRole("surfaceContainerLow", surfaceContainerLow),
+    ThemeRole("surfaceContainer", surfaceContainer),
+    ThemeRole("surfaceContainerHigh", surfaceContainerHigh),
+    ThemeRole("surfaceContainerHighest", surfaceContainerHighest),
+    ThemeRole("outline", outline),
+    ThemeRole("outlineVariant", outlineVariant),
+    ThemeRole("inverseSurface", inverseSurface),
+    ThemeRole("inverseOnSurface", inverseOnSurface),
+    ThemeRole("inversePrimary", inversePrimary),
+    ThemeRole("surfaceTint", surfaceTint),
+    ThemeRole("scrim", scrim),
+)
+
+/** The two money colors, listed beside the Material roles they sit outside of. */
+fun MoneyColors.roles(): List<ThemeRole> = listOf(
+    ThemeRole("money.positive", positive),
+    ThemeRole("money.negative", negative),
+)
+
+/**
+ * `#RRGGBB`, or `#AARRGGBB` when the color isn't opaque — the point of
+ * showing the code is that it can be copied back into a `Color(0x…)`
+ * literal, and an alpha dropped on the way would be a different color.
+ * Computed from the float channels rather than `toArgb()`, which keeps this
+ * usable from any target without a graphics-layer conversion.
+ */
+fun Color.hex(): String {
+    fun channel(v: Float): String {
+        val i = (v * 255f + 0.5f).toInt().coerceIn(0, 255)
+        return i.toString(16).padStart(2, '0').uppercase()
+    }
+    val rgb = "#${channel(red)}${channel(green)}${channel(blue)}"
+    return if (alpha >= 1f) rgb else "#${channel(alpha)}${rgb.drop(1)}"
 }

@@ -3,6 +3,7 @@ package ar.fausto.weil
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 
 /**
  * The palette a category can be painted with: eight pairs, sampled from the
@@ -79,7 +80,19 @@ data class AccountPaint(val tint: Color, val ink: Color)
 @Composable
 fun accountPaint(color: String?, seed: String? = null): AccountPaint {
     val entry = AccountColor.of(color) ?: seed?.let { AccountColor.derived(it) }
-    return entry?.let { AccountPaint(it.tint, it.ink) }
+    // Both halves of a pair are drawn for a pale page: [ink] is a dark color
+    // because it is read *on* one. On a dark theme it lands on near-black and
+    // the category's name goes nearly invisible (a category row rendered as
+    // 0xFF632A19 text on 0xFF1B2226), so the pair swaps roles instead of
+    // gaining eight more constants: the pastel becomes the text, and the disc
+    // becomes that same pastel held back far enough to stay a backing.
+    // Measured off the surface, not off a theme flag, so a future palette is
+    // classified by what it actually looks like.
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    return entry?.let {
+        if (dark) AccountPaint(tint = it.tint.copy(alpha = 0.22f), ink = it.tint)
+        else AccountPaint(it.tint, it.ink)
+    }
         ?: AccountPaint(
             tint = MaterialTheme.colorScheme.background,
             ink = MaterialTheme.colorScheme.inverseSurface,

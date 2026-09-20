@@ -41,6 +41,9 @@ tasks.register<JavaExec>("shot") {
             ?: layout.buildDirectory.file("shots/home.png").get().asFile.path,
         (project.findProperty("shot.seconds") as String?) ?: "5",
         (project.findProperty("shot.route") as String?) ?: "",
+        // -Pshot.theme=Noche renders any route in another palette; empty
+        // means the app's own default.
+        (project.findProperty("shot.theme") as String?) ?: "",
     )
 }
 

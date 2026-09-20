@@ -22,7 +22,15 @@ import weil.app.sharedui.generated.resources.host_grotesk_medium
 import weil.app.sharedui.generated.resources.host_grotesk_regular
 import weil.app.sharedui.generated.resources.host_grotesk_semibold
 
-/** Holds the active theme so a future settings screen can swap it at runtime. */
+/**
+ * The `settings` row holding the chosen palette. It lives in the user's own
+ * database rather than the device's secure store because a palette is a
+ * preference, not a credential: picked on the phone, it is the palette on the
+ * paired laptop too.
+ */
+const val THEME_KEY: String = "appearance.theme"
+
+/** Holds the active theme; the profile's palette picker swaps it at runtime. */
 class AppThemeState(initial: AppTheme = AppTheme.Menta) {
     var theme by mutableStateOf(initial)
 }

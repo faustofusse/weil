@@ -436,6 +436,14 @@
     <string name="suggest_debug_copy">Copiar el trazo</string>
     <string name="suggest_debug_create">Revisar y crear</string>
 
+    <!-- Perfil: apariencia -->
+    <string name="profile_theme_title">Apariencia</string>
+    <string name="profile_theme_subtitle">Elegí la paleta de la app. Se guarda en tu cuenta, así que vale para todos tus dispositivos.</string>
+    <string name="profile_theme_selected">Paleta elegida</string>
+    <string name="profile_theme_inspect_hint">Mantené apretada una paleta para ver todos sus colores.</string>
+    <string name="profile_theme_roles_title">Colores de %1$s</string>
+    <string name="profile_theme_roles_subtitle">Cada rol de Material con el código que tiene en esta paleta. Los nombres son los del código, no se traducen.</string>
+
     <!-- Perfil: vectorización -->
     <string name="profile_embeddings_title">Búsqueda por similitud</string>
     <string name="profile_embeddings_subtitle">Calcula un vector por transacción, notificación y correo con monto. Después la búsqueda de parecidos funciona sin conexión.</string>

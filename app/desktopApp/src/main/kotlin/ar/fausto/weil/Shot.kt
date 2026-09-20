@@ -39,6 +39,9 @@ import org.jetbrains.skia.Image
  *   ./gradlew :app:desktopApp:shot -Pshot.route=emails   (mail list)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=new      (the create panel,
  *     risen over Home)
+ *   ./gradlew :app:desktopApp:shot -Pshot.theme=Noche   (any route in another
+ *     palette: the real app reads it from synced settings, which the sandbox
+ *     never wrote)
  *
  * Session and database are sandboxed under the temp dir: the harness must
  * never touch `~/.weil` (a real desktop session lives there) and always starts
@@ -53,6 +56,10 @@ fun main(args: Array<String>) {
     val out = File(args.getOrNull(0) ?: "build/shots/home.png")
     val seconds = args.getOrNull(1)?.toDoubleOrNull() ?: 5.0
     val route = args.getOrNull(2).orEmpty()
+    // The palette normally comes from the user's synced settings, which the
+    // sandboxed session never reads; naming one here is how a theme gets
+    // checked on a real screen without touching the default.
+    val theme = AppTheme.byId(args.getOrNull(3))
     out.parentFile?.mkdirs()
 
     val sandbox = File(System.getProperty("java.io.tmpdir"), "weil-shot").apply { mkdirs() }
@@ -117,6 +124,7 @@ fun main(args: Array<String>) {
                 openCreate = route == "new",
                 // The four tabs render inside the shell, so they are asked
                 // for by name rather than pushed as routes.
+                initialTheme = theme,
                 startTab = when (route) {
                     "movements" -> AppTab.Movements
                     "categories" -> AppTab.Categories

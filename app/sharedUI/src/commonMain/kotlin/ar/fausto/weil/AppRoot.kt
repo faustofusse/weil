@@ -100,10 +100,28 @@ fun RootScreen(
     openCreate: Boolean = false,
     /** Tab the shell starts on. Harness-only, like [initialRoute]. */
     startTab: AppTab = AppTab.Home,
+    /**
+     * Palette to start on, overriding the default. Harness-only: the real
+     * app takes it from the synced `settings` row, which the shot's
+     * sandboxed session has no way to have written.
+     */
+    initialTheme: AppTheme? = null,
 ) {
     val authState by graph.auth.state.collectAsState()
     val scope = rememberCoroutineScope()
-    val themeState = remember { AppThemeState() }
+    val themeState = remember { AppThemeState(initialTheme ?: AppTheme.Menta) }
+
+    // The palette is a settings row, not device state, so it has to be read
+    // back once there is a session to read it from. Until then (and if the
+    // read fails, or names a theme this build doesn't have) the default
+    // stands: an unreadable preference must not block the splash.
+    val loggedInNow = authState is AuthState.LoggedIn
+    LaunchedEffect(loggedInNow) {
+        if (loggedInNow && initialTheme == null) {
+            val stored = runCatching { graph.settings.all()[THEME_KEY] }.getOrNull()
+            AppTheme.byId(stored)?.let { themeState.theme = it }
+        }
+    }
 
     // The theme wraps every state, splash included, so nothing renders unthemed.
     // The state rides in a CompositionLocal: a future settings screen swaps
@@ -337,6 +355,7 @@ fun RootScreen(
                             whatsappState = whatsappState,
                             embeddings = graph.embeddings,
                             userState = userState,
+                            settings = graph.settings,
                             onNavigateBack = { pop() },
                             bottomBar = bar,
                             onSignOut = { scope.launch { graph.auth.signOut() } },

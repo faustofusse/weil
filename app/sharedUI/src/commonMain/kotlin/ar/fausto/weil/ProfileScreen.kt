@@ -1,9 +1,12 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package ar.fausto.weil
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -111,6 +115,12 @@ import weil.app.sharedui.generated.resources.profile_sign_out_body
 import weil.app.sharedui.generated.resources.profile_sign_out_title
 import weil.app.sharedui.generated.resources.profile_sync_chain_subtitle
 import weil.app.sharedui.generated.resources.profile_sync_chain_title
+import weil.app.sharedui.generated.resources.profile_theme_inspect_hint
+import weil.app.sharedui.generated.resources.profile_theme_roles_subtitle
+import weil.app.sharedui.generated.resources.profile_theme_roles_title
+import weil.app.sharedui.generated.resources.profile_theme_selected
+import weil.app.sharedui.generated.resources.profile_theme_subtitle
+import weil.app.sharedui.generated.resources.profile_theme_title
 import weil.app.sharedui.generated.resources.profile_title
 import weil.app.sharedui.generated.resources.profile_wa_code_hint
 import weil.app.sharedui.generated.resources.profile_wa_expired
@@ -140,6 +150,7 @@ fun ProfileScreen(
     whatsappState: WhatsappState,
     embeddings: EmbeddingsRepository,
     userState: UserState,
+    settings: SettingsRepository,
     onNavigateBack: () -> Unit,
     onSignOut: () -> Unit,
     /** Non-null when the profile is a bottom-bar root (no back arrow then). */
@@ -183,6 +194,8 @@ fun ProfileScreen(
             ChainSection(chainState)
             Spacer(Modifier.height(16.dp))
             WhatsappSection(whatsappState)
+            Spacer(Modifier.height(16.dp))
+            ThemeSection(settings)
             Spacer(Modifier.height(16.dp))
             EmbeddingsSection(embeddings)
             Spacer(Modifier.height(24.dp))
@@ -265,6 +278,189 @@ private fun SectionCard(
             }
             Spacer(Modifier.height(14.dp))
             content()
+        }
+    }
+}
+
+/**
+ * The palette picker. Swapping is one assignment on [AppThemeState] — the
+ * whole app already renders inside `FinanceTheme(themeState.theme)` — and the
+ * write to `settings` is what makes the choice outlive the process and reach
+ * the paired devices. The write happens after the swap and its failure is
+ * swallowed: a palette that didn't sync is a smaller problem than a tap that
+ * appears to do nothing.
+ */
+@Composable
+private fun ThemeSection(settings: SettingsRepository) {
+    val themeState = LocalAppThemeState.current
+    val scope = rememberCoroutineScope()
+    SectionCard(
+        title = stringResource(Res.string.profile_theme_title),
+        icon = Icons.Filled.Tune,
+        subtitle = stringResource(Res.string.profile_theme_subtitle),
+    ) {
+        val selectedLabel = stringResource(Res.string.profile_theme_selected)
+        // Long-pressing a row opens its full role list. Kept as state here
+        // rather than inside the row so only one sheet can ever be up.
+        var inspecting by remember { mutableStateOf<AppTheme?>(null) }
+        AppTheme.entries.forEachIndexed { index, theme ->
+            if (index > 0) Spacer(Modifier.height(8.dp))
+            ThemeOptionRow(
+                theme = theme,
+                selected = theme == themeState.theme,
+                selectedLabel = selectedLabel,
+                onClick = {
+                    if (theme != themeState.theme) {
+                        themeState.theme = theme
+                        scope.launch { runCatching { settings.set(THEME_KEY, theme.name) } }
+                    }
+                },
+                onLongClick = { inspecting = theme },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            stringResource(Res.string.profile_theme_inspect_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        inspecting?.let { theme ->
+            ThemeRolesSheet(theme = theme, onDismiss = { inspecting = null })
+        }
+    }
+}
+
+/**
+ * Every color a palette assigns, with its Material role name and its hex.
+ * The role names are deliberately **not** translated: they are the
+ * identifiers a palette is edited by in `AppTheme.kt`, so a screenshot of
+ * this sheet has to be pasteable back into the code.
+ *
+ */
+@Composable
+private fun ThemeRolesSheet(theme: AppTheme, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+        ) {
+            Text(
+                stringResource(Res.string.profile_theme_roles_title, theme.displayName),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(Res.string.profile_theme_roles_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(14.dp))
+            // Not a LazyColumn: the sheet already scrolls, and nesting a
+            // lazy list inside it gives the inner list an unbounded height.
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                (theme.colorScheme.roles() + theme.money.roles()).forEach { role ->
+                    ThemeRoleRow(role)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeRoleRow(role: ThemeRole) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        // A hairline border, because half these colors are by construction
+        // close to the sheet's own surface: without an edge the swatch of
+        // `surfaceContainerLow` reads as empty space, not as a color.
+        Box(
+            modifier = Modifier
+                .size(width = 38.dp, height = 26.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(role.color)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            role.name,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            role.color.hex(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * One palette, drawn in its own colors: the page, the hero and the account
+ * tile of *that* theme, not of the active one — the swatch has to answer
+ * "what would the app look like" before the tap, so it deliberately reads
+ * [AppTheme.colorScheme] instead of `MaterialTheme`.
+ */
+@Composable
+private fun ThemeOptionRow(
+    theme: AppTheme,
+    selected: Boolean,
+    selectedLabel: String,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val scheme = theme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            // `combinedClickable` rather than `Surface(onClick = …)`: the
+            // surface overload has no long-press, and the inspector hangs
+            // off exactly the same row the tap applies.
+            modifier = Modifier
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(scheme.background),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(scheme.primaryContainer))
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(scheme.inverseSurface))
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                theme.displayName,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            if (selected) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = selectedLabel,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
 }
