@@ -27,6 +27,9 @@ class AppGraph(
     // Same reason as [importAnalyzer]: the shot harness has no session, so it
     // substitutes a local deterministic embedder.
     embedder: TextEmbedder? = null,
+    // Same again: the live category guess in the quick-entry screen needs the
+    // worker (and the TypeSafe key it holds).
+    categorySuggester: CategorySuggester? = null,
     dbContext: CoroutineContext,
     dbFactory: (userId: String, url: String, token: String) -> Database,
     // Optional higher-priority context for pure reads; defaults to dbContext
@@ -49,6 +52,9 @@ class AppGraph(
     val notifications = NotificationsRepository(db)
     val emails = EmailsRepository(db)
     val imports: DocumentAnalyzer = importAnalyzer ?: ImportRepository(store)
+
+    /** Live "which category is this" guess while the description is typed. */
+    val categories: CategorySuggester = categorySuggester ?: CategorySuggestRepository(store)
 
     /** Vectors for "parecidos a este"; search itself is offline SQL. */
     val embeddings = EmbeddingsRepository(db, embedder ?: WorkerEmbedder(store))

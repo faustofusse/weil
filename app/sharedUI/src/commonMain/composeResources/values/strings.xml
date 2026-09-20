@@ -148,7 +148,12 @@
     <string name="quick_category_label">Categoría</string>
     <string name="quick_choose">Elegir…</string>
     <string name="quick_record">Registrar</string>
+    <string name="quick_category_thinking">Buscando categoría…</string>
+    <string name="quick_category_suggested">Sugerida por la descripción · tocá para cambiarla</string>
     <string name="sheet_new_title">Registrar movimiento</string>
+    <string name="sheet_description_placeholder">Descripción</string>
+    <!-- How sure the model was; informational, nothing is gated on it. -->
+    <string name="sheet_suggestion_confidence">confianza %1$s%</string>
     <string name="sheet_more">Ver más</string>
     <string name="quick_error_amount">Ingresá un monto mayor a cero</string>
 

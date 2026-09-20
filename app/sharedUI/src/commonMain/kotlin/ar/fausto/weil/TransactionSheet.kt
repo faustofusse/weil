@@ -77,13 +77,14 @@ import ar.fausto.weil.SettingsRepository
 import ar.fausto.weil.TransactionsRepository
 import ar.fausto.weil.epochMillis
 import ar.fausto.weil.resolveDefault
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.picker_create
 import weil.app.sharedui.generated.resources.quick_category_label
 import weil.app.sharedui.generated.resources.quick_choose
-import weil.app.sharedui.generated.resources.quick_description_label
 import weil.app.sharedui.generated.resources.quick_error_amount
 import weil.app.sharedui.generated.resources.quick_expense_title
 import weil.app.sharedui.generated.resources.quick_from_label
@@ -93,8 +94,10 @@ import weil.app.sharedui.generated.resources.quick_source_label
 import weil.app.sharedui.generated.resources.quick_to_label
 import weil.app.sharedui.generated.resources.quick_transfer_from_label
 import weil.app.sharedui.generated.resources.quick_transfer_title
+import weil.app.sharedui.generated.resources.sheet_description_placeholder
 import weil.app.sharedui.generated.resources.sheet_more
 import weil.app.sharedui.generated.resources.sheet_new_title
+import weil.app.sharedui.generated.resources.sheet_suggestion_confidence
 
 /**
  * Entering a movement, presented as a panel that rises out of the bottom bar
@@ -109,6 +112,9 @@ import weil.app.sharedui.generated.resources.sheet_new_title
  *
  * The older [TransactionQuickScreen] (a full destination with its own app
  * bar) is untouched and still routable; this is the one the bar opens.
+ *
+ * While the description is typed, [suggester] guesses the category from it —
+ * see [TransactionSheetForm] for how little it is allowed to touch.
  */
 @Composable
 fun TransactionSheet(
@@ -119,6 +125,7 @@ fun TransactionSheet(
     onDismiss: () -> Unit,
     onSaved: () -> Unit,
     onMore: () -> Unit = onDismiss,
+    suggester: CategorySuggester? = null,
 ) {
     // Back closes the panel instead of leaving the tab behind it: it is not
     // on the back stack, so nothing else would have answered.
@@ -187,6 +194,7 @@ fun TransactionSheet(
                         settings = settings,
                         onMore = onMore,
                         onSaved = onSaved,
+                        suggester = suggester,
                     )
                 }
             }
@@ -200,6 +208,37 @@ private enum class SheetSide { From, To }
 private const val SheetEnterMs = 320
 private const val SheetExitMs = 220
 
+/** Below this a description is not yet a word worth spending a call on. */
+private const val SuggestMinChars = 3
+
+/** Long enough that a normal typing rhythm produces one call, not six. */
+private const val SuggestDebounceMs = 450L
+
+/**
+ * There is no confidence threshold, on purpose. Confidence measures how
+ * concentrated the probability is across the categories, not how right the
+ * top one is: "panadería" spreads over Comida, Supermercado and Otros and
+ * still picks the intended category at 22%. A low number means the model
+ * hesitated between plausible neighbours, and the alternative to its pick is
+ * the seeded default, which is not better for having been chosen by nobody.
+ *
+ * What does gate this is the question itself: the Choice carries an explicit
+ * "ninguna de estas categorías", so the model declines instead of guessing
+ * when the text says nothing — and the pick is one tap to override, after
+ * which the guessing stops for the entry. The row still reports the
+ * confidence, now purely as information.
+ */
+
+/** The last guess, kept so the row can report what the model was sure of. */
+private data class GuessReadout(val path: String?, val confidence: Double)
+
+/**
+ * "Comida:Supermercado" → "Comida › Supermercado": the same separator the
+ * journal rows use for "origen › destino", so a path reads the same way
+ * everywhere in the app.
+ */
+private fun routePath(path: String?): String? = path?.replace(":", " $ROUTE_ARROW ")
+
 @Composable
 private fun TransactionSheetForm(
     ledger: TransactionsRepository,
@@ -207,6 +246,7 @@ private fun TransactionSheetForm(
     settings: SettingsRepository,
     onMore: () -> Unit,
     onSaved: () -> Unit,
+    suggester: CategorySuggester? = null,
 ) {
     var currentKind by remember { mutableStateOf(TxnKind.Expense) }
     val kindLabel = sheetKindTitle(currentKind)
@@ -235,6 +275,10 @@ private fun TransactionSheetForm(
     var creatingCategory by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // The guess stops for good once the user picks a category themselves.
+    var categoryTouched by remember { mutableStateOf(false) }
+    var suggesting by remember { mutableStateOf(false) }
+    var lastGuess by remember { mutableStateOf<GuessReadout?>(null) }
     val scope = rememberCoroutineScope()
     val amountFocus = remember { FocusRequester() }
 
@@ -280,6 +324,65 @@ private fun TransactionSheetForm(
         }
     }
 
+    // Which leg is the category depends on the kind; a transfer has none
+    // (both legs are the user's own accounts).
+    val categoryType = when (currentKind) {
+        TxnKind.Expense -> AccountType.Expense
+        TxnKind.Income -> AccountType.Income
+        TxnKind.Transfer -> null
+    }
+    // Parents included: the tree is organizational and a posting can name any
+    // node, so filtering to leaves would hide "Comida" the moment it grows a
+    // child.
+    val categoryOptions = remember(tree, paths, categoryType) {
+        if (categoryType == null) {
+            emptyList()
+        } else {
+            tree.filter { it.account.type == categoryType }
+                .flatMap { it.selfAndDescendants }
+                .mapNotNull { node -> paths[node.account.id]?.let { CategoryOption(node.account.id, it) } }
+        }
+    }
+
+    // Debounced category guess. Keying the effect on the text is both the
+    // debounce and the cancellation: a keystroke drops the in-flight call, so
+    // a late answer can never land on a description the user moved past.
+    val amountForHint = amountText
+    LaunchedEffect(description, currentKind, categoryOptions, categoryTouched) {
+        val text = description.trim()
+        if (suggester == null || categoryTouched || categoryOptions.isEmpty()) return@LaunchedEffect
+        if (text.length < SuggestMinChars) {
+            lastGuess = null
+            return@LaunchedEffect
+        }
+        delay(SuggestDebounceMs)
+        suggesting = true
+        val guess = try {
+            suggester.suggest(
+                text = text,
+                options = categoryOptions,
+                kind = if (currentKind == TxnKind.Income) ImportDirection.Income else ImportDirection.Expense,
+                amount = if (amountValid) "${Money.DEFAULT_COMMODITY} $amountForHint" else null,
+            )
+        } finally {
+            suggesting = false
+        }
+        // A null account is the model answering "none of these", which is a
+        // real answer: the default in the picker stands, and there is no
+        // confidence worth reporting because no category was named.
+        val id = guess?.accountId
+        if (guess == null || id == null) {
+            lastGuess = null
+            return@LaunchedEffect
+        }
+        when (currentKind) {
+            TxnKind.Expense -> toId = id
+            TxnKind.Income -> fromId = id
+            TxnKind.Transfer -> return@LaunchedEffect
+        }
+        lastGuess = GuessReadout(guess.path, guess.confidence)
+    }
+
     fun switchKind(next: TxnKind) {
         if (next == currentKind) return
         // The asset side survives the switch: the account is the part the
@@ -295,6 +398,7 @@ private fun TransactionSheetForm(
             TxnKind.Income -> toId = asset
         }
         error = null
+        lastGuess = null
         currentKind = next
     }
 
@@ -394,6 +498,16 @@ private fun TransactionSheetForm(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    // On an Ingreso this row *is* the category (the source of
+                    // the money), so the guess reports itself here.
+                    if (suggesting && categoryType == AccountType.Income) {
+                        Spacer(Modifier.padding(start = 8.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.6f),
+                        )
+                    }
                 }
                 // The amount writes itself into the row instead of onto a
                 // canvas of its own: focused on open, so the keyboard is
@@ -447,32 +561,9 @@ private fun TransactionSheetForm(
                 )
             }
 
-            Spacer(Modifier.padding(top = 10.dp))
-            SheetRow {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fadeOnPress { picking = SheetSide.To }
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 18.dp),
-                ) {
-                    Text(
-                        toLabel,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.inverseSurface,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        toId?.let { paths[it] } ?: chooseLabel,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.75f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-
+            // Description above the category, because it is what *feeds* the
+            // category now: you type what you bought and watch the row below
+            // settle on where it goes.
             Spacer(Modifier.padding(top = 10.dp))
             SheetRow {
                 TextField(
@@ -480,7 +571,7 @@ private fun TransactionSheetForm(
                     onValueChange = { description = it },
                     placeholder = {
                         Text(
-                            stringResource(Res.string.quick_description_label),
+                            stringResource(Res.string.sheet_description_placeholder),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.55f),
                         )
@@ -499,6 +590,56 @@ private fun TransactionSheetForm(
                         cursorColor = MaterialTheme.colorScheme.inverseSurface,
                     ),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                )
+            }
+
+            Spacer(Modifier.padding(top = 10.dp))
+            SheetRow {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fadeOnPress { picking = SheetSide.To }
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 18.dp),
+                ) {
+                    Text(
+                        toLabel,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.inverseSurface,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        toId?.let { routePath(paths[it]) } ?: chooseLabel,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (suggesting) {
+                        Spacer(Modifier.padding(start = 8.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.6f),
+                        )
+                    }
+                }
+            }
+            // How sure the model was about the category now in the row.
+            // Kept visible after the threshold was removed (a 22% pick was
+            // right often enough to make a cutoff cost more than it saved),
+            // both as the explanation for a row that moved on its own and as
+            // running evidence about the question's wording.
+            lastGuess?.let { guess ->
+                Text(
+                    stringResource(
+                        Res.string.sheet_suggestion_confidence,
+                        (guess.confidence * 100).roundToInt().toString(),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(start = 16.dp, top = 6.dp),
                 )
             }
         }
@@ -567,6 +708,10 @@ private fun TransactionSheetForm(
             onDismiss = { picking = null },
         ) { picked ->
             if (field == SheetSide.From) fromId = picked.account.id else toId = picked.account.id
+            if (picked.account.type == categoryType) {
+                categoryTouched = true
+                lastGuess = null
+            }
             picking = null
         }
     }
@@ -580,6 +725,8 @@ private fun TransactionSheetForm(
             onError = { error = it },
             onCreated = { id ->
                 toId = id
+                categoryTouched = true
+                lastGuess = null
                 reloadTree()
             },
         )

@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -273,6 +274,10 @@ internal fun PickerField(
     placeholder: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Hint under the field (e.g. where the current value came from). */
+    supportingText: String? = null,
+    /** Replaces the chevron while something is being resolved for this field. */
+    busy: Boolean = false,
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
         OutlinedTextField(
@@ -280,7 +285,14 @@ internal fun PickerField(
             onValueChange = {},
             readOnly = true,
             label = { Text(label) },
-            trailingIcon = { Icon(Icons.Filled.ExpandMore, contentDescription = null) },
+            supportingText = supportingText?.let { { Text(it) } },
+            trailingIcon = {
+                if (busy) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Filled.ExpandMore, contentDescription = null)
+                }
+            },
             singleLine = true,
             textStyle = if (value == null) {
                 LocalTextStyle.current.copy(

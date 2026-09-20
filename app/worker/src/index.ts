@@ -7,6 +7,7 @@ import { createClient, type Client } from '@libsql/client';
 import { parseEmail } from './email';
 import { handleEmbed } from './embed';
 import { authenticate, handleAnalyze, handleDocument, json } from './import';
+import { handleSuggestCategory } from './suggest';
 import { handleInbound, handleLink, handleLinkStatus, handleUnlink } from './whatsapp';
 
 interface Env {
@@ -20,6 +21,7 @@ interface Env {
   AI_GATEWAY: string;
   GEMINI_MODELS: string;
   GEMINI_API_KEY: string;
+  TYPESAFE_API_KEY: string;
   BRIDGE_SECRET: string;
   BRIDGE_URL?: string;
   WHATSAPP_NUMBER?: string;
@@ -116,6 +118,18 @@ export default {
       } catch (e) {
         console.error('embed failed:', e);
         return json({ error: e instanceof Error ? e.message : 'embed failed' }, 502);
+      }
+    }
+
+    // ---- category suggestion while typing (cookie-authed, no DB read) ----
+    if (request.method === 'POST' && url.pathname === '/suggest/category') {
+      const user = await authenticate(request, env);
+      if (user instanceof Response) return user;
+      try {
+        return await handleSuggestCategory(request, env);
+      } catch (e) {
+        console.error('suggest failed:', e);
+        return json({ error: e instanceof Error ? e.message : 'suggest failed' }, 502);
       }
     }
 

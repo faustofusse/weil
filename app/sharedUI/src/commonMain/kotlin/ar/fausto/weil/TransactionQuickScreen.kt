@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
@@ -55,6 +56,8 @@ import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.picker_create
 import weil.app.sharedui.generated.resources.quick_amount_label
 import weil.app.sharedui.generated.resources.quick_category_label
+import weil.app.sharedui.generated.resources.quick_category_suggested
+import weil.app.sharedui.generated.resources.quick_category_thinking
 import weil.app.sharedui.generated.resources.quick_choose
 import weil.app.sharedui.generated.resources.quick_description_label
 import weil.app.sharedui.generated.resources.quick_error_amount
@@ -79,6 +82,12 @@ private enum class QuickField { From, To }
  * new kind's defaults; amount and description are kept). Commodity is ARS and
  * the date is now; backdating or other commodities go through the full
  * editor. Expense categories can be created inline.
+ *
+ * While the description is typed, [suggester] guesses the category from it
+ * (a Choice over the user's own accounts, so the answer is always one of
+ * them or nothing). It only ever moves a pick the user hasn't made: the
+ * first manual touch of the category field turns the guessing off for the
+ * rest of the entry.
  */
 @Composable
 fun TransactionQuickScreen(
@@ -88,6 +97,7 @@ fun TransactionQuickScreen(
     kind: TxnKind,
     onSaved: () -> Unit,
     onNavigateBack: () -> Unit,
+    suggester: CategorySuggester? = null,
 ) {
     var currentKind by remember { mutableStateOf(kind) }
     val kindLabel = kindTitle(currentKind)
@@ -117,6 +127,10 @@ fun TransactionQuickScreen(
     var creatingCategory by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Guessing stops for good once the user picks a category themselves.
+    var categoryTouched by remember { mutableStateOf(false) }
+    var suggesting by remember { mutableStateOf(false) }
+    var categoryIsGuess by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val amountFocus = remember { FocusRequester() }
 
@@ -179,6 +193,62 @@ fun TransactionQuickScreen(
         }
     }
 
+    // Which leg is the category depends on the kind; a transfer has none
+    // (both legs are the user's own accounts and neither is a category).
+    val categoryType = when (currentKind) {
+        TxnKind.Expense -> AccountType.Expense
+        TxnKind.Income -> AccountType.Income
+        TxnKind.Transfer -> null
+    }
+    // The options the model may answer with. Parents included: the tree is
+    // organizational and a posting can name any node, so filtering to leaves
+    // would hide "Comida" the moment it grows a child.
+    val categoryOptions = remember(tree, paths, categoryType) {
+        if (categoryType == null) {
+            emptyList()
+        } else {
+            tree.filter { it.account.type == categoryType }
+                .flatMap { it.selfAndDescendants }
+                .mapNotNull { node -> paths[node.account.id]?.let { CategoryOption(node.account.id, it) } }
+        }
+    }
+
+    // Debounced guess. LaunchedEffect keying on the text is the debounce and
+    // the cancellation both: a new keystroke cancels the in-flight call, so a
+    // stale answer can never land on a description the user has moved past.
+    val amountForHint = amountText
+    LaunchedEffect(description, currentKind, categoryOptions, categoryTouched) {
+        val text = description.trim()
+        if (suggester == null || categoryTouched || categoryOptions.isEmpty()) return@LaunchedEffect
+        if (text.length < MIN_SUGGEST_CHARS) {
+            categoryIsGuess = false
+            return@LaunchedEffect
+        }
+        delay(SUGGEST_DEBOUNCE_MS)
+        suggesting = true
+        val guess = try {
+            suggester.suggest(
+                text = text,
+                options = categoryOptions,
+                kind = if (currentKind == TxnKind.Income) ImportDirection.Income else ImportDirection.Expense,
+                amount = if (amountValid) "$commodity $amountForHint" else null,
+            )
+        } finally {
+            suggesting = false
+        }
+        // A null account is the model saying "none of these", which is a real
+        // answer: leave whatever default is in the picker alone.
+        val id = guess?.accountId ?: return@LaunchedEffect
+        if (guess.confidence < MIN_SUGGEST_CONFIDENCE) return@LaunchedEffect
+        if (categoryTouched) return@LaunchedEffect
+        when (currentKind) {
+            TxnKind.Expense -> toId = id
+            TxnKind.Income -> fromId = id
+            TxnKind.Transfer -> return@LaunchedEffect
+        }
+        categoryIsGuess = true
+    }
+
     fun switchKind(next: TxnKind) {
         if (next == currentKind) return
         // Carry the asset side across kinds so a switch doesn't lose the
@@ -194,6 +264,7 @@ fun TransactionQuickScreen(
             TxnKind.Income -> toId = asset
         }
         error = null
+        categoryIsGuess = false
         currentKind = next
     }
 
@@ -310,17 +381,31 @@ fun TransactionQuickScreen(
                     .fillMaxWidth()
                     .focusRequester(amountFocus),
             )
+            val categoryField = when (currentKind) {
+                TxnKind.Expense -> QuickField.To
+                TxnKind.Income -> QuickField.From
+                TxnKind.Transfer -> null
+            }
+            val guessHint = when {
+                suggesting -> stringResource(Res.string.quick_category_thinking)
+                categoryIsGuess -> stringResource(Res.string.quick_category_suggested)
+                else -> null
+            }
             PickerField(
                 label = fromLabel,
                 value = fromId?.let { paths[it] },
                 placeholder = chooseLabel,
                 onClick = { picking = QuickField.From },
+                supportingText = guessHint.takeIf { categoryField == QuickField.From },
+                busy = suggesting && categoryField == QuickField.From,
             )
             PickerField(
                 label = toLabel,
                 value = toId?.let { paths[it] },
                 placeholder = chooseLabel,
                 onClick = { picking = QuickField.To },
+                supportingText = guessHint.takeIf { categoryField == QuickField.To },
+                busy = suggesting && categoryField == QuickField.To,
             )
             OutlinedTextField(
                 value = description,
@@ -375,6 +460,10 @@ fun TransactionQuickScreen(
             onDismiss = { picking = null },
         ) { picked ->
             if (field == QuickField.From) fromId = picked.account.id else toId = picked.account.id
+            if (picked.account.type == categoryType) {
+                categoryTouched = true
+                categoryIsGuess = false
+            }
             picking = null
         }
     }
@@ -388,11 +477,26 @@ fun TransactionQuickScreen(
             onError = { error = it },
             onCreated = { id ->
                 toId = id
+                categoryTouched = true
+                categoryIsGuess = false
                 reloadTree()
             },
         )
     }
 }
+
+/** Below this a description is not yet a word worth spending a call on. */
+private const val MIN_SUGGEST_CHARS = 3
+
+/** Long enough that a normal typing rhythm produces one call, not six. */
+private const val SUGGEST_DEBOUNCE_MS = 450L
+
+/**
+ * Confidence is how concentrated the probability is across the categories.
+ * Low means several fit about as well — and then the seeded default is no
+ * worse than the model's coin flip, so nothing moves.
+ */
+private const val MIN_SUGGEST_CONFIDENCE = 0.35
 
 @Composable
 private fun kindTitle(kind: TxnKind): String = stringResource(

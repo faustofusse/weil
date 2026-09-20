@@ -62,6 +62,9 @@ fun main(args: Array<String>) {
         // Hashed bag-of-words, not a model: no key, no network, and the
         // vector functions it feeds are the ones FakeDatabase registers.
         embedder = FakeEmbedder(),
+        // Substring matching, not a model: the sandboxed session cannot call
+        // the worker that holds the TypeSafe key.
+        categorySuggester = FakeCategorySuggester(),
         dbContext = jvmDbDispatcher,
         dbFactory = { _, _, _ -> FakeDatabase(dbFile) },
     )

@@ -31,7 +31,16 @@ bun scripts/ids.ts [texto]                # lista ids embebidos (id corto, fecha
 bun scripts/search.ts --like 54f47dca     # "más como este"; el id acepta prefijos
 bun scripts/push.ts                       # dry run; --confirm escribe en la DB real
 bun scripts/probe.ts                      # ¿el prefiltro de moneda filtra de más?
+bun scripts/suggest.ts [texto]            # la sugerencia de categoría en vivo de la app
 ```
+
+`suggest.ts` mide lo que hace `TransactionQuickScreen` mientras se tipea la
+descripción, con **la pregunta del worker** (`categoryQuestion`, importada de
+`app/worker/src/suggest.ts` para que el banco de pruebas no se desincronice de
+lo que sale publicado). Última corrida: 19/20 sobre una tabla es-AR, p50 313 ms,
+p90 435 ms. El único error es «entradas boca» → `Comida:Restaurantes` con
+confianza 0,50: el nombre del club es también un sustantivo, y la confianza lo
+muestra (las que acierta están casi todas arriba de 0,9).
 
 ## Cómo está guardado
 

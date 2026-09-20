@@ -393,6 +393,7 @@ fun RootScreen(
                                         accounts = graph.accounts,
                                         settings = graph.settings,
                                         kind = route.kind,
+                                        suggester = graph.categories,
                                         onSaved = { pop() },
                                         onNavigateBack = { pop() },
                                     )
@@ -524,6 +525,7 @@ fun RootScreen(
                                 ledger = graph.ledger,
                                 accounts = graph.accounts,
                                 settings = graph.settings,
+                                suggester = graph.categories,
                                 onDismiss = { creating = false },
                                 // "Ver más" hands the same intent to the full
                                 // editor, which is where a date, a note or a
