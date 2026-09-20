@@ -78,7 +78,7 @@ const SCHEMA = {
       type: 'STRING',
       nullable: true,
       description:
-        "The user's own account or payment method the money moved through, verbatim from the list given. Infer it: the sender names the bank or wallet and the currency picks between that bank's accounts. Null only when even that leaves it open.",
+        "The user's own account or payment method the money moved through, verbatim from the list given. Infer it: the sender names the bank or wallet and the currency picks between that sender's accounts. Null only when even that leaves it open.",
     },
     note: { type: 'STRING', nullable: true, description: 'Extra detail worth keeping (instalments, card last digits), else null.' },
     normalized: {
@@ -112,8 +112,7 @@ export function messagePrompt(body: MessageBody): string {
       ? [
           `The user's own accounts / payment methods, verbatim: ${own.join(' | ')}`,
           'These alerts almost never name the account, and they do not have to: the sender names the bank or wallet,',
-          "and the currency picks between that bank's accounts. 'Aviso Santander / Pagaste U$S5,00' is the Santander",
-          'account that holds dollars. Answer null only when even that leaves it open.',
+          "and the currency picks between that sender's accounts. Answer null only when even that leaves it open.",
         ].join('\n')
       : '',
     '',

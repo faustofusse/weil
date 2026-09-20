@@ -298,8 +298,8 @@ export function messageQuestions(body: AccountsBody): Record<string, unknown> {
         question: "Which of the recipient's own accounts did the money leave from, or arrive in?",
         context: MESSAGE_CONTEXT,
         focus:
-          'who sent the alert and what currency it is in. These messages almost never spell the account out, and they do not need to: the sender names the bank or wallet, and the currency picks between that bank\'s accounts. A Santander alert about "U$S5,00" is the Santander account that holds dollars; a Mercado Pago alert is the Mercado Pago account unless it names a card.',
-        also: 'An alert that says "Pagaste" about a card charge belongs to that card, not to the bank balance behind it.',
+          'who sent the alert and what currency it is in. These messages almost never spell the account out, and they do not need to: the sender names the bank or wallet, and the currency picks between that sender\'s accounts.',
+        also: 'An alert about a card charge belongs to that card, not to the bank balance behind it.',
       },
       own,
       // Spelled out at length because the obvious wording ("the message names
