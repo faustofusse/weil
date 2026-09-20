@@ -434,6 +434,7 @@
     <string name="suggest_debug_action">Probar</string>
     <string name="suggest_debug_title">Prueba de sugerencia</string>
     <string name="suggest_debug_copy">Copiar el trazo</string>
+    <string name="suggest_debug_create">Revisar y crear</string>
 
     <!-- Perfil: vectorización -->
     <string name="profile_embeddings_title">Búsqueda por similitud</string>

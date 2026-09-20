@@ -24,6 +24,13 @@ data class NotificationDetailRoute(val id: String)
  */
 data class SuggestDebugRoute(val id: String)
 
+/** The end of that path: the proposed row, ready to review and record. */
+data class SuggestedReviewRoute(
+    val candidate: ImportCandidate,
+    val ref: String,
+    val title: String,
+)
+
 object EmailsRoute
 
 data class EmailDetailRoute(val id: String)

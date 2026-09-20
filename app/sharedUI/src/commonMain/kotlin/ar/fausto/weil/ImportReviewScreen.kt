@@ -144,6 +144,19 @@ sealed interface ReviewSource {
 
     /** Movements recognized locally in captured notifications and emails. */
     data object Inbox : ReviewSource
+
+    /**
+     * One movement proposed for a single captured message (the
+     * notification→transaction path). The candidate arrives ready: the two
+     * model calls already ran on the bench, and re-running them because a
+     * screen was pushed would be a second bill for the same answer.
+     */
+    data class Suggested(
+        val candidate: ImportCandidate,
+        val kind: EventSource,
+        val ref: String,
+        val title: String,
+    ) : ReviewSource
 }
 
 private class CandidateDraft(
@@ -327,6 +340,9 @@ fun ImportReviewScreen(
                 ReviewSource.Inbox -> ingest.inbox().map {
                     CandidateDraft(it.candidate, it.kind, it.ref, it.title)
                 }
+                is ReviewSource.Suggested -> listOf(
+                    CandidateDraft(source.candidate, source.kind, source.ref, source.title),
+                )
             }
             val candidates = loaded.map { it.candidate }
             // The default in the bottom bar only covers rows the document
@@ -559,6 +575,7 @@ fun ImportReviewScreen(
                         stringResource(
                             when (source) {
                                 is ReviewSource.Document -> Res.string.import_title
+                                is ReviewSource.Suggested -> Res.string.inbox_title
                                 ReviewSource.Inbox -> Res.string.inbox_title
                             },
                         ),
@@ -660,6 +677,7 @@ fun ImportReviewScreen(
                     stringResource(
                         when (source) {
                             is ReviewSource.Document -> Res.string.import_empty
+                            is ReviewSource.Suggested -> Res.string.inbox_empty
                             ReviewSource.Inbox -> Res.string.inbox_empty
                         },
                     ),

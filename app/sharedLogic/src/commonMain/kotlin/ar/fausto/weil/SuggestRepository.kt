@@ -310,6 +310,61 @@ data class SuggestTrace(
     val error: String? = null,
 ) {
     val totalMs: Long get() = readMs + retrievalMs + decisionMs
+
+    /**
+     * The proposed transaction, or null when there is nothing to propose
+     * (the reader failed, or found no amount).
+     *
+     * Everything the models were unsure about is left **empty** rather than
+     * guessed: the review screen already knows how to fall back to the user's
+     * default account and how to make an empty field ask for attention, and a
+     * wrong prefill is worse than a blank one because it gets saved.
+     */
+    fun candidate(): ImportCandidate? {
+        val read = read ?: return null
+        val amount = read.amount.takeIf { it.isNotBlank() }
+            ?.let { Money.parse(it, read.commodity.ifBlank { Money.DEFAULT_COMMODITY })?.minorUnits }
+            ?: return null
+        val direction = ImportDirection.fromWire(decision?.direction?.path ?: read.direction)
+        val byPath = accountPaths.entries.associate { (id, path) -> path to id }
+
+        // Jev's pick when it is sure enough, the reader's own guess otherwise.
+        fun pick(picked: PickedAccount?): String? =
+            picked?.path?.takeIf { picked.confidence >= MIN_CONFIDENCE }?.let { byPath[it] }
+
+        val own = pick(decision?.myAccount) ?: read.account?.let { byPath[it] }
+        val category = when (direction) {
+            ImportDirection.Income -> pick(decision?.incomeCategory)
+            ImportDirection.Transfer -> pick(decision?.transferDestination)
+            ImportDirection.Expense -> pick(decision?.expenseCategory)
+        }
+        return ImportCandidate(
+            date = notification?.postTime ?: epochMillis(),
+            payee = read.payee,
+            note = read.note,
+            commodity = read.commodity.ifBlank { Money.DEFAULT_COMMODITY },
+            direction = direction,
+            accountId = own,
+            accountPath = own?.let { accountPaths[it] },
+            splits = listOf(
+                ImportSplit(
+                    amountMinor = amount,
+                    categoryAccountId = category,
+                    categoryPath = category?.let { accountPaths[it] },
+                ),
+            ),
+        )
+    }
+
+    private companion object {
+        /**
+         * Below this the field is left for the user. Not a tuned number yet —
+         * see the plan: the thresholds are to be read off real runs, and this
+         * one only has to be high enough that a hedged answer does not
+         * prefill.
+         */
+        const val MIN_CONFIDENCE = 0.5
+    }
 }
 
 // ---- wire ------------------------------------------------------------------

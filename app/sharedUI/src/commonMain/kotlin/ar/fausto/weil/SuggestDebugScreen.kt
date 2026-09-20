@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +37,7 @@ import kotlinx.coroutines.CancellationException
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.suggest_debug_copy
+import weil.app.sharedui.generated.resources.suggest_debug_create
 import weil.app.sharedui.generated.resources.suggest_debug_title
 
 /**
@@ -53,6 +55,8 @@ fun SuggestDebugScreen(
     suggestions: SuggestTracer,
     id: String,
     onNavigateBack: () -> Unit,
+    /** Hands the proposed row to the review screen. Nothing is written here. */
+    onReview: (ImportCandidate) -> Unit = {},
 ) {
     var trace by remember(id) { mutableStateOf<SuggestTrace?>(null) }
     var running by remember(id) { mutableStateOf(true) }
@@ -131,6 +135,27 @@ fun SuggestDebugScreen(
             item { Block("4 · recuperación (device)", retrievalText(current), open = true) }
             item { Block("5 · jev: state y questions", current.decisionDebug ?: "—") }
             item { Block("6 · jev: decisión", decisionText(current.decision), open = true) }
+
+            // The end of the path, as it will be: the proposal goes to the
+            // same review screen the statement import uses, which is the one
+            // place in the app allowed to write a transaction.
+            val candidate = current.candidate()
+            item {
+                if (candidate == null) {
+                    Text(
+                        "Sin importe: no hay nada que proponer.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Button(
+                        onClick = { onReview(candidate) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(Res.string.suggest_debug_create))
+                    }
+                }
+            }
             item { Spacer(Modifier.height(32.dp)) }
         }
     }

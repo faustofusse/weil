@@ -508,6 +508,32 @@ fun RootScreen(
                                         suggestions = graph.suggestions,
                                         id = route.id,
                                         onNavigateBack = { pop() },
+                                        onReview = { candidate ->
+                                            navigate(
+                                                SuggestedReviewRoute(
+                                                    candidate = candidate,
+                                                    ref = route.id,
+                                                    title = candidate.payee.ifBlank { "Notificación" },
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                entry<SuggestedReviewRoute> { route ->
+                                    ImportReviewScreen(
+                                        source = ReviewSource.Suggested(
+                                            candidate = route.candidate,
+                                            kind = EventSource.Notification,
+                                            ref = route.ref,
+                                            title = route.title,
+                                        ),
+                                        imports = graph.imports,
+                                        ingest = graph.ingest,
+                                        ledger = graph.ledger,
+                                        accounts = graph.accounts,
+                                        settings = graph.settings,
+                                        onDone = { pop() },
+                                        onNavigateBack = { pop() },
                                     )
                                 }
                                 entry<ProfileRoute> { profileScreen(null) }
