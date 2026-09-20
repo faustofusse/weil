@@ -281,7 +281,7 @@ export function messageQuestions(body: AccountsBody): Record<string, unknown> {
     is_movement: {
       type: 'noul',
       instructions:
-        "Does `message` report a movement of the recipient's own money that already happened?",
+        'Does `message` report a movement of money belonging to the person who received this notification, and that already happened?',
       criteria: {
         true: 'Money actually left or entered one of their accounts: a payment, a charge, a transfer, a deposit, a withdrawal',
         false: 'A promotion, an offer, a discount, a reminder, a due-date warning, a balance update, a login alert, or money someone else moved',
@@ -289,10 +289,22 @@ export function messageQuestions(body: AccountsBody): Record<string, unknown> {
     },
     direction: {
       type: 'choice',
-      instructions: "In `message`, which way did the money move, from the recipient's point of view?",
+      // "from the recipient's point of view" read as *the recipient of the
+      // money*: "Pagaste $21.389 a Rappi" came back income at 0.81, while the
+      // same call picked a food-delivery expense category at 0.93. The party
+      // is now named as the person the notification was sent to, and the
+      // options are phrased around the verb the message uses about them.
+      instructions: {
+        question:
+          'Did the person who received this notification spend money, receive money, or move money between two accounts of their own?',
+        not_for:
+          'Not the merchant\'s point of view. "Pagaste a X" means the person reading the message paid, so money left them, even though X received it.',
+      },
       criteria: {
-        expense: 'They spent money: a purchase, a fee, a bill, a card charge',
-        income: 'They received money: salary, a refund, a transfer someone sent them, interest',
+        expense:
+          'They paid or were charged: a purchase, a fee, a bill, a card charge. The message tells them what they did ("Pagaste", "Se debitó", "Compraste")',
+        income:
+          'They were paid: salary, a refund, interest, a transfer somebody sent them ("Recibiste", "Te transfirieron", "Acreditamos")',
         transfer:
           'Money moved between two accounts they own: topping up a wallet, paying their own credit card, buying foreign currency. Nothing was spent or earned',
       },
@@ -302,7 +314,8 @@ export function messageQuestions(body: AccountsBody): Record<string, unknown> {
   if (own.length > 0) {
     questions.my_account = accountChoice(
       {
-        question: "Which of the recipient's own accounts did the money leave from, or arrive in?",
+        question:
+          'Which account of the person who received this notification did the money leave from, or arrive in?',
         context: MESSAGE_CONTEXT,
         focus:
           'who sent the alert and what currency it is in. These messages almost never spell the account out, and they do not need to: the sender names the bank or wallet, and the currency picks between that sender\'s accounts.',
@@ -329,7 +342,7 @@ export function messageQuestions(body: AccountsBody): Record<string, unknown> {
     questions.transfer_destination = accountChoice(
       {
         question:
-          "Assuming this is a transfer between two accounts the recipient owns, which account did the money ARRIVE in?",
+          'Assuming this is a transfer between two accounts owned by the person who received this notification, which of their accounts did the money ARRIVE in?',
         context: MESSAGE_CONTEXT,
         not_for:
           'Most of these messages are not transfers at all — a purchase, a fee or a salary has no destination account of theirs. Answer none-of-these unless both sides are accounts they own.',

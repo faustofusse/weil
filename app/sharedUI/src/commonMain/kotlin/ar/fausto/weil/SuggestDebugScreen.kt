@@ -293,9 +293,14 @@ private fun candidateText(trace: SuggestTrace, candidate: ImportCandidate?): Str
     if (candidate == null) return "sin importe — no hay candidato"
     val split = candidate.splits.firstOrNull()
     return buildString {
-        appendLine("direction:  ${candidate.direction}")
-        appendLine("  jev dijo: ${trace.decision?.direction?.path ?: "—"}")
-        appendLine("  gemini:   ${trace.read?.direction ?: "—"}")
+        val jev = trace.decision?.direction?.path
+        val gemini = trace.read?.direction
+        appendLine("direction:  ${candidate.direction}  (manda gemini: lo dice la frase)")
+        appendLine("  gemini:   ${gemini ?: "—"}")
+        appendLine(
+            "  jev:      ${jev ?: "—"}" +
+                if (jev != null && gemini != null && jev != gemini) "   ⚠ no coinciden" else "",
+        )
         appendLine("payee:      ${candidate.payee.ifBlank { "(vacío)" }}")
         appendLine("monto:      ${split?.amountMinor} ${candidate.commodity}")
         appendLine("cuenta:     ${candidate.accountPath ?: "(vacía → la por defecto)"}")

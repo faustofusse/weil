@@ -325,7 +325,13 @@ data class SuggestTrace(
         val amount = read.amount.takeIf { it.isNotBlank() }
             ?.let { Money.parse(it, read.commodity.ifBlank { Money.DEFAULT_COMMODITY })?.minorUnits }
             ?: return null
-        val direction = ImportDirection.fromWire(decision?.direction?.path ?: read.direction)
+        // The reader's direction wins. Which way the money went is *in the
+        // sentence* ("Pagaste", "Recibiste"), so it belongs to the model that
+        // reads sentences; the Choice stays as a cross-check, surfaced in the
+        // trace when the two disagree. As the deciding vote it answered
+        // "income" on "Pagaste $ 21.389 a Rappi" while the same call picked a
+        // delivery expense category at 0.93.
+        val direction = ImportDirection.fromWire(read.direction)
         val byPath = accountPaths.entries.associate { (id, path) -> path to id }
 
         // Jev's pick when it is sure enough, the reader's own guess otherwise.
