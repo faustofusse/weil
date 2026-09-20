@@ -355,6 +355,7 @@ fun RootScreen(
                                         stack = tabStack,
                                         onSelect = { selectTab(it) },
                                         onNew = { creating = true },
+                                        coveredByOverlay = creating,
                                     ) { bar ->
                                         entry<HomeRoute> { homeTab(bar) }
                                         entry<JournalRoute> { journalScreen(bar) }

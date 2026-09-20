@@ -49,12 +49,20 @@ fun TabShell(
     stack: SnapshotStateList<Any>,
     onSelect: (AppTab) -> Unit,
     onNew: () -> Unit,
+    /**
+     * True while something is layered over the shell (the create panel): back
+     * belongs to that layer, not to the tabs. Without this, both handlers are
+     * live at once and the press that should close the panel jumps to Inicio
+     * behind it instead — the panel is not on the back stack, so nothing else
+     * arbitrates between the two.
+     */
+    coveredByOverlay: Boolean = false,
     entries: EntryProviderScope<Any>.(bar: @Composable () -> Unit) -> Unit,
 ) {
     // Back from a tab returns to Inicio rather than closing the app: the
     // tabs' stack is one deep on purpose, so this is the only way that
     // expectation can be met.
-    BackHandler(enabled = current != AppTab.Home) { onSelect(AppTab.Home) }
+    BackHandler(enabled = current != AppTab.Home && !coveredByOverlay) { onSelect(AppTab.Home) }
     var barHeight by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
     // Which way along the bar the move went. Latched the moment `current`
