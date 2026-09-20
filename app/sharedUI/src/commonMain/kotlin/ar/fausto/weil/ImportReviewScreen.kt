@@ -940,15 +940,18 @@ private fun CandidateCard(
         ImportDirection.Income -> "+"
         // Neither sign fits: the user's net worth didn't move.
         ImportDirection.Transfer -> "⇄ "
-        // The review screen keeps its own −/+ marks: these rows are not yet
-        // in the ledger and carry no direction color, so the glyph is the
-        // only thing saying which way the money goes.
+        // The review screen keeps its own −/+ marks: these rows are not in
+        // the ledger yet, so the glyph carries the direction even where the
+        // row is dimmed out by being unchecked.
     } + formatMoney(draft.totalMinor, draft.commodity)
+    // Same green/red as a ledger row (via [flowColor]): the point of this
+    // screen is to preview rows as they will look once written, and `primary`
+    // for income was a coral in the dark theme.
     val amountColor = when {
         !draft.include -> MaterialTheme.colorScheme.onSurfaceVariant
-        draft.direction == ImportDirection.Income -> MaterialTheme.colorScheme.primary
+        draft.direction == ImportDirection.Income -> flowColor(1)
         draft.direction == ImportDirection.Transfer -> MaterialTheme.colorScheme.onSurfaceVariant
-        else -> MaterialTheme.colorScheme.onSurface
+        else -> flowColor(-1)
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -994,13 +997,15 @@ private fun CandidateCard(
                         Text(
                             "→ ${draft.counterAmount?.format() ?: draft.counterAmountText} ${draft.counterCommodity}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary,
+                            // A currency tag, not a direction: it must not
+                            // borrow the green that means "money in".
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else if (draft.commodity != Money.DEFAULT_COMMODITY) {
                         Text(
                             draft.commodity,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }

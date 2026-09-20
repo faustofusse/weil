@@ -3,11 +3,13 @@ package ar.fausto.weil
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -27,6 +29,32 @@ class AppThemeState(initial: AppTheme = AppTheme.Menta) {
 
 val LocalAppThemeState = compositionLocalOf<AppThemeState> {
     error("AppThemeState not provided")
+}
+
+/** The active theme's [MoneyColors]; provided by [FinanceTheme], read via [MoneyColor]. */
+val LocalMoneyColors = compositionLocalOf { MoneyColors() }
+
+/**
+ * The only place a screen gets a color for a signed amount. Every list row,
+ * balance and hero figure goes through these three, so "is this green?" has
+ * one answer app-wide instead of one per screen.
+ */
+object MoneyColor {
+    /** Money in. */
+    val positive: Color
+        @Composable get() = LocalMoneyColors.current.positive
+
+    /** Money out. */
+    val negative: Color
+        @Composable get() = LocalMoneyColors.current.negative
+
+    /**
+     * Neither: a transfer between the user's own accounts, or a figure whose
+     * sign is bookkeeping convention. Text color, not a third hue — painting
+     * these would make the palette say something that didn't happen.
+     */
+    val neutral: Color
+        @Composable get() = MaterialTheme.colorScheme.onSurface
 }
 
 /**
@@ -88,9 +116,11 @@ fun FinanceTheme(theme: AppTheme, content: @Composable () -> Unit) {
     // composition): the scale is 15 TextStyle copies and sits under every
     // recomposition of every screen.
     val typography = remember(family) { financeTypography(family) }
-    MaterialTheme(
-        colorScheme = theme.colorScheme,
-        typography = typography,
-        content = content,
-    )
+    CompositionLocalProvider(LocalMoneyColors provides theme.money) {
+        MaterialTheme(
+            colorScheme = theme.colorScheme,
+            typography = typography,
+            content = content,
+        )
+    }
 }

@@ -106,7 +106,7 @@ object Feedback {
 /** Positive amounts readable, negatives (credits from the row's view) red. */
 @Composable
 fun amountColor(minor: Long): Color =
-    if (minor >= 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
+    if (minor >= 0) MoneyColor.neutral else MoneyColor.negative
 
 /**
  * Transaction-row color for one posting: green when it adds to an asset
@@ -118,9 +118,9 @@ fun amountColor(minor: Long): Color =
  */
 @Composable
 fun postingColor(accountType: AccountType?, minor: Long): Color = when {
-    accountType != AccountType.Asset -> MaterialTheme.colorScheme.onSurface
-    minor >= 0 -> MaterialTheme.colorScheme.tertiary
-    else -> MaterialTheme.colorScheme.error
+    accountType != AccountType.Asset -> MoneyColor.neutral
+    minor >= 0 -> MoneyColor.positive
+    else -> MoneyColor.negative
 }
 
 /** Corner radius of the grouped list cards (accounts, devices, sections). */

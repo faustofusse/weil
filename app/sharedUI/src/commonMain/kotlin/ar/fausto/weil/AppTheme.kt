@@ -6,11 +6,37 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
 /**
+ * The direction of money, as one pair of colors for the whole app.
+ *
+ * It lives outside [ColorScheme] on purpose: `tertiary`/`error` are Material
+ * roles that components pull for their own reasons (an error banner, a tonal
+ * chip) and they differ per theme, which is how the same debit ended up in
+ * four different reds depending on the screen. "Green means money in" is a
+ * fact about this app, not a Material role, so it gets its own token —
+ * [LocalMoneyColors], read through [MoneyColor].
+ *
+ * The values are the transaction rows' pair, which is the reference the rest
+ * of the screens were unified onto. A theme may override them; both current
+ * ones don't, because a movement should read the same after a theme swap.
+ */
+data class MoneyColors(
+    /** Money arriving in an account the user owns. */
+    val positive: Color = Color(0xFF55A345),
+    /** Money leaving one. */
+    val negative: Color = Color(0xFFDB1616),
+)
+
+/**
  * A complete, swappable look for the app. Adding a theme is one new entry here —
  * no screen changes — and each entry is a full ColorScheme (dark or light).
- * The UI reads colors only via MaterialTheme.colorScheme; nothing else holds colors.
+ * The UI reads colors only via MaterialTheme.colorScheme (plus [MoneyColor]
+ * for signed amounts); nothing else holds colors.
  */
-enum class AppTheme(val displayName: String, val colorScheme: ColorScheme) {
+enum class AppTheme(
+    val displayName: String,
+    val colorScheme: ColorScheme,
+    val money: MoneyColors = MoneyColors(),
+) {
     /**
      * The dashboard palette: a pale lavender page, one mint hero card and
      * slate tiles. Three roles carry the whole look, which is why the screens

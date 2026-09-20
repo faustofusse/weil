@@ -385,11 +385,7 @@ private fun NetWorthCard(state: LedgerState) {
                         Text(
                             formatMinorUnits(minor),
                             style = MaterialTheme.typography.headlineMedium,
-                            color = if (minor < 0) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
+                            color = amountColor(minor),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )

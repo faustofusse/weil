@@ -613,25 +613,19 @@ internal fun flowOf(tx: Transaction, types: Map<String, AccountType>): TxnFlow? 
     )
 }
 
+/**
+ * The color of an amount that stands for a whole movement: income, expense,
+ * or a transfer between the user's own accounts. One definition for every
+ * screen — list rows, detail hero, import review — so the same debit can't
+ * come out in a different red one screen over. The pair itself lives in the
+ * theme ([MoneyColors]), not in Material's `tertiary`/`error`, which other
+ * components pull for unrelated reasons and which differ per theme.
+ */
 @Composable
 internal fun flowColor(direction: Int): Color = when {
-    direction > 0 -> MaterialTheme.colorScheme.tertiary
-    direction < 0 -> MaterialTheme.colorScheme.error
-    else -> MaterialTheme.colorScheme.onSurface
-}
-
-/**
- * The three fixed hex colors for a movement row's amount, as specified
- * directly (not the theme's `tertiary`/`error`, which happen to differ by
- * theme): income, expense, transfer between the user's own accounts. Used
- * by [MovementRow] and the classic [TransactionRow] — the two places an
- * amount stands for an entire transaction in a list — not by the detail
- * screen's hero figure, which stays on the theme.
- */
-internal fun transactionRowColor(direction: Int): Color = when {
-    direction > 0 -> Color(0xFF55A345)
-    direction < 0 -> Color(0xFFDB1616)
-    else -> Color(0xFF363636)
+    direction > 0 -> MoneyColor.positive
+    direction < 0 -> MoneyColor.negative
+    else -> MoneyColor.neutral
 }
 
 // A small "›" chevron reads as "leads to" without the vertical-alignment
@@ -732,7 +726,7 @@ internal fun TransactionRow(
                             // and the direction is already in the color.
                             formatMoney(flow.amountMinor, flow.commodity),
                             style = MaterialTheme.typography.titleSmall,
-                            color = transactionRowColor(flow.direction),
+                            color = flowColor(flow.direction),
                             maxLines = 1,
                         )
                     }

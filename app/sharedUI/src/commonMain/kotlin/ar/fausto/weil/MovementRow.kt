@@ -69,7 +69,7 @@ internal fun MovementRow(
                 maskedAmount(flow.amountMinor, flow.commodity, hidden, signed = false),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = transactionRowColor(flow.direction),
+                color = flowColor(flow.direction),
                 maxLines = 1,
             )
         }
