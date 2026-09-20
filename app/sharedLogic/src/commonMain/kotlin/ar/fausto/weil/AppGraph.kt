@@ -65,7 +65,7 @@ class AppGraph(
     val whatsapp = WhatsappRepository(store)
 
     /** Placeholder ledger entries for QRs paid in a wallet app. */
-    val qrPayments = QrPayments(accounts, settings, ledger)
+    val qrPayments = QrPayments(accounts, settings, ledger, categories)
 
     /** Movements recognized in captured notifications and email receipts. */
     val ingest = IngestRepository(notifications, emails, accounts, ledger)

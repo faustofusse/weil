@@ -40,11 +40,19 @@ data class CategorySuggestion(
  * session or a network (see `FakeCategorySuggester`).
  */
 interface CategorySuggester {
+    /**
+     * [context] replaces the worker's default description of where the text
+     * came from. The default one says the text is *being typed* and is
+     * probably unfinished, which is true of the quick-entry field and false
+     * of everything else — a merchant name lifted off a payment QR is
+     * complete, just abbreviated by the acquirer.
+     */
     suspend fun suggest(
         text: String,
         options: List<CategoryOption>,
         kind: ImportDirection = ImportDirection.Expense,
         amount: String? = null,
+        context: String? = null,
     ): CategorySuggestion?
 }
 
@@ -53,6 +61,7 @@ private data class SuggestRequest(
     val text: String,
     val kind: String,
     val amount: String? = null,
+    val context: String? = null,
     val options: List<CategoryOption>,
 )
 
@@ -101,6 +110,7 @@ class CategorySuggestRepository(
         options: List<CategoryOption>,
         kind: ImportDirection,
         amount: String?,
+        context: String?,
     ): CategorySuggestion? {
         if (text.isBlank() || options.isEmpty()) return null
         return try {
@@ -112,6 +122,7 @@ class CategorySuggestRepository(
                         text = text,
                         kind = if (kind == ImportDirection.Income) "income" else "expense",
                         amount = amount,
+                        context = context,
                         options = options,
                     ),
                 )

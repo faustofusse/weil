@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -241,6 +242,19 @@ fun RootScreen(
                         onPayWithQr = { qr ->
                             val wallet = graph.wallet
                             val opened = wallet?.payWithMercadoPago(qr.raw) == true
+                            // The category guess starts with the
+                            // handoff, not after the write: the
+                            // user is inside the wallet for ten
+                            // seconds or more, so a few hundred
+                            // milliseconds of model spend for
+                            // free. It never blocks the row.
+                            val guess = if (opened) {
+                                scope.async {
+                                    runCatching { graph.qrPayments.guessCategory(qr) }.getOrNull()
+                                }
+                            } else {
+                                null
+                            }
                             scope.launch {
                                 // The payload outlives the
                                 // handoff in one synced row, so a
@@ -253,9 +267,22 @@ fun RootScreen(
                                     )
                                 }
                                 if (opened) {
-                                    runCatching { graph.qrPayments.record(qr) }
+                                    val recorded = runCatching { graph.qrPayments.record(qr) }
                                         .onSuccess { ledgerState.refresh() }
                                         .onFailure { Feedback.show(it.message ?: it.toString()) }
+                                        .getOrNull()
+                                    // The row already exists and
+                                    // is correct without this;
+                                    // the guess only moves it off
+                                    // the fallback category, so
+                                    // every failure stays silent.
+                                    val picked = guess?.await()?.accountId
+                                    if (recorded != null && picked != null) {
+                                        val moved = runCatching {
+                                            graph.qrPayments.applyCategory(recorded, picked)
+                                        }.getOrDefault(false)
+                                        if (moved) ledgerState.refresh()
+                                    }
                                 }
                             }
                             if (!opened) {

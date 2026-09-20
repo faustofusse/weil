@@ -119,6 +119,50 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         emitChange()
     }
 
+    /**
+     * Repoints one leg of a transaction at another account, leaving every
+     * other field alone. Deliberately narrower than [update]: the category
+     * guess for a QR payment lands while the wallet's push may be completing
+     * the same row, and a full rewrite from a stale snapshot would erase the
+     * amount that arrived in between. It also sidesteps [resolvePostings],
+     * which rejects the zero amounts a QR placeholder is made of.
+     *
+     * Matching on [fromAccountId] is what makes it idempotent and safe: if
+     * the user already recategorized the row by hand, nothing matches and
+     * nothing is written.
+     *
+     * Returns true when a posting actually moved.
+     */
+    suspend fun recategorize(
+        transactionId: String,
+        fromAccountId: String,
+        toAccountId: String,
+    ): Boolean {
+        if (fromAccountId == toAccountId) return false
+        val postingIds = db.useForRead { d ->
+            d.query(
+                "select id from postings where transaction_id = :tx and account_id = :from",
+                mapOf(":tx" to transactionId, ":from" to fromAccountId),
+            ) { rows -> rows.mapNotNull { it.firstOrNull()?.toString() }.toList() }
+        }
+        if (postingIds.isEmpty()) return false
+        writeAtomically {
+            execute(
+                "update postings set account_id = :to where id in (${quoteList(postingIds)})",
+                mapOf(":to" to toAccountId),
+            )
+            // The accounts are part of the canonical text the vector was
+            // built from, so it no longer describes this row; the next sweep
+            // recomputes it. Same reasoning as [update].
+            execute(
+                "update transactions set embedding = null, embedding_model = null where id = :id",
+                mapOf(":id" to transactionId),
+            )
+        }
+        emitChange()
+        return true
+    }
+
     suspend fun delete(id: String) {
         writeAtomically {
             // postings first: cross-connection FK cascades are not enforced

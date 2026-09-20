@@ -13,6 +13,7 @@ class FakeCategorySuggester : CategorySuggester {
         options: List<CategoryOption>,
         kind: ImportDirection,
         amount: String?,
+        context: String?,
     ): CategorySuggestion? {
         val words = text.lowercase().split(' ', ',', '.').filter { it.length >= 4 }
         val hit = options.firstOrNull { option ->
