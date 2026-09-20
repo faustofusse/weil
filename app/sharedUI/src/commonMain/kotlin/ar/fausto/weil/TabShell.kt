@@ -2,9 +2,14 @@
 
 package ar.fausto.weil
 
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,6 +60,15 @@ fun TabShell(
     BackHandler(enabled = current != AppTab.Home) { onSelect(AppTab.Home) }
     var barHeight by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
+    // Which way the new tab lies in the bar. The tabs are siblings, so a
+    // full slide would overstate the move — but a few pixels of drift in the
+    // direction your thumb just travelled is the difference between "the
+    // screen changed" and "I moved". Kept as plain state (not derived) so
+    // the value the transition reads is the one from *before* the swap.
+    var previous by remember { mutableStateOf(current) }
+    val forward = current.ordinal >= previous.ordinal
+    SideEffect { previous = current }
+    val drift = with(density) { TabDrift.roundToPx() }
     val spacer: @Composable () -> Unit = { Spacer(Modifier.height(barHeight)) }
     Box(modifier = Modifier.fillMaxSize()) {
         NavDisplay(
@@ -63,11 +78,9 @@ fun TabShell(
             // stack's.
             onBack = {},
             entryProvider = entryProvider { entries(spacer) },
-            // A cross-fade, not a slide: the tabs are siblings, so nothing
-            // should look like it came from a direction.
-            transitionSpec = { TabFade },
-            popTransitionSpec = { TabFade },
-            predictivePopTransitionSpec = { TabFade },
+            transitionSpec = { tabTransform(forward, drift) },
+            popTransitionSpec = { tabTransform(forward, drift) },
+            predictivePopTransitionSpec = { tabTransform(forward, drift) },
         )
         Box(
             modifier = Modifier
@@ -79,4 +92,30 @@ fun TabShell(
     }
 }
 
-private val TabFade = fadeIn(tween(180)) togetherWith fadeOut(tween(140))
+/**
+ * The outgoing tab leaves quickly and the incoming one is held back a beat,
+ * so the two never wash over each other at half opacity — a plain cross-fade
+ * on two dense pages of rows reads as a smear. What arrives also starts a
+ * hair small and a few pixels off-centre and settles: the scale is what
+ * makes it feel like the page came *forward* rather than simply appearing.
+ */
+private fun tabTransform(forward: Boolean, drift: Int) =
+    (
+        fadeIn(tween(220, delayMillis = 60, easing = Decelerate)) +
+            scaleIn(tween(320, delayMillis = 60, easing = Decelerate), initialScale = 0.975f) +
+            slideInHorizontally(tween(320, delayMillis = 60, easing = Decelerate)) {
+                if (forward) drift else -drift
+            }
+        ) togetherWith (
+        fadeOut(tween(110, easing = Accelerate)) +
+            scaleOut(tween(220, easing = Accelerate), targetScale = 0.99f) +
+            slideOutHorizontally(tween(220, easing = Accelerate)) {
+                if (forward) -drift / 2 else drift / 2
+            }
+        )
+
+/** Small enough to be felt rather than watched. */
+private val TabDrift = 16.dp
+
+private val Decelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+private val Accelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)

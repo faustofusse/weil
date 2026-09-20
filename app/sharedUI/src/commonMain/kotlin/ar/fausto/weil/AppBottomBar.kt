@@ -1,6 +1,10 @@
 package ar.fausto.weil
 
-import androidx.compose.foundation.border
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -22,9 +26,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -155,11 +161,20 @@ private fun TabItem(
     val selected = tab == current
     // Selection is weight and opacity only — on a colored bar an underline or
     // a pill reads as a second control sitting under the icon.
-    val color = if (selected) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.55f)
-    }
+    val ink = MaterialTheme.colorScheme.onPrimaryContainer
+    // Animated, because the content behind takes ~380 ms to settle: a tint
+    // that snapped was already done before the page it describes had moved.
+    val color by animateColorAsState(
+        if (selected) ink else ink.copy(alpha = 0.55f),
+        tween(220),
+    )
+    // The chosen icon lifts a little. A spring rather than a tween so it
+    // overshoots by a hair and lands — the bar is the thing you touched, and
+    // it should answer like something physical.
+    val scale by animateFloatAsState(
+        if (selected) 1.12f else 1f,
+        spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
+    )
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         // Equal shares of whatever is left beside the create button's gap,
@@ -172,7 +187,14 @@ private fun TabItem(
             ) { onSelect(tab) }
             .padding(vertical = 2.dp),
     ) {
-        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(24.dp))
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = color,
+            // Scaled, not resized: a size change would relayout the row and
+            // nudge every label beside it.
+            modifier = Modifier.size(24.dp).scale(scale),
+        )
         Spacer(Modifier.height(4.dp))
         Text(
             label,
