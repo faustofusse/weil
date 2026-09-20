@@ -140,6 +140,7 @@ fun SuggestDebugScreen(
             // same review screen the statement import uses, which is the one
             // place in the app allowed to write a transaction.
             val candidate = current.candidate()
+            item { Block("7 · candidato", candidateText(current, candidate), open = true) }
             item {
                 if (candidate == null) {
                     Text(
@@ -283,6 +284,25 @@ private fun decisionText(decision: AccountsResponse?): String {
     }
 }
 
+/**
+ * The row that would be written, and where each field came from. Without it
+ * the trace stops one step before the only thing that reaches the ledger, and
+ * a field that flips between the answer and the row has nowhere to show up.
+ */
+private fun candidateText(trace: SuggestTrace, candidate: ImportCandidate?): String {
+    if (candidate == null) return "sin importe — no hay candidato"
+    val split = candidate.splits.firstOrNull()
+    return buildString {
+        appendLine("direction:  ${candidate.direction}")
+        appendLine("  jev dijo: ${trace.decision?.direction?.path ?: "—"}")
+        appendLine("  gemini:   ${trace.read?.direction ?: "—"}")
+        appendLine("payee:      ${candidate.payee.ifBlank { "(vacío)" }}")
+        appendLine("monto:      ${split?.amountMinor} ${candidate.commodity}")
+        appendLine("cuenta:     ${candidate.accountPath ?: "(vacía → la por defecto)"}")
+        append("categoría:  ${split?.categoryPath ?: "(vacía → la por defecto)"}")
+    }
+}
+
 private fun round2(value: Double): String = ((value * 100).toInt() / 100.0).toString()
 
 /** The whole trace as one pasteable blob. */
@@ -293,5 +313,6 @@ private fun plainText(trace: SuggestTrace): String = buildString {
     appendLine("== recuperación =="); appendLine(retrievalText(trace)); appendLine()
     appendLine("== jev (debug) =="); appendLine(trace.decisionDebug ?: "—"); appendLine()
     appendLine("== decisión =="); appendLine(decisionText(trace.decision)); appendLine()
+    appendLine("== candidato =="); appendLine(candidateText(trace, trace.candidate())); appendLine()
     appendLine("tiempos: gemini ${trace.readMs} ms, device ${trace.retrievalMs} ms, jev ${trace.decisionMs} ms")
 }

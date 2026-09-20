@@ -321,10 +321,16 @@ fun ImportReviewScreen(
             // Matching runs against the local replica, so pull first: without
             // this, rows another device wrote minutes ago are invisible and
             // every one of them would be imported a second time.
-            try {
-                ledger.syncNow()
-            } catch (e: Throwable) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
+            //
+            // Skipped for a single suggested row: the path that produced it
+            // already read the ledger seconds ago, and a second full sync
+            // here is a visible stall between tapping and seeing the row.
+            if (source !is ReviewSource.Suggested) {
+                try {
+                    ledger.syncNow()
+                } catch (e: Throwable) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                }
             }
             // The two doors differ only in how the rows are obtained: the
             // worker reads a document, the device reads its own notification
