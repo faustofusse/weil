@@ -347,6 +347,33 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             ) { rows -> rows.mapNotNull { it.firstOrNull()?.toString() }.toSet() }
         }
 
+    /**
+     * Same question for many refs at once. One query instead of one per
+     * neighbour: the suggestion path asks this about every similar
+     * notification it found, and a round trip through the DB dispatcher per
+     * row is most of that step's time.
+     */
+    suspend fun transactionsForSources(
+        kind: EventSource,
+        refs: List<String>,
+    ): Map<String, List<String>> {
+        if (refs.isEmpty()) return emptyMap()
+        val inList = refs.joinToString(",") { "'" + it.replace("'", "''") + "'" }
+        return db.useForRead { d ->
+            d.query(
+                "select ref, transaction_id from transaction_sources" +
+                    " where kind = :kind and ref in ($inList)",
+                mapOf(":kind" to kind.db),
+            ) { rows ->
+                rows.filter { it.size >= 2 }.mapNotNull { row ->
+                    val ref = row[0]?.toString() ?: return@mapNotNull null
+                    val id = row[1]?.toString() ?: return@mapNotNull null
+                    ref to id
+                }.toList()
+            }.groupBy({ it.first }, { it.second })
+        }
+    }
+
     suspend fun sources(transactionId: String): List<StoredSource> = db.useForRead { d ->
         d.query(
             "select kind, ref, event_key, created_at from transaction_sources" +

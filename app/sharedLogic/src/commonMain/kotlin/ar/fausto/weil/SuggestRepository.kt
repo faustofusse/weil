@@ -12,6 +12,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.serializer
 import kotlinx.serialization.json.Json
@@ -107,28 +109,42 @@ class SuggestRepository(
             rawPayee = read.payee,
             direction = direction,
         )
-        val facts = ledger.reconcileFacts(item.postTime - WINDOW_MS, item.postTime + WINDOW_MS)
-        val outcome = matchEvent(event, facts)
-
-        // Neighbours are searched with the *plain* sentence the reader wrote,
-        // not with the bank's template: that is what makes the hits purchases
-        // instead of rows that share boilerplate.
-        val precedents = try {
-            embeddings.similarToText(read.normalized, EmbedKind.Notification, k = 6, exclude = id)
-        } catch (e: Throwable) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            emptyList()
-        }.map { neighbour ->
-            Precedent(
-                item = neighbour,
-                recordedIn = ledger.transactionsForSource(EventSource.Notification, neighbour.id).toList(),
-            )
+        // The ledger window is local and the neighbour search waits on a
+        // network call for the query vector, so they run side by side.
+        val (facts, neighbours) = coroutineScope {
+            val window = async {
+                ledger.reconcileFacts(item.postTime - WINDOW_MS, item.postTime + WINDOW_MS)
+            }
+            // Neighbours are searched with the *plain* sentence the reader
+            // wrote, not with the bank's template: that is what makes the hits
+            // purchases instead of rows that share boilerplate. Both tables in
+            // one call — the query vector is the expensive part, and it is the
+            // same vector for both.
+            val similar = async {
+                try {
+                    embeddings.similarToText(
+                        read.normalized,
+                        listOf(EmbedKind.Notification, EmbedKind.Transaction),
+                        k = 6,
+                        exclude = id,
+                    )
+                } catch (e: Throwable) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    emptyMap()
+                }
+            }
+            window.await() to similar.await()
         }
-        val similarTransactions = try {
-            embeddings.similarToText(read.normalized, EmbedKind.Transaction, k = 5)
-        } catch (e: Throwable) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            emptyList()
+        val outcome = matchEvent(event, facts)
+        val similarTransactions = neighbours[EmbedKind.Transaction].orEmpty()
+        val notificationNeighbours = neighbours[EmbedKind.Notification].orEmpty()
+        // One query for every neighbour instead of one per neighbour.
+        val linked = ledger.transactionsForSources(
+            EventSource.Notification,
+            notificationNeighbours.map { it.id },
+        )
+        val precedents = notificationNeighbours.map {
+            Precedent(item = it, recordedIn = linked[it.id].orEmpty())
         }
         val retrievalMs = epochMillis() - retrievalStarted
 

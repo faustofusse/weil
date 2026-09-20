@@ -283,28 +283,46 @@ class EmbeddingsRepository(
         into: EmbedKind,
         k: Int = 5,
         exclude: String? = null,
-    ): List<SimilarItem> {
-        if (text.isBlank()) return emptyList()
-        val vector = embedder.embed(listOf(text)).firstOrNull() ?: return emptyList()
+    ): List<SimilarItem> = similarToText(text, listOf(into), k, exclude)[into].orEmpty()
+
+    /**
+     * The same search over several tables, **embedding the query once**.
+     *
+     * The call is the expensive part by a wide margin (the scan is a few
+     * milliseconds over a few hundred rows), so asking for neighbouring
+     * notifications and neighbouring transactions separately was paying the
+     * network twice for one vector.
+     */
+    suspend fun similarToText(
+        text: String,
+        into: List<EmbedKind>,
+        k: Int = 5,
+        exclude: String? = null,
+    ): Map<EmbedKind, List<SimilarItem>> {
+        if (text.isBlank() || into.isEmpty()) return emptyMap()
+        val vector = embedder.embed(listOf(text)).firstOrNull() ?: return emptyMap()
+        val literal = vector.toVectorLiteral()
+        val want = k.coerceIn(1, 50)
         return db.useForRead { d ->
-            val want = k.coerceIn(1, 50)
-            val distances = d.query(
-                "select id, vector_distance_cos(embedding, vector32(:q)) as d from ${into.table}" +
-                    " where embedding is not null and embedding_model = :model and id <> :self" +
-                    " order by d limit $want",
-                mapOf(
-                    ":q" to vector.toVectorLiteral(),
-                    ":model" to embedder.tag,
-                    ":self" to (exclude ?: ""),
-                ),
-            ) { rows ->
-                rows.filter { it.size >= 2 }.mapNotNull { row ->
-                    val rowId = row[0]?.toString() ?: return@mapNotNull null
-                    val distance = (row[1] as? Number)?.toDouble() ?: return@mapNotNull null
-                    rowId to distance
-                }.toList()
+            into.associateWith { table ->
+                val distances = d.query(
+                    "select id, vector_distance_cos(embedding, vector32(:q)) as d from ${table.table}" +
+                        " where embedding is not null and embedding_model = :model and id <> :self" +
+                        " order by d limit $want",
+                    mapOf(
+                        ":q" to literal,
+                        ":model" to embedder.tag,
+                        ":self" to (exclude ?: ""),
+                    ),
+                ) { rows ->
+                    rows.filter { it.size >= 2 }.mapNotNull { row ->
+                        val rowId = row[0]?.toString() ?: return@mapNotNull null
+                        val distance = (row[1] as? Number)?.toDouble() ?: return@mapNotNull null
+                        rowId to distance
+                    }.toList()
+                }
+                hydrate(d, table, distances)
             }
-            hydrate(d, into, distances)
         }
     }
 
