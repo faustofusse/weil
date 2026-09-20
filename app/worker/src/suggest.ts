@@ -188,3 +188,217 @@ export async function handleSuggestCategory(request: Request, env: SuggestEnv): 
     ranked,
   });
 }
+
+// ------------------------------------------------- notification → accounts
+
+/**
+ * The none-of-these option for the account questions. Same reasoning as
+ * [NO_MATCH]: a sentence, not a sentinel string, and not "Otros" — which is a
+ * name a real account can have.
+ */
+export const NO_ACCOUNT = 'Ninguna de estas cuentas';
+
+export interface MessagePrecedent {
+  /** The similar message, plainly said. */
+  text: string;
+  /** How it ended up recorded, when it did. */
+  payee?: string;
+  from?: string;
+  to?: string;
+  when?: string;
+}
+
+export interface NearbyTransaction {
+  id: string;
+  label: string;
+}
+
+export interface AccountsBody {
+  message: { origin?: string; title?: string; text?: string; when?: string };
+  /** What the reader (message.ts) got out of the text. */
+  extracted?: Record<string, unknown>;
+  precedents?: MessagePrecedent[];
+  nearby?: NearbyTransaction[];
+  own?: SuggestOption[];
+  expense?: SuggestOption[];
+  income?: SuggestOption[];
+}
+
+const MESSAGE_CONTEXT =
+  'A push notification an Argentine user received from a bank or wallet app, already read by another model: `extracted` holds the amount, the direction and the merchant it found. `precedents` shows how similar notifications from the same app were recorded in this ledger before, which is usually the answer.';
+
+function accountChoice(
+  instructions: unknown,
+  options: SuggestOption[],
+  noneMeans: string
+): Record<string, unknown> {
+  const criteria: Record<string, string | null> = {};
+  for (const option of options) criteria[option.path] = null;
+  criteria[NO_ACCOUNT] = noneMeans;
+  return { type: 'choice', instructions, criteria };
+}
+
+/**
+ * Every question about one message, asked in one call. The speculative ones
+ * (the three category/destination branches) are answered whatever the
+ * direction turns out to be, and the caller keeps the one that applies:
+ * parallel evaluation makes them free in wall clock, and a second round trip
+ * from a phone would not be.
+ */
+export function messageQuestions(body: AccountsBody): Record<string, unknown> {
+  const own = (body.own ?? []).slice(0, MAX_OPTIONS);
+  const expense = (body.expense ?? []).slice(0, MAX_OPTIONS);
+  const income = (body.income ?? []).slice(0, MAX_OPTIONS);
+  const nearby = (body.nearby ?? []).slice(0, MAX_OPTIONS);
+
+  const questions: Record<string, unknown> = {
+    is_movement: {
+      type: 'noul',
+      instructions:
+        "Does `message` report a movement of the recipient's own money that already happened?",
+      criteria: {
+        true: 'Money actually left or entered one of their accounts: a payment, a charge, a transfer, a deposit, a withdrawal',
+        false: 'A promotion, an offer, a discount, a reminder, a due-date warning, a balance update, a login alert, or money someone else moved',
+      },
+    },
+    direction: {
+      type: 'choice',
+      instructions: "In `message`, which way did the money move, from the recipient's point of view?",
+      criteria: {
+        expense: 'They spent money: a purchase, a fee, a bill, a card charge',
+        income: 'They received money: salary, a refund, a transfer someone sent them, interest',
+        transfer:
+          'Money moved between two accounts they own: topping up a wallet, paying their own credit card, buying foreign currency. Nothing was spent or earned',
+      },
+    },
+  };
+
+  if (own.length > 0) {
+    questions.my_account = accountChoice(
+      {
+        question: "Which of the recipient's own accounts did the money leave from, or arrive in?",
+        context: MESSAGE_CONTEXT,
+        focus:
+          'the wallet, bank account or card the notification itself belongs to. The app that posted the notification is strong evidence: a Mercado Pago alert is about the Mercado Pago account unless it names a card.',
+      },
+      own,
+      'The message names no account of theirs, and the precedents do not settle it'
+    );
+    // Asked as its own question rather than folded into my_account: "where it
+    // left from" and "where it landed" are two plain questions, and one
+    // question split by a sign is where the model starts hedging.
+    questions.transfer_destination = accountChoice(
+      {
+        question:
+          "Assuming this is a transfer between two accounts the recipient owns, which account did the money ARRIVE in?",
+        context: MESSAGE_CONTEXT,
+        not_for: 'It is not the same account the money left, which is asked separately.',
+      },
+      own,
+      'This is not a transfer between their own accounts, or the destination is not one of these'
+    );
+  }
+
+  // The category questions are the ones the typing screen and the WhatsApp
+  // bot already ask. Same function, different context: one definition of
+  // "which category is this", improved in one place.
+  if (expense.length > 0) {
+    questions.expense_category = categoryQuestion(
+      { text: '', kind: 'expense', context: MESSAGE_CONTEXT, options: [] },
+      expense
+    );
+  }
+  if (income.length > 0) {
+    questions.income_category = categoryQuestion(
+      { text: '', kind: 'income', context: MESSAGE_CONTEXT, options: [] },
+      income
+    );
+  }
+
+  if (nearby.length > 0) {
+    const criteria: Record<string, string | null> = {};
+    for (const row of nearby) criteria[row.label] = null;
+    criteria[NO_MATCH_TX] = 'None of them is this movement';
+    questions.already_recorded = {
+      type: 'noul',
+      instructions:
+        'Is the movement in `message` already one of the transactions in `nearby_transactions`?',
+      criteria: {
+        true: 'The same movement — same amount, same counterparty, same account — is already in the ledger',
+        false: 'No row in `nearby_transactions` is this movement',
+      },
+    };
+    questions.duplicate_of = {
+      type: 'choice',
+      instructions:
+        'If the movement in `message` is already in `nearby_transactions`, which row is it?',
+      criteria,
+    };
+  }
+
+  return questions;
+}
+
+export const NO_MATCH_TX = 'Ninguna de estas transacciones';
+
+export function messageState(body: AccountsBody): Record<string, unknown> {
+  return {
+    message: body.message,
+    extracted: body.extracted ?? {},
+    precedents: body.precedents ?? [],
+    nearby_transactions: body.nearby ?? [],
+  };
+}
+
+/** One Choice answer, flattened for the app: path + how sure, plus the full
+ *  distribution so the screen can show the runner-up. */
+function flatten(answer: SystemOneAnswer | undefined, none: string) {
+  if (!answer || answer.type !== 'choice') return null;
+  const ranked = Object.entries(answer.probabilities ?? {})
+    .filter(([, p]) => p >= 0.02)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([path, probability]) => ({ path, probability }));
+  return {
+    // null is a real answer: "none of these fits".
+    path: answer.choice === none ? null : answer.choice,
+    confidence: answer.confidence ?? 0,
+    ranked,
+  };
+}
+
+/**
+ * `POST /suggest/accounts`. Reads nothing, writes nothing: the device sends
+ * the tree, the precedents it found with its own vectors and the ledger rows
+ * around the message, because all of that exists locally — including rows
+ * that have not synced yet, which the worker would never see.
+ */
+export async function handleSuggestAccounts(request: Request, env: SuggestEnv): Promise<Response> {
+  if (!env.TYPESAFE_API_KEY) return json({ error: 'suggestions not configured' }, 501);
+  const wantsDebug = new URL(request.url).searchParams.get('debug') === '1';
+
+  const body = (await request.json()) as AccountsBody;
+  const state = messageState(body);
+  const questions = messageQuestions(body);
+  const started = Date.now();
+  const answers = await systemOne(env, state, questions);
+  const latencyMs = Date.now() - started;
+
+  const noul = (key: string) => {
+    const answer = answers[key];
+    return answer && answer.type === 'noul' ? answer.noul : null;
+  };
+
+  return json({
+    isMovement: noul('is_movement'),
+    alreadyRecorded: noul('already_recorded'),
+    direction: flatten(answers.direction, ''),
+    myAccount: flatten(answers.my_account, NO_ACCOUNT),
+    transferDestination: flatten(answers.transfer_destination, NO_ACCOUNT),
+    expenseCategory: flatten(answers.expense_category, NO_MATCH),
+    incomeCategory: flatten(answers.income_category, NO_MATCH),
+    duplicateOf: flatten(answers.duplicate_of, NO_MATCH_TX),
+    latencyMs,
+    ...(wantsDebug ? { debug: { state, questions, answers } } : {}),
+  });
+}

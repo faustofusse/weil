@@ -269,6 +269,46 @@ class EmbeddingsRepository(
     }
 
     /**
+     * Nearest rows of [into] to an arbitrary [text].
+     *
+     * Unlike [similar] this one costs a call (the query vector has to be
+     * computed), and it is what makes "parecidos a esto *dicho de otro modo*"
+     * possible: the notification→transaction path searches with the plain
+     * sentence another model wrote ("compra en Coto con Mercado Pago") instead
+     * of the bank's template, so the neighbours are purchases and not rows
+     * that share boilerplate.
+     */
+    suspend fun similarToText(
+        text: String,
+        into: EmbedKind,
+        k: Int = 5,
+        exclude: String? = null,
+    ): List<SimilarItem> {
+        if (text.isBlank()) return emptyList()
+        val vector = embedder.embed(listOf(text)).firstOrNull() ?: return emptyList()
+        return db.useForRead { d ->
+            val want = k.coerceIn(1, 50)
+            val distances = d.query(
+                "select id, vector_distance_cos(embedding, vector32(:q)) as d from ${into.table}" +
+                    " where embedding is not null and embedding_model = :model and id <> :self" +
+                    " order by d limit $want",
+                mapOf(
+                    ":q" to vector.toVectorLiteral(),
+                    ":model" to embedder.tag,
+                    ":self" to (exclude ?: ""),
+                ),
+            ) { rows ->
+                rows.filter { it.size >= 2 }.mapNotNull { row ->
+                    val rowId = row[0]?.toString() ?: return@mapNotNull null
+                    val distance = (row[1] as? Number)?.toDouble() ?: return@mapNotNull null
+                    rowId to distance
+                }.toList()
+            }
+            hydrate(d, into, distances)
+        }
+    }
+
+    /**
      * How much the money argues *against* two rows being the same event, as a
      * number on the same scale as a cosine distance (0 = identical, 1 = as bad
      * as it gets).

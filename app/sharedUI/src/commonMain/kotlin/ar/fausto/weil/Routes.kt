@@ -18,6 +18,12 @@ object NotificationsRoute
 /** Texto completo de una notificación capturada, más sus parecidas. */
 data class NotificationDetailRoute(val id: String)
 
+/**
+ * The test bench for the notification→transaction path: runs the two model
+ * calls and shows everything they were given and answered. Writes nothing.
+ */
+data class SuggestDebugRoute(val id: String)
+
 object EmailsRoute
 
 data class EmailDetailRoute(val id: String)

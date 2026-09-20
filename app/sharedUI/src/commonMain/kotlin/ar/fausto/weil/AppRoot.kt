@@ -500,6 +500,14 @@ fun RootScreen(
                                         onNavigateBack = { pop() },
                                         onOpenNotification = { navigate(NotificationDetailRoute(it)) },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
+                                        onTrySuggestion = { navigate(SuggestDebugRoute(route.id)) },
+                                    )
+                                }
+                                entry<SuggestDebugRoute> { route ->
+                                    SuggestDebugScreen(
+                                        suggestions = graph.suggestions,
+                                        id = route.id,
+                                        onNavigateBack = { pop() },
                                     )
                                 }
                                 entry<ProfileRoute> { profileScreen(null) }

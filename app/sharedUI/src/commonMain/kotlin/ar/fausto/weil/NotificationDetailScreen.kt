@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +42,7 @@ import weil.app.sharedui.generated.resources.notifications_category
 import weil.app.sharedui.generated.resources.similar_link_done
 import weil.app.sharedui.generated.resources.similar_notifications
 import weil.app.sharedui.generated.resources.similar_transactions
+import weil.app.sharedui.generated.resources.suggest_debug_action
 
 /**
  * Vista completa de una notificación capturada, y sus parecidas.
@@ -60,6 +62,8 @@ fun NotificationDetailScreen(
     onNavigateBack: () -> Unit,
     onOpenNotification: (String) -> Unit,
     onOpenTransaction: (String) -> Unit,
+    /** Opens the suggestion test bench for this notification. */
+    onTrySuggestion: (() -> Unit)? = null,
 ) {
     var item by remember(id) { mutableStateOf<NotificationItem?>(null) }
     var loaded by remember(id) { mutableStateOf(false) }
@@ -86,6 +90,15 @@ fun NotificationDetailScreen(
             AppTopBar(
                 title = stringResource(Res.string.notification_detail_title),
                 onNavigateBack = onNavigateBack,
+                actions = {
+                    // A dry run of the notification→transaction path: it opens
+                    // the trace, never the ledger.
+                    onTrySuggestion?.let { open ->
+                        TextButton(onClick = open) {
+                            Text(stringResource(Res.string.suggest_debug_action))
+                        }
+                    }
+                },
             )
         },
     ) { innerPadding ->

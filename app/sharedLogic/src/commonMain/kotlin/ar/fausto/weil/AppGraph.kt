@@ -30,6 +30,8 @@ class AppGraph(
     // Same again: the live category guess in the quick-entry screen needs the
     // worker (and the TypeSafe key it holds).
     categorySuggester: CategorySuggester? = null,
+    // And again for the notification→transaction bench: two worker calls.
+    suggester: SuggestTracer? = null,
     dbContext: CoroutineContext,
     dbFactory: (userId: String, url: String, token: String) -> Database,
     // Optional higher-priority context for pure reads; defaults to dbContext
@@ -67,6 +69,10 @@ class AppGraph(
 
     /** Movements recognized in captured notifications and email receipts. */
     val ingest = IngestRepository(notifications, emails, accounts, ledger)
+
+    /** One captured message → a proposed transaction (Gemini reads, Jev picks). */
+    val suggestions: SuggestTracer =
+        suggester ?: SuggestRepository(notifications, accounts, ledger, embeddings, store)
     val scanner: QrScanner? get() = qrScannerProvider()
 
     /** Needs a foreground activity/controller, so it is resolved lazily. */

@@ -30,6 +30,8 @@ import org.jetbrains.skia.Image
  *                                                       its movements)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=categories (expense categories
  *     with their icons)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=suggest  (the notification→
+ *                                                         transaction bench)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=notification (captured
  *     notification + its neighbours by vector similarity)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=notifications (capture list)
@@ -70,6 +72,19 @@ fun main(args: Array<String>) {
         dbContext = jvmDbDispatcher,
         dbFactory = { _, _, _ -> FakeDatabase(dbFile) },
     )
+    // The bench's two model calls are canned; its retrieval half is real and
+    // runs against the seeded database, so it needs the graph's repositories.
+    val benched = AppGraph(
+        store = JvmSecureStore(storeFile, seedDevSession = true),
+        passkeys = { JvmDevPasskeys() },
+        qrScanner = { null },
+        importAnalyzer = FakeImportAnalyzer(),
+        embedder = FakeEmbedder(),
+        categorySuggester = FakeCategorySuggester(),
+        suggester = FakeSuggestTracer(graph.notifications, graph.ledger, graph.embeddings),
+        dbContext = jvmDbDispatcher,
+        dbFactory = { _, _, _ -> FakeDatabase(dbFile) },
+    )
 
     // The similarity sections render nothing until vectors exist, and the
     // harness has no one to tap "revectorizar": sweep up front.
@@ -96,7 +111,7 @@ fun main(args: Array<String>) {
             coroutineContext = Dispatchers.Swing,
         ) {
             RootScreen(
-                graph,
+                if (route == "suggest") benched else graph,
                 // Not a route: the create panel is an overlay over whatever
                 // root is showing.
                 openCreate = route == "new",
@@ -119,6 +134,7 @@ fun main(args: Array<String>) {
                     "inbox" -> InboxReviewRoute
                     "tx" -> TransactionDetailRoute("seed-tx-2")
                     "notification" -> NotificationDetailRoute("seed-notif-1")
+                    "suggest" -> SuggestDebugRoute("seed-notif-1")
                     "notifications" -> NotificationsRoute
                     "email" -> EmailDetailRoute("seed-email-1")
                     "emails" -> EmailsRoute

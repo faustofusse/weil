@@ -130,6 +130,13 @@ object Icons {
             "M9 17h6",
         )
 
+        /** Copy the whole trace out of the test screen. */
+        val ContentCopy: ImageVector = lineIcon(
+            "ContentCopy",
+            "M9 9h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z",
+            "M5 15H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1",
+        )
+
         /** Movements detected in notifications and mail. */
         val Bolt: ImageVector = lineIcon(
             "Bolt",

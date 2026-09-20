@@ -7,7 +7,8 @@ import { createClient, type Client } from '@libsql/client';
 import { parseEmail } from './email';
 import { handleEmbed } from './embed';
 import { authenticate, handleAnalyze, handleDocument, json } from './import';
-import { handleSuggestCategory } from './suggest';
+import { handleSuggestAccounts, handleSuggestCategory } from './suggest';
+import { handleReadMessage } from './message';
 import { handleInbound, handleLink, handleLinkStatus, handleUnlink } from './whatsapp';
 
 interface Env {
@@ -122,6 +123,25 @@ export default {
     }
 
     // ---- category suggestion while typing (cookie-authed, no DB read) ----
+    // ---- notification/email → transaction (cookie-authed, no DB read) ----
+    // Two calls, on purpose: between them the *device* runs the retrieval
+    // (vectors, ledger window, matcher) over rows the worker cannot see.
+    if (
+      request.method === 'POST' &&
+      (url.pathname === '/suggest/message' || url.pathname === '/suggest/accounts')
+    ) {
+      const user = await authenticate(request, env);
+      if (user instanceof Response) return user;
+      try {
+        return url.pathname === '/suggest/message'
+          ? await handleReadMessage(request, env)
+          : await handleSuggestAccounts(request, env);
+      } catch (e) {
+        console.error(`${url.pathname} failed:`, e);
+        return json({ error: e instanceof Error ? e.message : 'suggest failed' }, 502);
+      }
+    }
+
     if (request.method === 'POST' && url.pathname === '/suggest/category') {
       const user = await authenticate(request, env);
       if (user instanceof Response) return user;
