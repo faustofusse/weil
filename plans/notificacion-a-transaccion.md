@@ -435,6 +435,39 @@ Sin cambios de esquema, sin bump de `SCHEMA_VERSION`, sin barrido nuevo.
   `SCHEMA_VERSION`. Si más adelante se ve que la misma notificación se abre
   varias veces, se revisa.
 
+## Medido
+
+**Quién lee el mensaje (etapa 1).** Se probó GLM en Workers AI contra Gemini
+Flash Lite sobre la misma notificación («Pagaste $ 21.389 a Rappi»), los dos
+cronometrados **dentro del worker** para que la vara sea la misma:
+
+| corrida | glm-5.3-flash | gemini-3.5-flash-lite |
+| --- | --- | --- |
+| 1 | 544 ms | 1.079 ms |
+| 2 | 6.860 ms | 1.292 ms |
+| 3 | 11.419 ms | 1.213 ms |
+| 4 | 17.531 ms (el 4.7) | 2.423 ms |
+
+En contenido coinciden en todo lo que importa —movimiento, dirección, payee,
+cuenta, importe— salvo en `normalized`, donde GLM insiste en meter el importe
+(«Pagaste 21389.00 ARS a Rappi») aunque la descripción del campo diga que no
+puede llevar un solo dígito. Ese texto es el que se embebe para buscar
+parecidos, y un número adentro es ruido que los vectores ni siquiera pueden
+comparar: es el campo por el que existe esta tanda.
+
+Conclusión: **sigue Gemini**. Su mejor corrida le gana a Gemini por el doble,
+pero no se puede pedir la mejor corrida, y la variación de 544 ms a 17 s no
+es tolerable en la etapa que el usuario espera mirando la pantalla. El arnés
+queda: `SuggestRepository.ALT_READER` acepta cualquier modelo del catálogo y
+el bloque 3b lo imprime campo por campo contra Gemini, marcando las
+diferencias.
+
+**Dónde estaba el tiempo, entonces.** No en el modelo: en un `AI_GATEWAY` que
+nombra un gateway inexistente (401 en cada llamada antes de caer a Google), en
+dos llamadas a `/embed` que compraban el mismo vector dos veces, y en una
+sincronización completa del libro antes de mostrar una fila que salía de ese
+mismo libro.
+
 ## Preguntas abiertas
 
 - Umbrales: los de arriba son un punto de partida, no una medición. Antes de

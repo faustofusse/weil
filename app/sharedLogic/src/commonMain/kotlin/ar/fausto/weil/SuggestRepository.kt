@@ -76,15 +76,14 @@ class SuggestRepository(
         val readStarted = epochMillis()
         val readWire = try {
             postJson(
-                // compare=<model> asks the worker to read the same message
-                // with Workers AI beside Gemini. Only the bench does this; the
-                // candidate is still built from the Gemini reading.
-                //
-                // schema=0: glm-4.7-flash under json_schema returned the mould
-                // with nothing in it (17 s, every string empty, twice). A
-                // model that reasons out loud does better writing the object
-                // itself, and the parser digs it out of whatever it says.
-                "$baseUrl/suggest/message?debug=1&compare=$ALT_READER&schema=0",
+                // Set ALT_READER to run a second model beside Gemini and
+                // print both in the trace. Off by default: the two run in
+                // parallel, so the stage takes as long as the slower one, and
+                // the slower one was taking seventeen seconds.
+                buildString {
+                    append("$baseUrl/suggest/message?debug=1")
+                    ALT_READER?.let { append("&compare=$it&schema=0") }
+                },
                 ReadRequest(
                     origin = item.appName,
                     title = item.title,
@@ -275,8 +274,20 @@ class SuggestRepository(
     }
 
     private companion object {
-        /** The model being weighed against Gemini in the bench. */
-        const val ALT_READER = "@cf/zai-org/glm-5.3-flash"
+        /**
+         * A second reader to print beside Gemini, or null for none.
+         *
+         * Measured on the same Rappi notification, both timed inside the
+         * worker: `@cf/zai-org/glm-5.3-flash` answered in 544, 6.860 and
+         * 11.419 ms on three runs of the same two lines, against 1.079-1.292
+         * ms for Gemini Flash Lite every time. Its fastest run beat Gemini
+         * twice over, and there is no way to ask for the fastest run. It also
+         * kept writing the amount into `normalized`, which is the one field
+         * that must not carry digits: that text is embedded to find movements
+         * that read alike, and a number in it is noise the vectors cannot
+         * even compare.
+         */
+        val ALT_READER: String? = null
 
         const val TIMEOUT_MS = 90_000L
         const val WINDOW_MS = 20L * 60 * 60 * 1000
