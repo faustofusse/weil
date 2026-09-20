@@ -154,32 +154,69 @@ private fun Database.migrateLegacyTransactionsTable() {
     }
 
     execute(TRANSACTIONS_TABLE_SQL)
-    val legacyColumns = query("pragma table_info(ledger_transactions)", null) { rows ->
-        rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
-    }
-    // Columns [migrateSchema] adds after the fact. They exist on the old table
-    // only if that device got far enough, and an embedding is expensive to
-    // regenerate, so whatever is there is carried over.
-    val optional = listOf(
-        "source_document_id" to "text",
-        "time_known" to "integer not null default 1",
-        "embedding" to "F32_BLOB($EMBEDDING_DIMS)",
-        "embedding_model" to "text",
-    )
-    for ((column, type) in optional) {
+    val legacyColumns = legacyTransactionColumns()
+    // Nothing readable on the old table: leave it alone (dropping it would
+    // throw away rows we could not copy) and try again on the next open.
+    if (legacyColumns.isEmpty()) return
+    // The optional columns exist on the old table only if that device got far
+    // enough, and an embedding is expensive to regenerate, so whatever is
+    // there is carried over.
+    for ((column, type) in OPTIONAL_TRANSACTION_COLUMNS) {
         if (column in legacyColumns) addColumn("alter table transactions add column $column $type")
     }
-    val carried = (BASE_TRANSACTION_COLUMNS + optional.map { it.first })
+    val carried = (BASE_TRANSACTION_COLUMNS + OPTIONAL_TRANSACTION_COLUMNS.map { it.first })
         .filter { it in legacyColumns }
-        .joinToString(", ")
+    // Same reasoning one step later: a legacy table that shares no column
+    // with the new one is not something to copy from, and it is certainly
+    // not something to drop.
+    if (carried.isEmpty()) return
+    val columnList = carried.joinToString(", ")
     execute(
-        "insert or ignore into transactions($carried) select $carried from ledger_transactions",
+        "insert or ignore into transactions($columnList) select $columnList from ledger_transactions",
     )
     execute("drop table ledger_transactions")
 }
 
+/**
+ * Which of the columns we know about the legacy table actually has.
+ *
+ * `pragma table_info` first, because it is one query — but it cannot be
+ * trusted alone: on the sync engine it answers from local state and returned
+ * **nothing** for a table `sqlite_master` lists, on a fresh macOS install of
+ * an existing account. That produced `insert into transactions() select
+ * from ledger_transactions`, and the resulting `near ")": syntax error` came
+ * out of the database open, so every screen rendered empty behind it.
+ *
+ * The fallback asks the only authority that cannot be stale: prepare a select
+ * per candidate column and keep the ones that prepare. A dozen `limit 0`
+ * queries, run only on a database that still carries the old table.
+ */
+private fun Database.legacyTransactionColumns(): Set<String> {
+    val candidates = BASE_TRANSACTION_COLUMNS + OPTIONAL_TRANSACTION_COLUMNS.map { it.first }
+    val fromPragma = query("pragma table_info(ledger_transactions)", null) { rows ->
+        rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
+    }
+    if (fromPragma.isNotEmpty()) return fromPragma
+    return candidates.filterTo(mutableSetOf()) { column ->
+        try {
+            query("select $column from ledger_transactions limit 0", null) { it.count() }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+}
+
 private val BASE_TRANSACTION_COLUMNS = listOf(
     "id", "date", "payee", "note", "source_notification_id", "source_email_id", "created_at",
+)
+
+/** Columns [migrateSchema] adds after the fact; carried over when present. */
+private val OPTIONAL_TRANSACTION_COLUMNS = listOf(
+    "source_document_id" to "text",
+    "time_known" to "integer not null default 1",
+    "embedding" to "F32_BLOB($EMBEDDING_DIMS)",
+    "embedding_model" to "text",
 )
 
 /**
