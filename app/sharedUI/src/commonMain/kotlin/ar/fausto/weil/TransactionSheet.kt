@@ -3,6 +3,7 @@
 package ar.fausto.weil
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -12,6 +13,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -59,6 +62,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
@@ -68,6 +73,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import ar.fausto.weil.AccountType
 import ar.fausto.weil.AccountsRepository
@@ -128,6 +134,14 @@ fun TransactionSheet(
     // Back closes the panel instead of leaving the tab behind it: it is not
     // on the back stack, so nothing else would have answered.
     BackHandler(enabled = visible, onBack = onDismiss)
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    // Tracks a drag-to-dismiss offset on top of the enter/exit slide: the
+    // handle at the top of the panel is a real drag target, like any modal
+    // sheet, not just a decoration. Reset whenever the panel is (re)opened
+    // so a previous drag never leaks into the next appearance.
+    val dragOffset = remember { Animatable(0f) }
+    LaunchedEffect(visible) { if (visible) dragOffset.snapTo(0f) }
     Box(modifier = Modifier.fillMaxSize()) {
         // Dim only what stays visible (the header strip): the panel itself
         // covers everything else, so a full-screen scrim would just darken
@@ -184,13 +198,36 @@ fun TransactionSheet(
                     color = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     shape = RoundedCornerShape(topStart = BarCorner, topEnd = BarCorner),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset { IntOffset(0, dragOffset.value.roundToInt()) },
                 ) {
+                    val onSheetDrag: (Float) -> Unit = { delta ->
+                        scope.launch {
+                            dragOffset.snapTo((dragOffset.value + delta).coerceAtLeast(0f))
+                        }
+                    }
+                    val onSheetDragEnd: () -> Unit = {
+                        scope.launch {
+                            val thresholdPx = with(density) { DragDismissThreshold.toPx() }
+                            if (dragOffset.value > thresholdPx) {
+                                // Carry the panel the rest of the way off screen so the
+                                // exit doesn't jump back to zero before sliding out.
+                                val offscreenPx = with(density) { 1200.dp.toPx() }
+                                dragOffset.animateTo(offscreenPx, tween(SheetExitMs))
+                                onDismiss()
+                            } else {
+                                dragOffset.animateTo(0f, tween(200))
+                            }
+                        }
+                    }
                     TransactionSheetForm(
                         state = state,
                         onMore = onMore,
                         onSaved = onSaved,
                         suggester = suggester,
+                        onSheetDrag = onSheetDrag,
+                        onSheetDragEnd = onSheetDragEnd,
                     )
                 }
             }
@@ -203,6 +240,49 @@ private enum class SheetSide { From, To }
 
 private const val SheetEnterMs = 320
 private const val SheetExitMs = 220
+
+/** How far down the handle has to move before it counts as a dismiss. */
+private val DragDismissThreshold = 96.dp
+
+/**
+ * The grip at the top of the panel, dragged like any modal sheet's handle.
+ * The title next to it shares the same gesture ([sheetDrag]) so the whole
+ * header reads as grabbable, not just a 4dp sliver; "Ver más" stays out of
+ * it by being a sibling rather than nested inside the draggable area, so
+ * there is no gesture arbitration between a tap and a drag.
+ */
+@Composable
+private fun SheetDragHandle(onDrag: (Float) -> Unit, onDragEnd: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .sheetDrag(onDrag, onDragEnd)
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(width = 36.dp, height = 4.dp)
+                .background(
+                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.3f),
+                    RoundedCornerShape(2.dp),
+                ),
+        )
+    }
+}
+
+/** The vertical-drag detector [SheetDragHandle] and the title share. */
+private fun Modifier.sheetDrag(onDrag: (Float) -> Unit, onDragEnd: () -> Unit): Modifier =
+    pointerInput(Unit) {
+        detectVerticalDragGestures(
+            onVerticalDrag = { change, dragAmount ->
+                change.consume()
+                onDrag(dragAmount)
+            },
+            onDragEnd = onDragEnd,
+            onDragCancel = onDragEnd,
+        )
+    }
 
 /** Below this a description is not yet a word worth spending a call on. */
 private const val SuggestMinChars = 3
@@ -241,6 +321,8 @@ private fun TransactionSheetForm(
     onMore: () -> Unit,
     onSaved: () -> Unit,
     suggester: CategorySuggester? = null,
+    onSheetDrag: (Float) -> Unit = {},
+    onSheetDragEnd: () -> Unit = {},
 ) {
     val accounts = state.accounts
     val settings = state.settings
@@ -420,18 +502,22 @@ private fun TransactionSheetForm(
         onSaved()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp)
-            .padding(top = 12.dp, bottom = 20.dp),
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        SheetDragHandle(onDrag = onSheetDrag, onDragEnd = onSheetDragEnd)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 20.dp),
+        ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
                 stringResource(Res.string.sheet_new_title),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.inverseSurface,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .sheetDrag(onSheetDrag, onSheetDragEnd),
             )
             // "Ver más" instead of a close button: the panel already closes
             // by tapping the header above it or pressing back, and the thing
@@ -669,6 +755,7 @@ private fun TransactionSheetForm(
                 stringResource(Res.string.quick_record),
                 style = MaterialTheme.typography.titleMedium,
             )
+        }
         }
     }
 
