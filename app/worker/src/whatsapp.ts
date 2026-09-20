@@ -16,8 +16,11 @@
  */
 import type { Client } from '@libsql/client';
 import { geminiJson, json, loadAccounts, toMinor, type AuthedUser, type ImportEnv } from './import';
+import { suggestCategories, type ChatAccount } from './chat';
 
 export interface WhatsappEnv extends ImportEnv {
+  /** TypeSafe key: the fast path reads messages with a Choice, not a prompt. */
+  TYPESAFE_API_KEY?: string;
   /** Shared with the bridge; signs both directions. */
   BRIDGE_SECRET: string;
   /** Base URL of the bridge, for messages we start ourselves. */
@@ -304,7 +307,48 @@ const MESSAGE_SCHEMA = {
   required: ['understood', 'direction', 'payee', 'amount', 'commodity'],
 } as const;
 
+/**
+ * What the message means.
+ *
+ * Gemini reads the sentence — amount, direction, payee, accounts — because
+ * that is language: "veinte mil pesos", "1.234,56", "20k" and "pasé X de A a
+ * B" are not a regex's business.
+ *
+ * The **category** is decided separately by a TypeSafe Choice over the user's
+ * own tree (chat.ts), issued at the same time so it costs nothing in wall
+ * clock, and it wins when it answers: it can only name an account that
+ * exists, and it is the very question the typing screen asks. Gemini's guess
+ * stays in the prompt as the fallback for when that call fails, so a TypeSafe
+ * outage degrades the category and nothing else.
+ */
 async function interpret(
+  env: WhatsappEnv,
+  accounts: PostableAccountLike[],
+  text: string,
+  timestamp: number
+): Promise<ParsedMessage | null> {
+  const categories = env.TYPESAFE_API_KEY
+    ? suggestCategories({ TYPESAFE_API_KEY: env.TYPESAFE_API_KEY }, accounts as ChatAccount[], text).catch((e) => {
+        console.error('typesafe category failed, keeping gemini\'s:', e);
+        return null;
+      })
+    : Promise.resolve(null);
+
+  const [parsed, picked] = await Promise.all([
+    interpretWithGemini(env, accounts, text, timestamp),
+    categories,
+  ]);
+  if (!parsed) return null;
+  // A transfer's "category" is its destination account, which is not one of
+  // the options these questions were asked over.
+  if (picked && parsed.direction !== 'transfer') {
+    const chosen = parsed.direction === 'income' ? picked.income : picked.expense;
+    if (chosen) parsed.category = chosen;
+  }
+  return parsed;
+}
+
+async function interpretWithGemini(
   env: WhatsappEnv,
   accounts: PostableAccountLike[],
   text: string,

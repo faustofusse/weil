@@ -32,6 +32,7 @@ bun scripts/search.ts --like 54f47dca     # "más como este"; el id acepta prefi
 bun scripts/push.ts                       # dry run; --confirm escribe en la DB real
 bun scripts/probe.ts                      # ¿el prefiltro de moneda filtra de más?
 bun scripts/suggest.ts [texto]            # la sugerencia de categoría en vivo de la app
+bun scripts/chat.ts [texto]               # la categoría del bot de WhatsApp
 ```
 
 `suggest.ts` mide lo que hace `TransactionQuickScreen` mientras se tipea la
@@ -41,6 +42,23 @@ lo que sale publicado). Última corrida: 19/20 sobre una tabla es-AR, p50 313 ms
 p90 435 ms. El único error es «entradas boca» → `Comida:Restaurantes` con
 confianza 0,50: el nombre del club es también un sustantivo, y la confianza lo
 muestra (las que acierta están casi todas arriba de 0,9).
+
+`chat.ts` mide el otro lado del mismo truco: el bot de WhatsApp. Ahí el mensaje
+lo lee Gemini — monto, dirección, payee y cuentas son lenguaje, y un regex que
+decide si `12.500` son doce mil o doce con cincuenta es una heurística
+escondida en la cañería — y lo único que se le pregunta a Jev es la categoría,
+que no es lenguaje sino una elección dentro del árbol del usuario. Va con
+`Promise.all` **al lado** de la llamada a Gemini, así que no cuesta tiempo: se
+preguntan la de gasto y la de ingreso en paralelo y se usa la que corresponda a
+la dirección que devolvió el otro modelo. La pregunta es **la misma** que usa la
+pantalla de carga (`categoryQuestion`, importada de `suggest.ts`), así mejorar
+una mejora las dos.
+
+Última corrida: **16/17**, p50 305 ms. El único que no acierta es «plazo fijo
+15300», y no se equivoca: elige «ninguna de estas categorías» con confianza
+0,40, y entonces el worker se queda con lo que dijo Gemini. Los dos lectores se
+cubren entre sí — si TypeSafe se cae, se pierde la categoría mejor elegida y
+nada más.
 
 ## Cómo está guardado
 

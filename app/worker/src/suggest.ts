@@ -47,14 +47,57 @@ export interface SuggestBody {
   kind?: string;
   /** Formatted amount ("ARS 3.500"), when the user already typed one. */
   amount?: string;
+  /**
+   * Where the text came from, when it is not the quick-entry field. The chat
+   * reader (chat.ts) reuses this question over a WhatsApp line, which is the
+   * same judgement over prose of a different shape.
+   */
+  context?: string;
   options: SuggestOption[];
 }
 
-interface ChoiceAnswer {
+export interface ChoiceAnswer {
   type: 'choice';
   choice: string;
   probabilities: Record<string, number>;
   confidence: number;
+}
+
+export interface NoulAnswer {
+  type: 'noul';
+  noul: number;
+}
+
+export type SystemOneAnswer = ChoiceAnswer | NoulAnswer;
+
+/**
+ * One System One call. Every question in `questions` is answered in the same
+ * round trip and cannot see the others' answers, which is the point: asking
+ * six narrow questions together costs roughly one call, so speculative ones
+ * ("if this were a transfer, where did the money land?") are nearly free and
+ * the caller simply ignores the branches that did not apply.
+ *
+ * Throws on any non-2xx: callers decide whether that means "no suggestion"
+ * (the typing path) or "fall back to the other model" (the chat path).
+ */
+export async function systemOne(
+  env: SuggestEnv,
+  state: Record<string, unknown>,
+  questions: Record<string, unknown>
+): Promise<Record<string, SystemOneAnswer>> {
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${env.TYPESAFE_API_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ model: MODEL, state, questions }),
+  });
+  if (!res.ok) {
+    throw new Error(`typesafe: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { answers: Record<string, SystemOneAnswer> };
+  return data.answers;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -85,10 +128,11 @@ export function categoryQuestion(body: SuggestBody, options: SuggestOption[]) {
         ? "Which of the user's income accounts is this money coming from?"
         : "Which of the user's expense categories does this purchase belong to?",
       context:
+        body.context ??
         'A short free-form description the user is typing into a personal finance app in Argentina. It is in Spanish, informal, often two or three words, and frequently unfinished because they are still typing.',
       focus: income
         ? 'who or what paid: an employer, a client, a refund, interest, a gift.'
-        : 'the good or service bought, or the merchant named. An Argentine merchant name implies its trade (Coto and Dia are supermarkets, Rappi is delivery, YPF is fuel, Farmacity is a pharmacy).',
+        : 'the good or service bought, or the merchant named. An Argentine merchant name implies its trade (Coto and Dia are supermarkets, "el super" is any supermarket, Rappi is delivery, YPF is fuel, Farmacity is a pharmacy, Edesur and Metrogas and Aysa are utilities).',
       not_for:
         'Do not read the payment method as the category: "con mercado pago" says how it was paid, not what was bought.',
     },
@@ -109,28 +153,17 @@ export async function handleSuggestCategory(request: Request, env: SuggestEnv): 
   const options = (body.options ?? []).filter((o) => o?.id && o?.path).slice(0, MAX_OPTIONS);
   if (!text || options.length === 0) return json({ accountId: null, confidence: 0 });
 
-  const res = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${env.TYPESAFE_API_KEY}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      state: {
-        description: text,
-        ...(body.amount ? { amount: body.amount } : {}),
-      },
-      questions: { category: categoryQuestion(body, options) },
-    }),
-  });
-
-  if (!res.ok) {
-    return json({ error: `typesafe: ${res.status} ${(await res.text()).slice(0, 200)}` }, 502);
+  let answers: Record<string, SystemOneAnswer>;
+  try {
+    answers = await systemOne(
+      env,
+      { description: text, ...(body.amount ? { amount: body.amount } : {}) },
+      { category: categoryQuestion(body, options) }
+    );
+  } catch (e) {
+    return json({ error: e instanceof Error ? e.message : 'typesafe failed' }, 502);
   }
-
-  const data = (await res.json()) as { answers: { category: ChoiceAnswer } };
-  const answer = data.answers.category;
+  const answer = answers.category as ChoiceAnswer;
   const picked = options.find((o) => o.path === answer.choice);
 
   // Probabilities go back too: the picked one is what the UI acts on, but the
