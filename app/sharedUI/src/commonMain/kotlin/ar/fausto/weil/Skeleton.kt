@@ -47,44 +47,54 @@ private fun SkeletonBox(modifier: Modifier = Modifier) {
     )
 }
 
-/** Mirrors NotificationCard's layout. */
+/** Mirrors NotificationRow's layout: disc, two lines, hour on the right. */
 @Composable
 fun NotificationCardSkeleton() {
     Surface(
-        shape = RoundedCornerShape(GroupRadius),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(RowRadius),
+        color = rowTint(),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SkeletonBox(modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                SkeletonBox(modifier = Modifier.width(120.dp).height(16.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            SkeletonBox(modifier = Modifier.size(32.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                SkeletonBox(modifier = Modifier.fillMaxWidth(0.55f).height(14.dp))
+                Spacer(Modifier.height(6.dp))
+                SkeletonBox(modifier = Modifier.fillMaxWidth(0.85f).height(12.dp))
+                Spacer(Modifier.height(6.dp))
+                SkeletonBox(modifier = Modifier.width(80.dp).height(10.dp))
             }
-            Spacer(Modifier.height(8.dp))
-            SkeletonBox(modifier = Modifier.fillMaxWidth(0.85f).height(14.dp))
-            Spacer(Modifier.height(6.dp))
-            SkeletonBox(modifier = Modifier.fillMaxWidth(0.65f).height(14.dp))
-            Spacer(Modifier.height(8.dp))
-            SkeletonBox(modifier = Modifier.width(110.dp).height(11.dp))
+            Spacer(Modifier.width(12.dp))
+            SkeletonBox(modifier = Modifier.width(32.dp).height(10.dp))
         }
     }
 }
 
-/** Mirrors EmailCard's layout. */
+/** Mirrors EmailRow's layout: the same slab with one line less. */
 @Composable
 fun EmailCardSkeleton() {
     Surface(
-        shape = RoundedCornerShape(GroupRadius),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(RowRadius),
+        color = rowTint(),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            SkeletonBox(modifier = Modifier.fillMaxWidth(0.6f).height(16.dp))
-            Spacer(Modifier.height(4.dp))
-            SkeletonBox(modifier = Modifier.fillMaxWidth(0.9f).height(14.dp))
-            Spacer(Modifier.height(4.dp))
-            SkeletonBox(modifier = Modifier.width(110.dp).height(11.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            SkeletonBox(modifier = Modifier.size(32.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                SkeletonBox(modifier = Modifier.fillMaxWidth(0.8f).height(14.dp))
+                Spacer(Modifier.height(6.dp))
+                SkeletonBox(modifier = Modifier.fillMaxWidth(0.5f).height(12.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            SkeletonBox(modifier = Modifier.width(32.dp).height(10.dp))
         }
     }
 }

@@ -27,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -110,8 +111,8 @@ fun SimilarSection(
     }
 
     Surface(
-        shape = RoundedCornerShape(GroupRadius),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(RowRadius),
+        color = rowTint(),
         modifier = Modifier.fillMaxWidth(),
     ) {
         when {
@@ -162,7 +163,10 @@ fun SimilarSection(
                     if (index > 0) {
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            // On the tinted slab the old outline alpha was
+                            // invisible; this is the same ink as the slab,
+                            // one step stronger.
+                            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.12f),
                         )
                     }
                     SimilarRow(
@@ -195,7 +199,8 @@ private fun SimilarRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 item.title.censored().ifBlank { item.subtitle.censored() },
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -203,7 +208,7 @@ private fun SimilarRow(
                 Text(
                     item.subtitle.censored(),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

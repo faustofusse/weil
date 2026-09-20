@@ -257,6 +257,10 @@
     <string name="profile_session_title">Sesión</string>
 
     <!-- Notifications -->
+    <string name="notifications_title">Notificaciones</string>
+    <string name="notifications_count_line">%1$d de %2$d</string>
+    <string name="notifications_filter_all">Todas</string>
+    <string name="notifications_filter_movements">Movimientos</string>
     <string name="notifications_title_counts">Notificaciones (%1$d/%2$d)</string>
     <string name="notifications_potential_transactions">Posibles transacciones</string>
     <string name="notifications_access_granted">Acceso a notificaciones concedido</string>
@@ -267,6 +271,7 @@
     <string name="notifications_app_icon_content">Ícono de %1$s</string>
 
     <!-- Emails -->
+    <string name="emails_title">Correos</string>
     <string name="emails_title_count">Correos (%1$d)</string>
     <string name="emails_empty">Todavía no hay correos</string>
     <string name="emails_no_subject">(Sin asunto)</string>

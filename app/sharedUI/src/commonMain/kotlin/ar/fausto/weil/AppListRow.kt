@@ -45,7 +45,7 @@ internal fun AppListRow(
     subtitle: String? = null,
     titleColor: Color = Color.Unspecified,
     /** Overridden only to mark selection; the default is the shared tint. */
-    container: Color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.10f),
+    container: Color = rowTint(),
     /** Rename/icon/color/parent, the same gesture everywhere a row edits. */
     onLongClick: (() -> Unit)? = null,
     trailing: @Composable RowScope.() -> Unit = {},
@@ -55,7 +55,7 @@ internal fun AppListRow(
         modifier = modifier
             .fillMaxWidth()
             .padding(bottom = 10.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(RowRadius))
             // The tile slate at 10%: a tint of the same ink the account tiles
             // are made of, so the list belongs to them instead of introducing
             // a fourth grey. An outline would have been a fifth edge on a
@@ -97,3 +97,15 @@ internal fun AppListRow(
         trailing()
     }
 }
+
+/**
+ * The slab every list in the app is drawn on: the account tiles' slate at
+ * 10%, so a list belongs to them instead of introducing another grey. Shared
+ * (rather than re-typed per screen) because the notification and mail lists
+ * spent a redesign looking like a different app for exactly that reason.
+ */
+@Composable
+internal fun rowTint(): Color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.10f)
+
+/** Corner of that slab, and of anything that has to line up with one. */
+internal val RowRadius = 18.dp

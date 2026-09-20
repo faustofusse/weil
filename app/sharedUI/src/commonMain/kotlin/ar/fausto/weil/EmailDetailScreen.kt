@@ -13,14 +13,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
-import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.email_detail_from
 import weil.app.sharedui.generated.resources.email_detail_title
 import weil.app.sharedui.generated.resources.email_detail_to
@@ -70,14 +66,11 @@ fun EmailDetailScreen(
     val noSubject = stringResource(Res.string.emails_no_subject)
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.email_detail_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
-                    }
-                },
+            AppTopBar(
+                title = stringResource(Res.string.email_detail_title),
+                onNavigateBack = onNavigateBack,
                 actions = {
                     // The similar lists and the HTML body cannot share a
                     // column: HtmlView brings its own scrolling and must not
@@ -121,8 +114,8 @@ fun EmailDetailScreen(
                         .padding(16.dp),
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(GroupRadius),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = RoundedCornerShape(RowRadius),
+                        color = rowTint(),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -143,7 +136,8 @@ fun EmailDetailScreen(
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                formatTimestamp(current.receivedAt),
+                                dayLabel(dayGroup(current.receivedAt)) + " · " +
+                                    timeShort(current.receivedAt),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -201,8 +195,8 @@ fun EmailDetailScreen(
                         }
                     } else {
                     Surface(
-                        shape = RoundedCornerShape(GroupRadius),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = RoundedCornerShape(RowRadius),
+                        color = rowTint(),
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     ) {
                         val bodyHtml = current.bodyHtml
@@ -218,7 +212,10 @@ fun EmailDetailScreen(
                         } else {
                             HtmlView(
                                 html = rememberEmailDocument(bodyHtml.censored()),
-                                modifier = Modifier.fillMaxWidth(),
+                                // The web view draws to its own edges, so
+                                // without this the first letter of every line
+                                // sat under the slab's rounded corner.
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
                             )
                         }
                     }

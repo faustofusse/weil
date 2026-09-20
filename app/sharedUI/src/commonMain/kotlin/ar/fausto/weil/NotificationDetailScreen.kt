@@ -17,13 +17,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,11 +35,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
-import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.notification_detail_title
 import weil.app.sharedui.generated.resources.notifications_app_icon_content
 import weil.app.sharedui.generated.resources.notifications_category
-import weil.app.sharedui.generated.resources.notifications_time
 import weil.app.sharedui.generated.resources.similar_link_done
 import weil.app.sharedui.generated.resources.similar_notifications
 import weil.app.sharedui.generated.resources.similar_transactions
@@ -86,17 +81,11 @@ fun NotificationDetailScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.notification_detail_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            Icons.Filled.ArrowBack,
-                            contentDescription = stringResource(Res.string.action_back),
-                        )
-                    }
-                },
+            AppTopBar(
+                title = stringResource(Res.string.notification_detail_title),
+                onNavigateBack = onNavigateBack,
             )
         },
     ) { innerPadding ->
@@ -120,8 +109,8 @@ fun NotificationDetailScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
             Surface(
-                shape = RoundedCornerShape(GroupRadius),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = RoundedCornerShape(RowRadius),
+                color = rowTint(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -156,10 +145,10 @@ fun NotificationDetailScreen(
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        stringResource(
-                            Res.string.notifications_time,
-                            formatTimestamp(current.postTime),
-                        ),
+                        // "Miércoles, 16 de septiembre · 00:05" rather than
+                        // the raw epoch-shaped stamp: the same day language
+                        // the journal and the capture list are read in.
+                        dayLabel(dayGroup(current.postTime)) + " · " + timeShort(current.postTime),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

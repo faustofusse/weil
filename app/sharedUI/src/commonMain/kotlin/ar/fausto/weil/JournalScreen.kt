@@ -347,46 +347,13 @@ private fun MovementFilterBar(
     onSelect: (JournalFilter) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.secondary,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+    SegmentedSwitch(
+        options = JournalFilter.entries,
+        selected = current,
+        label = { filterTitle(it) },
+        onSelect = onSelect,
         modifier = modifier,
-    ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            JournalFilter.entries.forEach { option ->
-                val selected = option == current
-                Surface(
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.inverseSurface
-                    } else {
-                        Color.Transparent
-                    },
-                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fadeOnPress { onSelect(option) }
-                            .heightIn(min = 44.dp)
-                            .fillMaxWidth(),
-                    ) {
-                        Text(
-                            filterTitle(option),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (selected) {
-                                androidx.compose.ui.text.font.FontWeight.SemiBold
-                            } else {
-                                androidx.compose.ui.text.font.FontWeight.Normal
-                            },
-                        )
-                    }
-                }
-            }
-        }
-    }
+    )
 }
 
 // Plural, unlike the create panel's "Gasto": there this names the one

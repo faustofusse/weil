@@ -32,7 +32,9 @@ import org.jetbrains.skia.Image
  *     with their icons)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=notification (captured
  *     notification + its neighbours by vector similarity)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=notifications (capture list)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=email    (email detail)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=emails   (mail list)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=new      (the create panel,
  *     risen over Home)
  *
@@ -117,7 +119,9 @@ fun main(args: Array<String>) {
                     "inbox" -> InboxReviewRoute
                     "tx" -> TransactionDetailRoute("seed-tx-2")
                     "notification" -> NotificationDetailRoute("seed-notif-1")
+                    "notifications" -> NotificationsRoute
                     "email" -> EmailDetailRoute("seed-email-1")
+                    "emails" -> EmailsRoute
                     // Chain and WhatsApp sections call the worker, which the
                     // sandboxed session cannot reach: both render their error
                     // state here, the layout is still what ships.

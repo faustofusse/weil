@@ -1,8 +1,12 @@
 package ar.fausto.weil
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,19 +16,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,25 +34,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
-import weil.app.sharedui.generated.resources.action_back
-import weil.app.sharedui.generated.resources.action_sync
 import weil.app.sharedui.generated.resources.notifications_access_denied
-import weil.app.sharedui.generated.resources.notifications_access_granted
 import weil.app.sharedui.generated.resources.notifications_app_icon_content
-import weil.app.sharedui.generated.resources.notifications_category
+import weil.app.sharedui.generated.resources.notifications_count_line
+import weil.app.sharedui.generated.resources.notifications_filter_all
+import weil.app.sharedui.generated.resources.notifications_filter_movements
 import weil.app.sharedui.generated.resources.notifications_grant
-import weil.app.sharedui.generated.resources.notifications_time
-import weil.app.sharedui.generated.resources.notifications_title_counts
-import weil.app.sharedui.generated.resources.notifications_potential_transactions
+import weil.app.sharedui.generated.resources.notifications_title
 import weil.app.sharedui.generated.resources.sync_error
 
 // Enough rows to cover any screen height while loading; harmless past the
 // fold since this placeholder Column doesn't scroll.
 private const val NOTIFICATION_SKELETON_COUNT = 16
+
+/** The two views of the list, as the segmented control sees them. */
+private enum class NotificationFilter { All, Movements }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,90 +77,105 @@ fun NotificationsScreen(
             }
     }
 
-    val typography = MaterialTheme.typography
-    val colorScheme = MaterialTheme.colorScheme
     val shownCount = if (state.showOnlyTransactions) state.filteredCount else state.totalCount
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(Res.string.notifications_title_counts, shownCount, state.totalCount))
-                        Spacer(Modifier.width(8.dp))
-                        if (state.syncError != null) {
-                            Icon(
-                                imageVector = Icons.Filled.Warning,
-                                contentDescription = stringResource(Res.string.sync_error),
-                                tint = colorScheme.error,
-                                modifier = Modifier.padding(start = 4.dp),
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
-                    }
-                },
+            AppTopBar(
+                // The counts moved out of the title and into a line above the
+                // list: "Notificaciones (22/21383)" in the header's display
+                // size ellipsized on a phone, and the number is a footnote
+                // about the list, not the name of the screen.
+                title = stringResource(Res.string.notifications_title),
+                onNavigateBack = onNavigateBack,
                 actions = {
-                    IconButton(onClick = { state.sync() }, enabled = !state.isSyncing) {
-                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.action_sync))
+                    // No refresh button: pull-to-refresh covers it here as it
+                    // does on every other list in the app.
+                    if (state.syncError != null) {
+                        Icon(
+                            imageVector = Icons.Filled.Warning,
+                            contentDescription = stringResource(Res.string.sync_error),
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(end = 12.dp),
+                        )
                     }
                 },
             )
         },
     ) { innerPadding ->
-        PullToRefreshBox(
-            isRefreshing = state.pullRefreshing,
-            onRefresh = { state.sync() },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            NotificationAccessBanner()
+            SegmentedSwitch(
+                options = NotificationFilter.entries,
+                selected = if (state.showOnlyTransactions) {
+                    NotificationFilter.Movements
+                } else {
+                    NotificationFilter.All
+                },
+                label = {
+                    when (it) {
+                        NotificationFilter.All -> stringResource(Res.string.notifications_filter_all)
+                        NotificationFilter.Movements ->
+                            stringResource(Res.string.notifications_filter_movements)
+                    }
+                },
+                onSelect = {
+                    state.toggleShowOnlyTransactions(it == NotificationFilter.Movements)
+                },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            Text(
+                stringResource(Res.string.notifications_count_line, shownCount, state.totalCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 20.dp, bottom = 4.dp),
+            )
+            PullToRefreshBox(
+                isRefreshing = state.pullRefreshing,
+                onRefresh = { state.sync() },
+                modifier = Modifier.fillMaxSize().weight(1f),
             ) {
-                NotificationAccessBanner()
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(stringResource(Res.string.notifications_potential_transactions), style = typography.bodyMedium)
-                    Spacer(Modifier.width(8.dp))
-                    Switch(
-                        checked = state.showOnlyTransactions,
-                        onCheckedChange = { state.toggleShowOnlyTransactions(it) },
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
                 if (state.isInitialLoading && state.items.isEmpty()) {
-                    Column(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                         repeat(NOTIFICATION_SKELETON_COUNT) {
                             NotificationCardSkeleton()
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(10.dp))
                         }
                     }
                 } else {
-                    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                        items(state.items, key = { it.id }) { notificationItem ->
-                            NotificationCard(
-                                notificationItem = notificationItem,
-                                onClick = { onOpenNotification(notificationItem.id) },
-                            )
-                            Spacer(Modifier.height(8.dp))
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            bottom = 32.dp,
+                        ),
+                    ) {
+                        // Same day runs as the journal: a capture list is
+                        // read by "when did this arrive", and the timestamp
+                        // on every row was answering that 21.383 times.
+                        var previous: DayGroup? = null
+                        state.items.forEach { notificationItem ->
+                            val group = dayGroup(notificationItem.postTime)
+                            if (group != previous) {
+                                previous = group
+                                item(key = "day-${group.key}") { DayHeader(group, top = 8.dp) }
+                            }
+                            item(key = notificationItem.id) {
+                                NotificationRow(
+                                    notificationItem = notificationItem,
+                                    onClick = { onOpenNotification(notificationItem.id) },
+                                )
+                            }
                         }
-                        if (state.hasMore) {
+                        if (state.hasMore && state.isLoadingMore) {
                             item(key = "skeleton-footer") {
                                 Column {
-                                    if (state.isLoadingMore) {
-                                        NotificationCardSkeleton()
-                                        Spacer(Modifier.height(8.dp))
-                                        NotificationCardSkeleton()
-                                    }
+                                    NotificationCardSkeleton()
+                                    Spacer(Modifier.height(10.dp))
+                                    NotificationCardSkeleton()
                                 }
                             }
                         }
@@ -168,71 +186,115 @@ fun NotificationsScreen(
     }
 }
 
+/**
+ * Only shown while access is missing: once granted, the banner is a line of
+ * congratulation on top of every visit to a screen that is already visibly
+ * full of notifications.
+ */
 @Composable
 private fun NotificationAccessBanner() {
     val access = notificationAccess ?: return
     val granted by access.enabled.collectAsState()
+    if (granted) return
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(RowRadius))
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
     ) {
         Text(
-            text = stringResource(
-                if (granted) Res.string.notifications_access_granted
-                else Res.string.notifications_access_denied,
-            ),
+            text = stringResource(Res.string.notifications_access_denied),
             style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.weight(1f),
         )
-        if (!granted) {
-            TextButton(onClick = { access.openSettings() }) {
-                Text(stringResource(Res.string.notifications_grant))
-            }
+        TextButton(onClick = { access.openSettings() }) {
+            Text(stringResource(Res.string.notifications_grant))
         }
     }
 }
 
+/**
+ * The app's list slab, with the posting app's own icon in the disc: these
+ * rows are told apart by which app sent them long before by what they say,
+ * and that icon is the only thing on screen carrying the sender's brand.
+ */
 @Composable
-private fun NotificationCard(notificationItem: NotificationItem, onClick: () -> Unit) {
-    val typography = MaterialTheme.typography
-
-    Surface(
-        shape = RoundedCornerShape(GroupRadius),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+private fun NotificationRow(notificationItem: NotificationItem, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp)
+            .clip(RoundedCornerShape(RowRadius))
+            .background(rowTint())
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val bitmap = rememberIcon(notificationItem.appIcon)
-                if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap,
-                        contentDescription = stringResource(Res.string.notifications_app_icon_content, notificationItem.appName),
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(
-                    text = notificationItem.appName.censored(),
-                    style = typography.titleMedium,
-                    modifier = Modifier.weight(1f),
+        val bitmap = rememberIcon(notificationItem.appIcon)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(32.dp)
+                .background(MaterialTheme.colorScheme.background, CircleShape),
+        ) {
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = stringResource(
+                        Res.string.notifications_app_icon_content,
+                        notificationItem.appName,
+                    ),
+                    modifier = Modifier.size(20.dp),
+                )
+            } else {
+                Icon(
+                    Icons.Filled.Bolt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.inverseSurface,
+                    modifier = Modifier.size(18.dp),
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Text(text = notificationItem.title.censored(), style = typography.bodyMedium)
-            Text(text = notificationItem.text.censored(), style = typography.bodyMedium)
-            notificationItem.category?.let {
-                Text(
-                    text = stringResource(Res.string.notifications_category, it),
-                    style = typography.bodySmall,
-                )
-            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.weight(1f).padding(end = 10.dp),
+        ) {
             Text(
-                text = stringResource(Res.string.notifications_time, formatTimestamp(notificationItem.postTime)),
-                style = typography.bodySmall,
+                notificationItem.title.censored(),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                notificationItem.text.censored(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                // Two lines: bank notifications put the amount in the first
+                // and the card/account in the second, and one line hid the
+                // half that says whose money it was.
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                notificationItem.appName.censored(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+        Text(
+            timeShort(notificationItem.postTime),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
