@@ -1,9 +1,12 @@
 package ar.fausto.weil
 
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,27 +57,65 @@ class LedgerState(
         private set
     var error by mutableStateOf<String?>(null)
         private set
+    /** What the last database read returned; [recent] is this plus [pending]. */
+    private var storedRecent by mutableStateOf<List<Transaction>>(emptyList())
+    private var storedLeafTotals by mutableStateOf<Map<String, Map<String, Long>>>(emptyMap())
+
     /**
-     * id → subtree totals per commodity; the map includes leaf-only values
-     * for every node, rolled up from the postings of the whole subtree.
+     * Rows written from this device that the database reads haven't returned
+     * yet — see [record]. They are folded into [recent] and [leafTotals] so
+     * the ledger on screen is the ledger the user just changed, without
+     * waiting for the write (which queues behind whatever sync happens to be
+     * holding the single database thread).
+     *
+     * A pending row drops out the moment a read brings it back, not when the
+     * write returns: those are different instants, and dropping it on the
+     * write would let the row blink out until the next read.
      */
-    var totals by mutableStateOf<Map<String, Map<String, Long>>>(emptyMap())
-        private set
+    private var pending by mutableStateOf<List<Transaction>>(emptyList())
+    private val unseen: List<Transaction> by derivedStateOf {
+        if (pending.isEmpty()) emptyList()
+        else pending.filter { p -> storedRecent.none { it.id == p.id } }
+    }
+
     /**
      * id → that account's own postings only, no descendants. Diffing this
      * against [totals] is how a row knows whether the number it shows is a
      * subtree rollup (someone should say so) or the account's own balance.
      */
-    var leafTotals by mutableStateOf<Map<String, Map<String, Long>>>(emptyMap())
-        private set
+    val leafTotals: Map<String, Map<String, Long>> by derivedStateOf {
+        if (unseen.isEmpty()) return@derivedStateOf storedLeafTotals
+        val merged = storedLeafTotals.mapValues { (_, v) -> v.toMutableMap() }.toMutableMap()
+        for (tx in unseen) {
+            for (posting in tx.postings) {
+                val byCommodity = merged.getOrPut(posting.accountId) { mutableMapOf() }
+                byCommodity[posting.commodity] =
+                    (byCommodity[posting.commodity] ?: 0L) + posting.amountMinor
+            }
+        }
+        merged
+    }
+
+    /**
+     * id → subtree totals per commodity; the map includes leaf-only values
+     * for every node, rolled up from the postings of the whole subtree.
+     */
+    val totals: Map<String, Map<String, Long>> by derivedStateOf {
+        rollupSubtrees(tree, leafTotals)
+    }
+
     /**
      * Latest [RECENT_COUNT] transactions for Home's "recent" section. Lives
      * here, not in a screen-local `remember`, so it survives navigating away
      * and back: Home would otherwise dispose its composition and briefly
      * show nothing while it re-fetched.
      */
-    var recent by mutableStateOf<List<Transaction>>(emptyList())
-        private set
+    val recent: List<Transaction> by derivedStateOf {
+        if (unseen.isEmpty()) storedRecent
+        else (unseen + storedRecent)
+            .sortedWith(compareByDescending<Transaction> { it.date }.thenByDescending { it.id })
+            .take(RECENT_COUNT)
+    }
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     var loaded = false
@@ -123,10 +164,59 @@ class LedgerState(
         val newTree = accounts.tree()
         val leafs = ledger.leafBalances()
         tree = newTree
-        leafTotals = leafs
-        totals = rollupSubtrees(newTree, leafs)
+        storedLeafTotals = leafs
         defaultAccounts = settings.defaultAccounts()
-        recent = ledger.page(limit = RECENT_COUNT)
+        storedRecent = ledger.page(limit = RECENT_COUNT)
+    }
+
+    /**
+     * Records a transaction the way a local-first app should: the row is on
+     * screen before the database is touched.
+     *
+     * The write itself is local and quick, but every database call shares one
+     * thread (the Rust engine owns a single connection), so an insert issued
+     * while a `sync()` is in flight waits for it — seconds, on a slow network,
+     * with the form still open and spinning for a write that has nothing to
+     * do with the network. Here the postings are resolved synchronously (so a
+     * validation error is still immediate and the caller can keep the form
+     * open), the row joins [pending], and the insert happens in the
+     * background under the *same* id the UI is already showing.
+     *
+     * Throws [LedgerValidationException] for unbalanced or empty drafts.
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    fun record(
+        date: Long,
+        payee: String,
+        note: String?,
+        drafts: List<DraftPosting>,
+        timeKnown: Boolean = true,
+    ): String {
+        val txId = Uuid.random().toString()
+        val postings = resolvePostings(drafts).map { it.copy(transactionId = txId) }
+        pending = pending + Transaction(
+            id = txId,
+            date = date,
+            payee = payee,
+            note = note,
+            createdAt = epochMillis(),
+            postings = postings,
+            timeKnown = timeKnown,
+        )
+        scope.launch {
+            error = null
+            try {
+                ledger.add(date, payee, note, drafts, timeKnown, id = txId)
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                // The row never reached the database, so take it back off the
+                // screen rather than leave a transaction that only exists in
+                // this process.
+                pending = pending.filterNot { it.id == txId }
+                error = e.message ?: e.toString()
+            }
+        }
+        return txId
     }
 
     fun mutate(action: suspend () -> Unit) {
@@ -136,9 +226,7 @@ class LedgerState(
             try {
                 action()
                 tree = accounts.tree()
-                val leafs = ledger.leafBalances()
-                leafTotals = leafs
-                totals = rollupSubtrees(tree, leafs)
+                storedLeafTotals = ledger.leafBalances()
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()

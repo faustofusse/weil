@@ -31,8 +31,15 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         sources: List<TransactionSource> = emptyList(),
         /** Only the QR placeholder writes zero-amount postings; see [resolvePostings]. */
         allowZeroAmounts: Boolean = false,
+        /**
+         * Id to write under, when the caller already showed the row (the
+         * optimistic path in `LedgerState.record`): the row on screen and
+         * the row in the database must be the same one, or tapping it before
+         * the write lands opens a detail screen for an id that isn't there.
+         */
+        id: String? = null,
     ): String {
-        val txId = Uuid.random().toString()
+        val txId = id ?: Uuid.random().toString()
         val postings = resolvePostings(drafts, allowZero = allowZeroAmounts)
             .map { it.copy(transactionId = txId) }
         writeAtomically {

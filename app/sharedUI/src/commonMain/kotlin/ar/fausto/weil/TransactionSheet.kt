@@ -119,9 +119,7 @@ import weil.app.sharedui.generated.resources.sheet_suggestion_confidence
 @Composable
 fun TransactionSheet(
     visible: Boolean,
-    ledger: TransactionsRepository,
-    accounts: AccountsRepository,
-    settings: SettingsRepository,
+    state: LedgerState,
     onDismiss: () -> Unit,
     onSaved: () -> Unit,
     onMore: () -> Unit = onDismiss,
@@ -189,9 +187,7 @@ fun TransactionSheet(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     TransactionSheetForm(
-                        ledger = ledger,
-                        accounts = accounts,
-                        settings = settings,
+                        state = state,
                         onMore = onMore,
                         onSaved = onSaved,
                         suggester = suggester,
@@ -241,13 +237,13 @@ private fun routePath(path: String?): String? = path?.replace(":", " $ROUTE_ARRO
 
 @Composable
 private fun TransactionSheetForm(
-    ledger: TransactionsRepository,
-    accounts: AccountsRepository,
-    settings: SettingsRepository,
+    state: LedgerState,
     onMore: () -> Unit,
     onSaved: () -> Unit,
     suggester: CategorySuggester? = null,
 ) {
+    val accounts = state.accounts
+    val settings = state.settings
     var currentKind by remember { mutableStateOf(TxnKind.Expense) }
     val kindLabel = sheetKindTitle(currentKind)
     val accountLabel = stringResource(Res.string.quick_from_label)
@@ -273,7 +269,6 @@ private fun TransactionSheetForm(
     var paths by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var picking by remember { mutableStateOf<SheetSide?>(null) }
     var creatingCategory by remember { mutableStateOf(false) }
-    var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     // The guess stops for good once the user picks a category themselves.
     var categoryTouched by remember { mutableStateOf(false) }
@@ -284,7 +279,7 @@ private fun TransactionSheetForm(
 
     val money = Money.parse(amountText.trim(), Money.DEFAULT_COMMODITY)
     val amountValid = money != null && money.minorUnits > 0
-    val canRecord = !busy && amountValid && fromId != null && toId != null
+    val canRecord = amountValid && fromId != null && toId != null
 
     suspend fun reloadTree() {
         defaults = settings.defaultAccounts()
@@ -407,22 +402,22 @@ private fun TransactionSheetForm(
         val from = fromId ?: return
         val to = toId ?: return
         if (!canRecord) return
-        busy = true
         error = null
-        scope.launch {
-            try {
-                val drafts = listOf(
-                    DraftPosting(from, formatMinorUnits(-amount.minorUnits)),
-                    DraftPosting(to, formatMinorUnits(amount.minorUnits)),
-                )
-                ledger.add(epochMillis(), description.trim().ifBlank { kindLabel }, null, drafts)
-                onSaved()
-            } catch (e: Throwable) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                error = e.message ?: e.toString()
-                busy = false
-            }
+        val drafts = listOf(
+            DraftPosting(from, formatMinorUnits(-amount.minorUnits)),
+            DraftPosting(to, formatMinorUnits(amount.minorUnits)),
+        )
+        // Returns as soon as the row is on screen; the insert runs in the
+        // background (see LedgerState.record), so the panel closes on the
+        // tap instead of on the database. Only the synchronous half — the
+        // balance check — can still fail here, and that keeps the form open.
+        try {
+            state.record(epochMillis(), description.trim().ifBlank { kindLabel }, null, drafts)
+        } catch (e: LedgerValidationException) {
+            error = e.message ?: e.toString()
+            return
         }
+        onSaved()
     }
 
     Column(
@@ -669,14 +664,11 @@ private fun TransactionSheetForm(
                 // second surface rather than a button.
                 .heightIn(min = 52.dp),
         ) {
-            if (busy) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-            } else {
-                Text(
-                    stringResource(Res.string.quick_record),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
+            // No spinner state: recording no longer waits on the database.
+            Text(
+                stringResource(Res.string.quick_record),
+                style = MaterialTheme.typography.titleMedium,
+            )
         }
     }
 

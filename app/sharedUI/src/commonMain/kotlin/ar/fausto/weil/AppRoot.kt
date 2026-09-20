@@ -522,9 +522,7 @@ fun RootScreen(
                         if (loggedIn) {
                             TransactionSheet(
                                 visible = creating,
-                                ledger = graph.ledger,
-                                accounts = graph.accounts,
-                                settings = graph.settings,
+                                state = ledgerState,
                                 suggester = graph.categories,
                                 onDismiss = { creating = false },
                                 // "Ver más" hands the same intent to the full
@@ -536,8 +534,9 @@ fun RootScreen(
                                 },
                                 onSaved = {
                                     creating = false
-                                    // Whatever root is behind the panel shows
-                                    // the new row the moment it closes.
+                                    // The row is already on screen (the panel
+                                    // wrote it optimistically); these only
+                                    // reconcile with the server afterwards.
                                     ledgerState.refresh()
                                     journalState.refresh()
                                 },
