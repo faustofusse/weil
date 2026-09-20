@@ -43,7 +43,7 @@ enum class AppTab { Home, Movements, Categories, Profile }
 private val FabOverlap = 26.dp
 
 /** Extra air between the create button's slot and the tabs flanking it. */
-private val InnerTabGap = 26.dp
+private val InnerTabGap = 24.dp
 
 /**
  * Bottom navigation for the four root destinations **plus** the create
