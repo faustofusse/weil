@@ -259,6 +259,7 @@ fun ImportReviewScreen(
     source: ReviewSource,
     imports: DocumentAnalyzer,
     ingest: IngestRepository,
+    suggestionInbox: SuggestionsInboxRepository,
     ledger: TransactionsRepository,
     accounts: AccountsRepository,
     settings: SettingsRepository,
@@ -343,8 +344,19 @@ fun ImportReviewScreen(
                         CandidateDraft(it, EventSource.Document, result.docId)
                     }
                 }
-                ReviewSource.Inbox -> ingest.inbox().map {
-                    CandidateDraft(it.candidate, it.kind, it.ref, it.title)
+                ReviewSource.Inbox -> {
+                    // Two doors into the same list: the runs the listener
+                    // recorded silently as notifications arrived, and the
+                    // allowlist templates as the net under them (offline
+                    // captures, failed runs). A notification both caught is
+                    // shown once, with the recorded candidate — it is the one
+                    // that carries the account and the category.
+                    val recorded = suggestionInbox.pending()
+                    val recordedRefs = recorded.mapTo(HashSet()) { it.ref }
+                    val templated = ingest.inbox().filter { it.ref !in recordedRefs }
+                    (recorded + templated).map {
+                        CandidateDraft(it.candidate, it.kind, it.ref, it.title)
+                    }
                 }
                 is ReviewSource.Suggested -> listOf(
                     CandidateDraft(source.candidate, source.kind, source.ref, source.title),

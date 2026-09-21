@@ -136,15 +136,16 @@ class NotificationsRepository(private val db: DatabaseProvider) {
         category: String?,
         postTime: Long,
         app: AppInfo?,
-    ) {
+    ): String {
         val now = epochMillis()
+        val id = Uuid.random().toString()
         db.use { d ->
             if (app != null) upsertApplication(d, app, now)
             d.execute(
                 "insert into notifications(id, package_name, title, text, category, post_time, received_at)" +
                     " values(:id, :package_name, :title, :text, :category, :post_time, :received_at)",
                 buildMap {
-                    put(":id", Uuid.random().toString())
+                    put(":id", id)
                     put(":package_name", packageName)
                     put(":title", title)
                     put(":text", text)
@@ -156,6 +157,7 @@ class NotificationsRepository(private val db: DatabaseProvider) {
         }
         changes.tryEmit(Unit)
         scheduleSync()
+        return id
     }
 
     private suspend fun scheduleSync() {

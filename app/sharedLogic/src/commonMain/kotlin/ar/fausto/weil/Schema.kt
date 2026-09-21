@@ -82,7 +82,24 @@ const val SCHEMA_SQL =
     "create table if not exists settings(" +
     "key text primary key not null," +
     "value text not null," +
-    "updated_at integer not null);"
+    "updated_at integer not null);" +
+    // Silent suggestions: when a notification arrives, the suggest pipeline
+    // (read → retrieval → Jev) runs in the background and parks its proposed
+    // ImportCandidate here as JSON — no banner, no sound. The inbox screen
+    // offers them next to the template-parsed ones; approving writes the
+    // usual transaction_sources row, which is what retires the suggestion.
+    // `unique(kind, ref)` is the idempotency: a reposted alert is re-read but
+    // never stored twice. `event_key` dedupes across doors (the same purchase
+    // arriving as a push on two devices, or already written by the bot).
+    "create table if not exists suggestions(" +
+    "id text primary key not null," +
+    "kind text not null," +
+    "ref text not null," +
+    "event_key text not null," +
+    "candidate text not null," +
+    "created_at integer not null," +
+    "unique(kind, ref));" +
+    "create index if not exists idx_suggestions_created on suggestions(created_at desc);"
 
 /**
  * Bumped whenever [SCHEMA_SQL] or [migrateSchema] changes shape. Stamped into
@@ -96,7 +113,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 11L
+private const val SCHEMA_VERSION = 12L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
