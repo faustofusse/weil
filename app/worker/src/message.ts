@@ -147,7 +147,35 @@ function liteFirst(env: ImportEnv): ImportEnv {
  * of it: the candidate is still built from the Gemini reading until the
  * numbers say otherwise.
  */
-export const GLM_MODEL = '@cf/zai-org/glm-4.7-flash';
+export const GLM_MODEL = '@cf/zai-org/glm-5.3-flash';
+
+/**
+ * The readers, in the order they are tried.
+ *
+ * Both go through the account's AI Gateway (`env.AI.run` with a gateway id),
+ * which buys one bill, a cache and a log of every call, and costs about a
+ * second against calling Google directly — an acceptable trade on a step the
+ * user has already chosen to wait for.
+ *
+ * The second one is a real fallback, not a gesture: measured on sixteen real
+ * captures (`prueba-jev/scripts/readers.ts`), glm-5.3-flash reads all of them
+ * correctly in 2,5 s at p50, against 855 ms for Flash Lite. Worth having on
+ * the day Google answers 503, which it does.
+ */
+export const READERS = ['google/gemini-3.5-flash-lite', GLM_MODEL];
+
+/**
+ * Every one of these models reasons out loud before answering, and that is
+ * where their seconds and their tokens go: with it on, glm-5.3 took 8,7 s and
+ * missed one in sixteen, kimi 33 s and missed thirteen. There is no portable
+ * switch — each family spells it differently and the endpoint forwards what
+ * it does not recognize — so all three spellings go together.
+ */
+const NO_THINKING = {
+  thinking: { type: 'disabled' },
+  chat_template_kwargs: { thinking: false },
+  reasoning_effort: 'low',
+} as const;
 
 /** JSON Schema (not Gemini's OpenAPI dialect) for the Workers AI reader. */
 const JSON_SCHEMA = {
@@ -286,13 +314,51 @@ export async function readMessageWithGlm(
   }
 }
 
+/** An answer is only an answer if it carries the fields that were asked for. */
+function usable(reading: ReadMessage | null): reading is ReadMessage {
+  return reading != null && typeof reading.isMovement === 'boolean';
+}
+
 export async function readMessage(
   env: ImportEnv,
   body: MessageBody,
-  debug?: GeminiDebug
+  debug?: GeminiDebug,
+  ai?: Ai
 ): Promise<ReadMessage> {
-  const promptText = messagePrompt(body);
-  return geminiJson<ReadMessage>(liteFirst(env), [{ text: promptText }], SCHEMA, debug);
+  const promptText = `${messagePrompt(body)}\n\nAnswer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount (a string like "21389.00"), commodity, account, note, normalized.`;
+  if (debug) debug.request = { prompt: promptText };
+
+  if (ai) {
+    for (const model of READERS) {
+      const started = Date.now();
+      try {
+        const result = (await ai.run(
+          model as never,
+          { messages: [{ role: 'user', content: promptText }], max_tokens: 1200, ...NO_THINKING } as never,
+          env.AI_GATEWAY ? ({ gateway: { id: env.AI_GATEWAY } } as never) : undefined
+        )) as unknown;
+        const raw = contentOf(result);
+        const reading = extractJson(raw);
+        if (usable(reading)) {
+          if (debug) {
+            debug.model = model;
+            debug.rawText = raw;
+            debug.latencyMs = Date.now() - started;
+            debug.viaGateway = env.AI_GATEWAY != null;
+          }
+          return reading;
+        }
+        console.log(`reader ${model}: unusable answer, trying next`);
+      } catch (e) {
+        console.log(`reader ${model} failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  }
+
+  // Last resort: Google directly, with its own structured output, which is
+  // the path this feature shipped on. Keeps the feature alive when the
+  // binding or the gateway is the thing that is down.
+  return geminiJson<ReadMessage>(liteFirst(env), [{ text: messagePrompt(body) }], SCHEMA, debug);
 }
 
 /**
@@ -321,7 +387,7 @@ export async function handleReadMessage(
   // Side by side, so the comparison costs one wall clock instead of two and
   // both models see the exact same prompt.
   const [read, alt] = await Promise.all([
-    readMessage(env, body, debug),
+    readMessage(env, body, debug, ai),
     wantsAlt
       ? readMessageWithGlm(ai, body, altModel, params.get('schema') !== '0', env.AI_GATEWAY)
       : Promise.resolve(undefined),
