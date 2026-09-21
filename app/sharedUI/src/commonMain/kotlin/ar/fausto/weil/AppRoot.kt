@@ -561,7 +561,7 @@ fun RootScreen(
                                         id = route.id,
                                         onNavigateBack = { pop() },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
-                                        onTrySuggestion = { navigate(SuggestDebugRoute(route.id)) },
+                                        onTrySuggestion = { navigate(SuggestSourcesRoute(route.id)) },
                                     )
                                 }
                                 entry<SuggestSourcesRoute> { route ->
