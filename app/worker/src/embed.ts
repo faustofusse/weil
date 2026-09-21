@@ -12,11 +12,25 @@ export interface EmbedEnv {
   ACCOUNT_ID: string;
   AI_GATEWAY: string;
   GEMINI_API_KEY: string;
+  AI?: Ai;
 }
 
-/** Must match `EMBEDDING_MODEL` / `EMBEDDING_DIMS` in EmbeddingsRepository.kt. */
-export const EMBED_MODEL = 'gemini-embedding-001';
+/**
+ * Must match `EMBEDDING_MODEL` / `EMBEDDING_DIMS` in EmbeddingsRepository.kt.
+ *
+ * Measured against gemini-embedding-001 over 167 of the user's own messages
+ * (`prueba-jev/data/embeddings.md`): the same 92% at three neighbours on the
+ * question that matters — does a movement retrieve movements of the same
+ * merchant — in 164 ms instead of 604, at a fifteenth of the price. The two
+ * points it gives up at one neighbour are one case out of fifty-two, and both
+ * models miss the same five, all of them messages that never name the
+ * merchant.
+ */
+export const EMBED_MODEL = '@cf/google/embeddinggemma-300m';
 export const EMBED_DIMS = 512;
+
+/** What the fallback produces, tagged apart so the two are never compared. */
+export const FALLBACK_MODEL = 'gemini-embedding-001';
 
 /** One request's worth of texts; the app already batches to ~100. */
 const MAX_TEXTS = 128;
@@ -48,13 +62,28 @@ function normalize(v: number[]): number[] {
  * one embedding model, and a different one would invalidate every stored
  * vector).
  */
-export async function embedTexts(env: EmbedEnv, texts: string[]): Promise<number[][]> {
-  if (texts.length === 0) return [];
-  const path = `v1beta/models/${EMBED_MODEL}:batchEmbedContents`;
+async function embedWithGemma(ai: Ai, env: EmbedEnv, texts: string[]): Promise<number[][]> {
+  const result = (await ai.run(
+    EMBED_MODEL as never,
+    { text: texts.map((t) => t.slice(0, MAX_CHARS)) } as never,
+    env.AI_GATEWAY ? ({ gateway: { id: env.AI_GATEWAY } } as never) : undefined
+  )) as { data?: number[][] };
+  const vectors = result?.data ?? [];
+  if (vectors.length !== texts.length) {
+    throw new Error(`gemma: asked ${texts.length} texts, got ${vectors.length} vectors`);
+  }
+  // Gemma is Matryoshka-trained, so the first 512 of its 768 numbers are a
+  // vector on their own — which is how this model change leaves F32_BLOB(512)
+  // and SCHEMA_VERSION alone. Truncating denormalizes; cosine notices.
+  return vectors.map((v) => normalize(v.slice(0, EMBED_DIMS)));
+}
+
+async function embedWithGemini(env: EmbedEnv, texts: string[]): Promise<number[][]> {
+  const path = `v1beta/models/${FALLBACK_MODEL}:batchEmbedContents`;
   const headers = { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' };
   const body = JSON.stringify({
     requests: texts.map((text) => ({
-      model: `models/${EMBED_MODEL}`,
+      model: `models/${FALLBACK_MODEL}`,
       content: { parts: [{ text: text.slice(0, MAX_CHARS) }] },
       outputDimensionality: EMBED_DIMS,
     })),
@@ -86,6 +115,37 @@ export async function embedTexts(env: EmbedEnv, texts: string[]): Promise<number
 }
 
 /** `POST /embed` — `{ texts: string[] }` → `{ model, dims, vectors }`. */
+/**
+ * Gemma through the gateway, Gemini behind it.
+ *
+ * A fallback is a harder call here than for the reader: vectors from two
+ * models mean nothing to each other, so falling back writes rows that cannot
+ * be compared with the rest. That is safe only because the answer carries
+ * which model produced it and the app stores it in `embedding_model`, filters
+ * every query by it, and re-embeds whatever does not match. A failed batch
+ * costs a re-embed, not a wrong neighbour.
+ */
+export async function embedTexts(
+  env: EmbedEnv,
+  texts: string[]
+): Promise<{ vectors: number[][]; model: string }> {
+  if (texts.length === 0) return { vectors: [], model: `${EMBED_MODEL}/${EMBED_DIMS}` };
+  if (env.AI) {
+    try {
+      return {
+        vectors: await embedWithGemma(env.AI, env, texts),
+        model: `${EMBED_MODEL}/${EMBED_DIMS}`,
+      };
+    } catch (e) {
+      console.log(`embed via gemma failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return {
+    vectors: await embedWithGemini(env, texts),
+    model: `${FALLBACK_MODEL}/${EMBED_DIMS}`,
+  };
+}
+
 export async function handleEmbed(request: Request, env: EmbedEnv): Promise<Response> {
   let payload: { texts?: unknown };
   try {
@@ -100,8 +160,8 @@ export async function handleEmbed(request: Request, env: EmbedEnv): Promise<Resp
   if (texts.length > MAX_TEXTS) {
     return jsonResponse({ error: `at most ${MAX_TEXTS} texts per request` }, 400);
   }
-  const vectors = await embedTexts(env, texts as string[]);
-  return jsonResponse({ model: `${EMBED_MODEL}/${EMBED_DIMS}`, dims: EMBED_DIMS, vectors });
+  const { vectors, model } = await embedTexts(env, texts as string[]);
+  return jsonResponse({ model, dims: EMBED_DIMS, vectors });
 }
 
 function jsonResponse(payload: unknown, status = 200): Response {

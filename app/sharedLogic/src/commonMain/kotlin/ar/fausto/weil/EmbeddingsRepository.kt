@@ -42,7 +42,7 @@ import kotlin.math.ln
  */
 
 /** Must match `EMBED_MODEL`/`EMBED_DIMS` in `app/worker/src/embed.ts`. */
-const val EMBEDDING_MODEL = "gemini-embedding-001"
+const val EMBEDDING_MODEL = "@cf/google/embeddinggemma-300m"
 const val EMBEDDING_DIMS = 512
 
 /**
