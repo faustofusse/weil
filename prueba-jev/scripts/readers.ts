@@ -377,10 +377,10 @@ async function measureJev() {
     await client.systemOne({
       state: { message: { origin: 'Mercado Pago', title: 'Pagaste $ 21.389 a Rappi' } } as never,
       questions: {
-        account: choice({
-          instructions: 'Which account of the person who received this notification did the money leave from?',
+        account: choice(
+          'Which account of the person who received this notification did the money leave from?',
           criteria,
-        }),
+        ),
       },
     });
     latencies.push(Date.now() - started);
