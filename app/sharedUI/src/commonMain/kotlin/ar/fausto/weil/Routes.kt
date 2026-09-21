@@ -24,6 +24,10 @@ data class NotificationDetailRoute(val id: String)
  */
 data class SuggestDebugRoute(val id: String)
 
+/** The suggestion's sources: the raw vector neighbours of one captured
+ * notification, with the button that runs the pipeline and opens the trace. */
+data class SuggestSourcesRoute(val id: String)
+
 /** The end of that path: the proposed row, ready to review and record. */
 data class SuggestedReviewRoute(
     val candidate: ImportCandidate,

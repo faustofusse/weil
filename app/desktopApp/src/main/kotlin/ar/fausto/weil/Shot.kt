@@ -32,10 +32,12 @@ import org.jetbrains.skia.Image
  *                                                       its movements)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=categories (expense categories
  *     with their icons)
- *   ./gradlew :app:desktopApp:shot -Pshot.route=suggest  (the notification→
- *                                                         transaction bench)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=suggest  (the suggestion's
+ *     sources: vector neighbours + the run button)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=suggest-trace (the pipeline
+ *     trace for that same notification)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=notification (captured
- *     notification + its neighbours by vector similarity)
+ *     notification + its related transactions)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=notifications (capture list)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=email    (email detail)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=emails   (mail list)
@@ -149,7 +151,8 @@ fun main(args: Array<String>) {
                     "tx" -> TransactionDetailRoute("seed-tx-2")
                     "document" -> DocumentRoute("seed-doc-x")
                     "notification" -> NotificationDetailRoute("seed-notif-1")
-                    "suggest" -> SuggestDebugRoute("seed-notif-1")
+                    "suggest" -> SuggestSourcesRoute("seed-notif-1")
+                    "suggest-trace" -> SuggestDebugRoute("seed-notif-1")
                     "notifications" -> NotificationsRoute
                     "email" -> EmailDetailRoute("seed-email-1")
                     "emails" -> EmailsRoute

@@ -564,15 +564,23 @@ fun RootScreen(
                                         onTrySuggestion = { navigate(SuggestDebugRoute(route.id)) },
                                     )
                                 }
+                                entry<SuggestSourcesRoute> { route ->
+                                    SuggestSourcesScreen(
+                                        embeddings = graph.embeddings,
+                                        ledger = graph.ledger,
+                                        id = route.id,
+                                        onNavigateBack = { pop() },
+                                        onTrySuggestion = { navigate(SuggestDebugRoute(route.id)) },
+                                        onOpenNotification = { navigate(NotificationDetailRoute(it)) },
+                                        onOpenEmail = { navigate(EmailDetailRoute(it)) },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
+                                    )
+                                }
                                 entry<SuggestDebugRoute> { route ->
                                     SuggestDebugScreen(
                                         state = suggestDebugState,
                                         id = route.id,
-                                        embeddings = graph.embeddings,
-                                        ledger = graph.ledger,
                                         onNavigateBack = { pop() },
-                                        onOpenNotification = { navigate(NotificationDetailRoute(it)) },
-                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                         onReview = { candidate ->
                                             navigate(
                                                 SuggestedReviewRoute(

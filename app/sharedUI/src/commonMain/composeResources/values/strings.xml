@@ -438,6 +438,7 @@
 
     <!-- Detalle de notificación -->
     <string name="notification_detail_title">Notificación</string>
+    <string name="suggest_sources_title">Fuentes</string>
     <string name="suggest_debug_action">Probar sugerencia</string>
     <string name="suggest_debug_title">Probar sugerencia</string>
     <string name="suggest_debug_copy">Copiar el trazo</string>
