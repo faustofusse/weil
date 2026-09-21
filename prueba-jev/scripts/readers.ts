@@ -27,6 +27,7 @@ const CASES_PATH = new URL('../data/readers.cases.json', import.meta.url).pathna
 const REPORT = new URL('../data/readers.md', import.meta.url).pathname;
 const ACCOUNT = process.env.CLOUDFLARE_ACCOUNT_ID ?? 'f12da7851e4dd1d107a80417a1d4cbbd';
 const GATEWAY = process.env.CLOUDFLARE_AI_GATEWAY ?? 'finance';
+const NO_THINK = process.argv.includes('--no-think');
 
 const flag = (name: string) => process.argv.includes(`--${name}`);
 const arg = (name: string, fallback: string) => {
@@ -144,6 +145,8 @@ interface Answer {
   ms: number;
   inTokens: number;
   outTokens: number;
+  /** How much the model thought out loud before answering, in characters. */
+  thoughtChars?: number;
   error?: string;
 }
 
@@ -189,7 +192,23 @@ async function askCloudflare(model: string, prompt: string, attempt = 0): Promis
       // Third-party models (Google here) bill against the credits without it.
       ...(GATEWAY ? { 'cf-aig-gateway-id': GATEWAY } : {}),
     },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 1200 }),
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1200,
+      // --no-think: every one of these models thinks out loud before it
+      // answers, and that is where their seconds go. There is no portable
+      // switch — each family spells it differently and the unified endpoint
+      // forwards what it does not recognize — so all three spellings go in
+      // together and the bench says whether any of them took.
+      ...(NO_THINK
+        ? {
+            thinking: { type: 'disabled' },
+            chat_template_kwargs: { thinking: false },
+            reasoning_effort: 'low',
+          }
+        : {}),
+    }),
   });
   const ms = Date.now() - started;
   const body = (await res.json()) as {
@@ -211,6 +230,9 @@ async function askCloudflare(model: string, prompt: string, attempt = 0): Promis
     ms,
     inTokens: body.usage?.prompt_tokens ?? 0,
     outTokens: body.usage?.completion_tokens ?? 0,
+    thoughtChars:
+      (body.choices?.[0]?.message as { reasoning_content?: string } | undefined)?.reasoning_content
+        ?.length ?? 0,
   };
 }
 
@@ -302,12 +324,13 @@ async function main() {
   const rows: string[] = [];
   rows.push('# Lectores comparados\n');
   rows.push(`Generado: ${new Date().toISOString()} · ${cases.length} notificaciones × ${runs} corridas\n`);
-  rows.push('| modelo | p50 | p90 | ok | mov | dir | monto | payee | cuenta | normalized sin dígitos | USD/1k |');
-  rows.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+  rows.push('| modelo | p50 | p90 | ok | mov | dir | monto | payee | cuenta | normalized sin dígitos | USD/1k | pensamiento |');
+  rows.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
 
   for (const model of models) {
     const latencies: number[] = [];
     const totals = { movement: 0, direction: 0, amount: 0, payee: 0, account: 0, cleanNormalized: 0, parsed: 0 };
+    let thoughts = 0;
     let inTokens = 0;
     let outTokens = 0;
     let n = 0;
@@ -325,6 +348,7 @@ async function main() {
         if (answer.error && !firstError) firstError = answer.error;
         if (answer.ms > 0) latencies.push(answer.ms);
         inTokens += answer.inTokens;
+        thoughts += answer.thoughtChars ?? 0;
         outTokens += answer.outTokens;
         const s = score(c, answer.reading);
         for (const key of Object.keys(totals) as Array<keyof typeof totals>) {
@@ -345,7 +369,7 @@ async function main() {
       `| ${model.label} | ${percentile(latencies, 0.5)} ms | ${percentile(latencies, 0.9)} ms | ` +
         `${pct(totals.parsed)} | ${pct(totals.movement)} | ${pct(totals.direction)} | ${pct(totals.amount)} | ` +
         `${pct(totals.payee)} | ${pct(totals.account)} | ${pct(totals.cleanNormalized)} | ` +
-        `$${usdPerThousand.toFixed(3)} |`
+        `$${usdPerThousand.toFixed(3)} | ${Math.round(thoughts / n)} |`
     );
   }
 
