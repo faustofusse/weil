@@ -35,6 +35,9 @@ object EmailsRoute
 
 data class EmailDetailRoute(val id: String)
 
+/** El original (foto o PDF) del que se leyó un movimiento; solo lectura. */
+data class DocumentRoute(val docId: String)
+
 object ProfileRoute
 
 object JournalRoute

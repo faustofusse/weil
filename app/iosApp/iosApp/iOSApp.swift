@@ -8,6 +8,7 @@ struct iOSApp: App {
         IosBridges.shared.passkeyCeremony = PasskeyManager()
         IosBridges.shared.qrScanner = QrScannerManager()
         IosBridges.shared.documentPicker = DocumentPickerManager()
+        IosBridges.shared.pdfRenderer = PdfManager()
     }
 
     var body: some Scene {

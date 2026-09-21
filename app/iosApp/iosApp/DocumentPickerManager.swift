@@ -104,13 +104,3 @@ final class DocumentPickerManager: NSObject, DocumentPicker, UIDocumentPickerDel
     }
 }
 
-private extension KotlinByteArray {
-    /// Kotlin bytes are signed; Data's UInt8 values map straight across.
-    static func from(_ data: Data) -> KotlinByteArray {
-        let array = KotlinByteArray(size: Int32(data.count))
-        for (index, byte) in data.enumerated() {
-            array.set(index: Int32(index), value: Int8(bitPattern: byte))
-        }
-        return array
-    }
-}

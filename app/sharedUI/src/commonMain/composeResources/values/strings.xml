@@ -368,6 +368,8 @@
     <string name="import_failed">No se pudo analizar el documento</string>
     <string name="import_retry">Reintentar</string>
     <string name="import_empty">No se encontraron transacciones en este documento</string>
+    <string name="document_title">Documento</string>
+    <string name="document_unsupported">No se puede previsualizar este documento</string>
     <string name="import_found">%1$d transacciones encontradas</string>
     <string name="import_found_one">1 transacción encontrada</string>
     <string name="import_account_label">Cuenta</string>

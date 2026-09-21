@@ -127,6 +127,8 @@ fun RootScreen(
     // The state rides in a CompositionLocal: a future settings screen swaps
     // themes with one assignment, no prop drilling.
     CompositionLocalProvider(LocalAppThemeState provides themeState) {
+        // System chrome follows the palette, not the system's dark mode.
+        SystemBarsEffect(themeState.theme.dark)
         FinanceTheme(themeState.theme) {
             AnimatedContent(
                 targetState = authState is AuthState.Restoring,
@@ -472,6 +474,14 @@ fun RootScreen(
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                         onOpenNotification = { navigate(NotificationDetailRoute(it)) },
                                         onOpenEmail = { navigate(EmailDetailRoute(it)) },
+                                        onOpenDocument = { navigate(DocumentRoute(it)) },
+                                    )
+                                }
+                                entry<DocumentRoute> { route ->
+                                    DocumentScreen(
+                                        documents = graph.documentStore,
+                                        docId = route.docId,
+                                        onNavigateBack = { pop() },
                                     )
                                 }
                                 entry<TransactionEditRoute> { route ->

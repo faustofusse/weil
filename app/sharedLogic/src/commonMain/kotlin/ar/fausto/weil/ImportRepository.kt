@@ -4,6 +4,7 @@ import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.UserAgent
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -45,6 +46,17 @@ data class PickedDocument(
 /** Opens the platform file/photo picker; null when the user cancelled. */
 interface DocumentPicker {
     suspend fun pick(): PickedDocument?
+}
+
+/** The original file the worker stored in R2 at analyze time. */
+class StoredDocument(
+    val bytes: ByteArray,
+    val mimeType: String,
+)
+
+/** Reads back a stored import original (the R2 copy behind a Document source). */
+interface DocumentFetcher {
+    suspend fun fetch(docId: String): StoredDocument
 }
 
 /** Content types the worker accepts (mirrors `ALLOWED_TYPES` there). */
@@ -201,7 +213,7 @@ interface DocumentAnalyzer {
 class ImportRepository(
     private val store: SecureStore,
     private val baseUrl: String = AuthConfig.API_BASE_URL,
-) : DocumentAnalyzer {
+) : DocumentAnalyzer, DocumentFetcher {
     private val json = Json { ignoreUnknownKeys = true }
     private val client = platformHttpClient {
         install(ContentNegotiation) { json(json) }
@@ -265,6 +277,19 @@ class ImportRepository(
 
     /** URL of the stored original; the session cookie authorizes the read. */
     fun documentUrl(docId: String): String = "$baseUrl/import/document/$docId"
+
+    override suspend fun fetch(docId: String): StoredDocument {
+        val resp = client.get(documentUrl(docId)) {
+            storedCookieHeader(cookieName, store)?.let { header(HttpHeaders.Cookie, it) }
+        }
+        if (resp.status.value == 401) throw SessionExpired()
+        if (!resp.status.isSuccess()) throw ApiException(resp.status.value, resp.status.description)
+        val type = resp.contentType()
+        return StoredDocument(
+            bytes = resp.body(),
+            mimeType = type?.let { "${it.contentType}/${it.contentSubtype}" } ?: "application/octet-stream",
+        )
+    }
 
     private companion object {
         const val ANALYZE_TIMEOUT_MS = 180_000L

@@ -18,6 +18,8 @@ import org.jetbrains.skia.Image
  *   ./gradlew :app:desktopApp:shot
  *   ./gradlew :app:desktopApp:shot -Pshot.out=/tmp/home.png -Pshot.seconds=6
  *   ./gradlew :app:desktopApp:shot -Pshot.route=import   (AI import review)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=document (a stored import
+ *                                                        original)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=inbox    (movements detected in
  *     the seeded notifications/emails)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=profile  (profile, incl. the
@@ -70,6 +72,9 @@ fun main(args: Array<String>) {
         passkeys = { JvmDevPasskeys() },
         qrScanner = { null },
         importAnalyzer = FakeImportAnalyzer(),
+        // A drawn receipt, not a fetch: the sandboxed session has no cookie
+        // for the R2 read the real repository does.
+        documentFetcher = FakeDocumentFetcher(),
         // Hashed bag-of-words, not a model: no key, no network, and the
         // vector functions it feeds are the ones FakeDatabase registers.
         embedder = FakeEmbedder(),
@@ -86,6 +91,7 @@ fun main(args: Array<String>) {
         passkeys = { JvmDevPasskeys() },
         qrScanner = { null },
         importAnalyzer = FakeImportAnalyzer(),
+        documentFetcher = FakeDocumentFetcher(),
         embedder = FakeEmbedder(),
         categorySuggester = FakeCategorySuggester(),
         suggester = FakeSuggestTracer(graph.notifications, graph.ledger, graph.embeddings),
@@ -141,6 +147,7 @@ fun main(args: Array<String>) {
                     "category" -> CategoryDetailRoute("seed-expense-food")
                     "inbox" -> InboxReviewRoute
                     "tx" -> TransactionDetailRoute("seed-tx-2")
+                    "document" -> DocumentRoute("seed-doc-x")
                     "notification" -> NotificationDetailRoute("seed-notif-1")
                     "suggest" -> SuggestDebugRoute("seed-notif-1")
                     "notifications" -> NotificationsRoute

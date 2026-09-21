@@ -115,6 +115,7 @@ fun TransactionDetailScreen(
     onOpenTransaction: (id: String) -> Unit = {},
     onOpenNotification: (id: String) -> Unit = {},
     onOpenEmail: (id: String) -> Unit = {},
+    onOpenDocument: (docId: String) -> Unit = {},
 ) {
     var tx by remember { mutableStateOf<Transaction?>(null) }
     // Where this transaction came from. A single purchase legitimately has a
@@ -400,18 +401,57 @@ fun TransactionDetailScreen(
                                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                                         )
                                     }
+                                    // Solo las fuentes con pantalla propia son
+                                    // navegables; WhatsApp/QR no tienen vista de
+                                    // detalle a la que ir.
+                                    val originRef = origin.ref
+                                    val onOpenOrigin: (() -> Unit)? = when (origin.kind) {
+                                        EventSource.Notification -> ({ onOpenNotification(originRef) })
+                                        EventSource.Email -> ({ onOpenEmail(originRef) })
+                                        EventSource.Document -> ({ onOpenDocument(originRef) })
+                                        else -> null
+                                    }
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
+                                            .then(
+                                                if (onOpenOrigin != null) {
+                                                    Modifier.clickable(onClick = onOpenOrigin)
+                                                } else {
+                                                    Modifier
+                                                },
+                                            )
                                             .heightIn(min = 48.dp)
                                             .padding(horizontal = 16.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
+                                        if (onOpenOrigin != null) {
+                                            Icon(
+                                                when (origin.kind) {
+                                                    EventSource.Notification -> Icons.Filled.Notifications
+                                                    EventSource.Document -> Icons.Filled.DocumentScanner
+                                                    else -> Icons.Filled.Email
+                                                },
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier
+                                                    .padding(end = 12.dp)
+                                                    .size(18.dp),
+                                            )
+                                        }
                                         Text(
                                             sourceLabel(origin.kind),
                                             style = MaterialTheme.typography.bodyMedium,
                                             modifier = Modifier.weight(1f),
                                         )
+                                        if (onOpenOrigin != null) {
+                                            Icon(
+                                                Icons.Filled.ChevronRight,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
                                         // When it was linked, which is not the
                                         // transaction's date: a statement
                                         // imported in September can attach to

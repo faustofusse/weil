@@ -24,6 +24,9 @@ class AppGraph(
     // Swapped by the desktop screenshot harness for a seeded fake; the app
     // always uses the worker-backed [ImportRepository].
     importAnalyzer: DocumentAnalyzer? = null,
+    // Same reason as [importAnalyzer]: the screen that shows a stored
+    // document back needs the worker (and the session cookie).
+    documentFetcher: DocumentFetcher? = null,
     // Same reason as [importAnalyzer]: the shot harness has no session, so it
     // substitutes a local deterministic embedder.
     embedder: TextEmbedder? = null,
@@ -53,7 +56,12 @@ class AppGraph(
     val settings = SettingsRepository(db)
     val notifications = NotificationsRepository(db)
     val emails = EmailsRepository(db)
-    val imports: DocumentAnalyzer = importAnalyzer ?: ImportRepository(store)
+    // One backend instance serves both document verbs: analyze and read-back.
+    private val importBackend by lazy { ImportRepository(store) }
+    val imports: DocumentAnalyzer = importAnalyzer ?: importBackend
+
+    /** The stored original (photo/PDF) behind a Document source. */
+    val documentStore: DocumentFetcher = documentFetcher ?: importBackend
 
     /** Live "which category is this" guess while the description is typed. */
     val categories: CategorySuggester = categorySuggester ?: CategorySuggestRepository(store)

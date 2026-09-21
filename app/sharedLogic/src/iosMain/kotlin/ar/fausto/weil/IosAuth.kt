@@ -14,6 +14,7 @@ object IosBridges {
     var passkeyCeremony: PasskeyCeremony? = null
     var qrScanner: QrScanner? = null
     var documentPicker: DocumentPicker? = null
+    var pdfRenderer: PdfPageRenderer? = null
 }
 
 private const val PASSKEY_CANCELLED_MARKER = "passkey cancelled"
