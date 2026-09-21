@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,11 +27,19 @@ import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.emails_empty
 import weil.app.sharedui.generated.resources.emails_no_subject
 import weil.app.sharedui.generated.resources.emails_title
+import weil.app.sharedui.generated.resources.notifications_count_line
+import weil.app.sharedui.generated.resources.notifications_filter_all
+import weil.app.sharedui.generated.resources.notifications_filter_movements
 import weil.app.sharedui.generated.resources.sync_error
 
 // Enough rows to cover any screen height while loading; harmless past the
 // fold since this placeholder Column doesn't scroll.
 private const val EMAIL_SKELETON_COUNT = 16
+
+/** The two views of the list, as the segmented control sees them. Shares the
+ * labels with [NotificationsScreen]'s own filter — "Movimientos" means the
+ * same thing in both captures. */
+private enum class EmailFilter { All, Movements }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,6 +60,8 @@ fun EmailScreen(
                 if (last != null && last >= state.items.size - 10) state.loadMore()
             }
     }
+
+    val shownCount = if (state.showOnlyTransactions) state.filteredCount else state.totalCount
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -73,55 +84,75 @@ fun EmailScreen(
             )
         },
     ) { innerPadding ->
-        PullToRefreshBox(
-            isRefreshing = state.pullRefreshing,
-            onRefresh = { state.sync() },
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
-        ) {
-            when {
-                state.isInitialLoading && state.items.isEmpty() -> {
-                    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                        repeat(EMAIL_SKELETON_COUNT) {
-                            EmailCardSkeleton()
-                            Spacer(Modifier.height(10.dp))
-                        }
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            SegmentedSwitch(
+                options = EmailFilter.entries,
+                selected = if (state.showOnlyTransactions) EmailFilter.Movements else EmailFilter.All,
+                label = {
+                    when (it) {
+                        EmailFilter.All -> stringResource(Res.string.notifications_filter_all)
+                        EmailFilter.Movements -> stringResource(Res.string.notifications_filter_movements)
                     }
-                }
-                state.items.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            stringResource(Res.string.emails_empty),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                else -> {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
-                    ) {
-                        // Day runs, same as the journal and the notification
-                        // list: mail arrives in bursts, and the date was
-                        // being repeated on every row to say so.
-                        var previous: DayGroup? = null
-                        state.items.forEach { email ->
-                            val group = dayGroup(email.receivedAt)
-                            if (group != previous) {
-                                previous = group
-                                item(key = "day-${group.key}") { DayHeader(group, top = 8.dp) }
-                            }
-                            item(key = email.id) {
-                                EmailRow(email = email, onOpen = { onOpenEmail(email.id) })
+                },
+                onSelect = { state.toggleShowOnlyTransactions(it == EmailFilter.Movements) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            Text(
+                stringResource(Res.string.notifications_count_line, shownCount, state.totalCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 20.dp, bottom = 4.dp),
+            )
+            PullToRefreshBox(
+                isRefreshing = state.pullRefreshing,
+                onRefresh = { state.sync() },
+                modifier = Modifier.fillMaxSize().weight(1f),
+            ) {
+                when {
+                    state.isInitialLoading && state.items.isEmpty() -> {
+                        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                            repeat(EMAIL_SKELETON_COUNT) {
+                                EmailCardSkeleton()
+                                Spacer(Modifier.height(10.dp))
                             }
                         }
-                        if (state.hasMore && state.isLoadingMore) {
-                            item(key = "skeleton-footer") {
-                                Column {
-                                    EmailCardSkeleton()
-                                    Spacer(Modifier.height(10.dp))
-                                    EmailCardSkeleton()
+                    }
+                    state.items.isEmpty() -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                stringResource(Res.string.emails_empty),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    else -> {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
+                        ) {
+                            // Day runs, same as the journal and the notification
+                            // list: mail arrives in bursts, and the date was
+                            // being repeated on every row to say so.
+                            var previous: DayGroup? = null
+                            state.items.forEach { email ->
+                                val group = dayGroup(email.receivedAt)
+                                if (group != previous) {
+                                    previous = group
+                                    item(key = "day-${group.key}") { DayHeader(group, top = 8.dp) }
+                                }
+                                item(key = email.id) {
+                                    EmailRow(email = email, onOpen = { onOpenEmail(email.id) })
+                                }
+                            }
+                            if (state.hasMore && state.isLoadingMore) {
+                                item(key = "skeleton-footer") {
+                                    Column {
+                                        EmailCardSkeleton()
+                                        Spacer(Modifier.height(10.dp))
+                                        EmailCardSkeleton()
+                                    }
                                 }
                             }
                         }

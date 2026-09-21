@@ -38,10 +38,19 @@ class EmailsState(private val emails: EmailsRepository) {
         private set
     var totalCount by mutableStateOf(0L)
         private set
+    var filteredCount by mutableStateOf(0L)
+        private set
+    var showOnlyTransactions by mutableStateOf(false)
+        private set
 
     /** Guards [ensureLoaded] against firing twice before the first run lands. */
     private var loadStarted = false
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+
+    private suspend fun refreshCounts() {
+        totalCount = emails.count()
+        filteredCount = emails.count(onlyTransactions = true)
+    }
 
     /** Called once per screen visit; no-ops on a return trip from the detail screen. */
     fun ensureLoaded() {
@@ -94,13 +103,27 @@ class EmailsState(private val emails: EmailsRepository) {
         }
     }
 
+    fun toggleShowOnlyTransactions(value: Boolean) {
+        if (showOnlyTransactions == value) return
+        showOnlyTransactions = value
+        scope.launch {
+            syncError = null
+            try {
+                loadFirst()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                syncError = e.message ?: e.toString()
+            }
+        }
+    }
+
     fun loadMore() {
         val currentCursor = cursor ?: return
         if (isLoadingMore || !hasMore) return
         isLoadingMore = true
         scope.launch {
             try {
-                val page = emails.page(before = currentCursor)
+                val page = emails.page(before = currentCursor, onlyTransactions = showOnlyTransactions)
                 items = items + page.items
                 cursor = page.nextCursor
                 hasMore = page.nextCursor != null
@@ -114,10 +137,10 @@ class EmailsState(private val emails: EmailsRepository) {
     }
 
     private suspend fun loadFirst() {
-        val page = emails.page()
+        val page = emails.page(onlyTransactions = showOnlyTransactions)
         items = page.items
         cursor = page.nextCursor
         hasMore = page.nextCursor != null
-        totalCount = emails.count()
+        refreshCounts()
     }
 }

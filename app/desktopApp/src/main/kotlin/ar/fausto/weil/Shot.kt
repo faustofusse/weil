@@ -147,12 +147,14 @@ fun main(args: Array<String>) {
                     "account" -> AccountDetailRoute("seed-asset-bank")
                     "tree" -> AccountsTreeRoute
                     "category" -> CategoryDetailRoute("seed-expense-food")
-                    "inbox" -> InboxReviewRoute
                     "tx" -> TransactionDetailRoute("seed-tx-2")
                     "document" -> DocumentRoute("seed-doc-x")
                     "notification" -> NotificationDetailRoute("seed-notif-1")
                     "suggest" -> SuggestSourcesRoute("seed-notif-1")
                     "suggest-trace" -> SuggestDebugRoute("seed-notif-1")
+                    // The same bench over the other door.
+                    "suggest-email" -> SuggestSourcesRoute("seed-email-1", EventSource.Email)
+                    "suggest-email-trace" -> SuggestDebugRoute("seed-email-1", EventSource.Email)
                     "notifications" -> NotificationsRoute
                     "email" -> EmailDetailRoute("seed-email-1")
                     "emails" -> EmailsRoute

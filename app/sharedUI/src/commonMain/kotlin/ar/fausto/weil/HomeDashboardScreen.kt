@@ -72,7 +72,6 @@ import weil.app.sharedui.generated.resources.home_see_all
 import weil.app.sharedui.generated.resources.import_menu
 import weil.app.sharedui.generated.resources.import_no_picker
 import weil.app.sharedui.generated.resources.import_unsupported
-import weil.app.sharedui.generated.resources.inbox_menu
 import weil.app.sharedui.generated.resources.more_options
 import weil.app.sharedui.generated.resources.new_transaction
 import weil.app.sharedui.generated.resources.open_account_tree
@@ -94,7 +93,6 @@ fun HomeDashboardScreen(
     userState: UserState,
     documents: () -> DocumentPicker?,
     onImportDocument: (PickedDocument) -> Unit,
-    onNavigateToInbox: () -> Unit,
     /** Resolved lazily (needs a foreground activity); null hides QR pay. */
     scanner: () -> QrScanner? = { null },
     onPayWithQr: (QrPayment) -> Unit = {},
@@ -172,7 +170,6 @@ fun HomeDashboardScreen(
                         onNavigateToEmails = onNavigateToEmails,
                         onImport = { importDocument() },
                         onPayWithQr = qrScanner?.let { { payWithQr(it) } },
-                        onNavigateToInbox = onNavigateToInbox,
                     )
                 },
             )
@@ -296,7 +293,6 @@ private fun HomeOverflow(
     onNavigateToEmails: () -> Unit,
     onImport: () -> Unit,
     onPayWithQr: (() -> Unit)?,
-    onNavigateToInbox: () -> Unit,
 ) {
     Box {
         run {
@@ -325,10 +321,6 @@ private fun HomeOverflow(
                         menuOpen = false
                         onPayWithQr()
                     }
-                }
-                MenuRow(Icons.Filled.Bolt, stringResource(Res.string.inbox_menu)) {
-                    menuOpen = false
-                    onNavigateToInbox()
                 }
             }
         }

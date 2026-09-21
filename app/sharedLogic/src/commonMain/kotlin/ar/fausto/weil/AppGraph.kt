@@ -80,14 +80,14 @@ class AppGraph(
 
     /** One captured message → a proposed transaction (Gemini reads, Jev picks). */
     val suggestions: SuggestTracer =
-        suggester ?: SuggestRepository(notifications, accounts, ledger, embeddings, store)
+        suggester ?: SuggestRepository(notifications, emails, accounts, ledger, embeddings, store)
 
     /**
-     * Where the background runs of that same path are parked: the listener
-     * records every movement silently, and the inbox screen offers them next
-     * to the template-parsed ones.
+     * And what is done with them: every movement read out of a notification
+     * or an email receipt is written to the ledger — no queue, no
+     * confirmation step.
      */
-    val suggestionInbox = SuggestionsInboxRepository(db, ledger)
+    val autoRecord = AutoRecordRepository(accounts, emails, ledger, settings, suggestions)
     val scanner: QrScanner? get() = qrScannerProvider()
 
     /** Needs a foreground activity/controller, so it is resolved lazily. */

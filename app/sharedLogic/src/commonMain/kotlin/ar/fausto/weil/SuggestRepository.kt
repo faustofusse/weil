@@ -40,10 +40,32 @@ import kotlinx.serialization.json.jsonObject
  */
 interface SuggestTracer {
     suspend fun traceNotification(id: String): SuggestTrace
+
+    /**
+     * The same path over an email receipt. One pipeline for both doors: a
+     * bank's push and its mail describe the same purchase in the same words,
+     * and the only difference is where the text was read from.
+     */
+    suspend fun traceEmail(id: String): SuggestTrace
 }
+
+/**
+ * A captured message as the pipeline sees it, whatever door it came through.
+ * [origin] is the app name or the sender address — the line that tells the
+ * reader who is talking.
+ */
+data class TracedMessage(
+    val source: EventSource,
+    val ref: String,
+    val origin: String,
+    val title: String,
+    val text: String,
+    val at: Long,
+)
 
 class SuggestRepository(
     private val notifications: NotificationsRepository,
+    private val emails: EmailsRepository,
     private val accounts: AccountsRepository,
     private val ledger: TransactionsRepository,
     private val embeddings: EmbeddingsRepository,
@@ -77,6 +99,41 @@ class SuggestRepository(
     /** Runs the whole path over one captured notification. */
     override suspend fun traceNotification(id: String): SuggestTrace {
         val item = notifications.get(id) ?: return SuggestTrace(error = "notificación no encontrada")
+        return trace(
+            TracedMessage(
+                source = EventSource.Notification,
+                ref = item.id,
+                origin = item.appName,
+                title = item.title,
+                text = item.text,
+                at = item.postTime,
+            ),
+        )
+    }
+
+    /** Same path, over an email receipt. */
+    override suspend fun traceEmail(id: String): SuggestTrace {
+        val item = emails.get(id) ?: return SuggestTrace(error = "mail no encontrado")
+        return trace(
+            TracedMessage(
+                source = EventSource.Email,
+                ref = item.id,
+                origin = item.fromEmail,
+                title = decodeMimeHeader(item.subject.orEmpty()),
+                // Same choice `Ingest.kt` makes: the stored text part is
+                // frequently raw MIME truncated at 10 kB with the receipt
+                // past the cut, so the HTML is the more complete copy. The
+                // tail is dropped because a receipt states its total near the
+                // top and the rest is footer, legal text and tracking pixels
+                // — all of it billed by the token.
+                text = emailPlainText(item.bodyHtml ?: item.bodyText.orEmpty()).take(MAX_EMAIL_CHARS),
+                at = item.receivedAt,
+            ),
+        )
+    }
+
+    private suspend fun trace(message: TracedMessage): SuggestTrace {
+        val id = message.ref
         val tree = accounts.tree()
         val flat = tree.flatMap { it.selfAndDescendants }
         val options = flat.map { AccountOption(it.account.id, it.path, wireType(it.account.type), it.account.commodity) }
@@ -94,16 +151,16 @@ class SuggestRepository(
                     ALT_READER?.let { append("&compare=$it&schema=0") }
                 },
                 ReadRequest(
-                    origin = item.appName,
-                    title = item.title,
-                    text = item.text,
-                    `when` = item.postTime,
+                    origin = message.origin,
+                    title = message.title,
+                    text = message.text,
+                    `when` = message.at,
                     accounts = options,
                 ),
             )
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            return SuggestTrace(notification = item, error = "lectura: ${e.message ?: e.toString()}")
+            return SuggestTrace(message = message, error = "lectura: ${e.message ?: e.toString()}")
         }
         val read = decodeBody<ReadResponse>(lenient, readWire)
         // The comparison is an observation and must never take the run with
@@ -129,20 +186,25 @@ class SuggestRepository(
             else -> -(amount ?: 0L)
         }
         val event = CandidateEvent(
-            source = EventSource.Notification,
+            source = message.source,
             sourceRef = id,
             ownAccountId = ownAccountId,
             amountMinor = signed,
             commodity = read.commodity.ifBlank { Money.DEFAULT_COMMODITY },
-            date = item.postTime,
+            date = message.at,
             rawPayee = read.payee,
             direction = direction,
         )
+        // Precedents come from the same kind of message: a mail's neighbours
+        // are mails. The cross-table search exists and is used elsewhere, but
+        // here the question is "what did I do the last time *this template*
+        // arrived", and templates do not cross doors.
+        val ownKind = if (message.source == EventSource.Email) EmbedKind.Email else EmbedKind.Notification
         // The ledger window is local and the neighbour search waits on a
         // network call for the query vector, so they run side by side.
         val (facts, neighbours) = coroutineScope {
             val window = async {
-                ledger.reconcileFacts(item.postTime - WINDOW_MS, item.postTime + WINDOW_MS)
+                ledger.reconcileFacts(message.at - WINDOW_MS, message.at + WINDOW_MS)
             }
             // Neighbours are searched with the *plain* sentence the reader
             // wrote, not with the bank's template: that is what makes the hits
@@ -153,7 +215,7 @@ class SuggestRepository(
                 try {
                     embeddings.similarToText(
                         read.normalized,
-                        listOf(EmbedKind.Notification, EmbedKind.Transaction),
+                        listOf(ownKind, EmbedKind.Transaction),
                         k = 6,
                         exclude = id,
                     )
@@ -166,13 +228,13 @@ class SuggestRepository(
         }
         val outcome = matchEvent(event, facts)
         val similarTransactions = neighbours[EmbedKind.Transaction].orEmpty()
-        val notificationNeighbours = neighbours[EmbedKind.Notification].orEmpty()
+        val messageNeighbours = neighbours[ownKind].orEmpty()
         // One query for every neighbour instead of one per neighbour.
         val linked = ledger.transactionsForSources(
-            EventSource.Notification,
-            notificationNeighbours.map { it.id },
+            message.source,
+            messageNeighbours.map { it.id },
         )
-        val precedents = notificationNeighbours.map {
+        val precedents = messageNeighbours.map {
             Precedent(item = it, recordedIn = linked[it.id].orEmpty())
         }
         val retrievalMs = epochMillis() - retrievalStarted
@@ -188,7 +250,7 @@ class SuggestRepository(
                 WirePrecedent(
                     text = "${p.item.title} — ${p.item.subtitle.take(160)}",
                     payee = fact?.payee,
-                    `when` = relativeDay(item.postTime, p.item.date),
+                    `when` = relativeDay(message.at, p.item.date),
                 )
             }
 
@@ -197,7 +259,7 @@ class SuggestRepository(
             NearbyWire(
                 id = it.transactionId,
                 label = "${it.payee} · ${formatMinorUnits(it.legs.firstOrNull()?.amountMinor ?: 0L)} · " +
-                    relativeDay(item.postTime, it.date),
+                    relativeDay(message.at, it.date),
             )
         }
         val jevStarted = epochMillis()
@@ -205,7 +267,7 @@ class SuggestRepository(
             postJson(
                 "$baseUrl/suggest/accounts?debug=1",
                 AccountsRequest(
-                    message = MessageWire(item.appName, item.title, item.text, item.postTime),
+                    message = MessageWire(message.origin, message.title, message.text, message.at),
                     extracted = ExtractedWire(
                         amount = read.amount,
                         commodity = read.commodity,
@@ -222,7 +284,7 @@ class SuggestRepository(
                         WirePrecedent(
                             text = it.title + (it.subtitle.take(80).let { s -> if (s.isBlank()) "" else " — $s" }),
                             payee = it.title,
-                            `when` = relativeDay(item.postTime, it.date),
+                            `when` = relativeDay(message.at, it.date),
                         )
                     },
                     nearby = nearby,
@@ -238,7 +300,7 @@ class SuggestRepository(
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             return SuggestTrace(
-                notification = item,
+                message = message,
                 read = read,
                 readDebug = readWire.debugBlock(json),
                 readMs = readMs,
@@ -253,7 +315,7 @@ class SuggestRepository(
         val decision = decodeBody<AccountsResponse>(json, accountsWire)
 
         return SuggestTrace(
-            notification = item,
+            message = message,
             read = read,
             readDebug = readWire.debugBlock(json),
             alt = alt,
@@ -301,6 +363,9 @@ class SuggestRepository(
         const val TIMEOUT_MS = 90_000L
         const val WINDOW_MS = 20L * 60 * 60 * 1000
         const val MAX_PRECEDENTS = 3
+
+        /** A receipt states its total in the first screenful; the rest is footer. */
+        const val MAX_EMAIL_CHARS = 4_000
     }
 }
 
@@ -365,7 +430,8 @@ data class Precedent(val item: SimilarItem, val recordedIn: List<String>)
  * is to see what the models were given before blaming what they answered.
  */
 data class SuggestTrace(
-    val notification: NotificationItem? = null,
+    /** The message this run read, whichever door it came through. */
+    val message: TracedMessage? = null,
     val read: ReadResponse? = null,
     /** Prompt, model, raw JSON and token usage of the reader call. */
     val readDebug: String? = null,
@@ -420,7 +486,7 @@ data class SuggestTrace(
             ImportDirection.Expense -> pick(decision?.expenseCategory)
         }
         return ImportCandidate(
-            date = notification?.postTime ?: epochMillis(),
+            date = message?.at ?: epochMillis(),
             payee = read.payee,
             note = read.note,
             commodity = read.commodity.ifBlank { Money.DEFAULT_COMMODITY },

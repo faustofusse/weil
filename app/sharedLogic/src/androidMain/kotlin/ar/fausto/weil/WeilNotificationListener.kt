@@ -17,11 +17,11 @@ import kotlinx.coroutines.sync.withLock
  *
  * Each capture also triggers a **silent** suggestion run: the suggest
  * pipeline (read → retrieval → Jev) goes over the notification in the
- * background and parks its candidate in the `suggestions` table
- * ([SuggestionsInboxRepository]). Nothing is shown, nothing is written to the
- * ledger — the rows wait for the inbox screen, where the user reviews them.
- * The run is best-effort: offline or signed out, it fails and is not retried
- * (the captured row stays, and the template inbox is the net under it).
+ * background and, when it reads a movement, [AutoRecordRepository] writes the
+ * transaction right there ([AppGraph.autoRecord]). Nothing is shown: the row
+ * appears in the journal like any other and is edited like any other. The run
+ * is best-effort: offline or signed out, it fails and is not retried (the
+ * captured notification stays, and can be turned into a transaction by hand).
  */
 class WeilNotificationListener : NotificationListenerService() {
 
@@ -77,7 +77,7 @@ class WeilNotificationListener : NotificationListenerService() {
                     postTime = postTime,
                     app = app,
                 )
-                suggestSilently(graph, id, packageName, title, text)
+                recordSilently(graph, id, packageName, title, text)
             } catch (e: Exception) {
                 Log.w(TAG, "failed to record notification from $packageName: ${e.message}")
             }
@@ -85,12 +85,12 @@ class WeilNotificationListener : NotificationListenerService() {
     }
 
     /**
-     * Runs the suggestion pipeline for one fresh capture and parks the
-     * result, saying nothing either way. Our own notifications are excluded —
+     * Runs the suggestion pipeline for one fresh capture and records what it
+     * found, saying nothing either way. Our own notifications are excluded —
      * the capture-everything rule stands for the record, but reading our own
      * UI back to ourselves would be a bill for nothing.
      */
-    private suspend fun suggestSilently(
+    private suspend fun recordSilently(
         graph: AppGraph,
         id: String,
         packageName: String,
@@ -109,11 +109,12 @@ class WeilNotificationListener : NotificationListenerService() {
         suggestMutex.withLock {
             try {
                 val trace = graph.suggestions.traceNotification(id)
-                graph.suggestionInbox.record(id, trace)
+                val outcome = graph.autoRecord.apply(EventSource.Notification, id, trace)
+                Log.i(TAG, "auto-record $packageName: $outcome")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "suggestion run failed: ${e.message}")
+                Log.w(TAG, "auto-record run failed: ${e.message}")
             }
         }
     }

@@ -345,10 +345,9 @@
     <string name="qr_pay_no_wallet">No hay billetera disponible en este dispositivo</string>
 
     <!-- Movimientos detectados en notificaciones y mails -->
-    <string name="inbox_menu">Detectar movimientos</string>
     <string name="inbox_title">Detectados</string>
     <string name="inbox_source">Avisos</string>
-    <string name="inbox_empty">No hay movimientos nuevos en tus notificaciones ni en tus mails</string>
+    <string name="inbox_empty">No se leyó ningún movimiento en este aviso</string>
     <string name="inbox_analyzing">Revisando notificaciones y mails…</string>
 
     <!-- Origen de una transacción -->

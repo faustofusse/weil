@@ -38,7 +38,7 @@ import weil.app.sharedui.generated.resources.suggest_sources_title
 /**
  * Las fuentes de una sugerencia: los vecinos por vector en las tres tablas
  * embebidas — notificaciones, emails y transacciones — de la captura que se
- * está mirando.
+ * está mirando, sea un aviso o un mail.
  *
  * Es la antesala del laboratorio: lo que la etapa de recuperación le da al
  * matcher y a Jev, crudo y con sus propios botones de vincular. El botón de
@@ -56,6 +56,13 @@ fun SuggestSourcesScreen(
     embeddings: EmbeddingsRepository,
     ledger: TransactionsRepository,
     id: String,
+    /**
+     * Which door the captured message came through. It decides both which
+     * table the vectors are read from and which kind of provenance a
+     * «vincular» writes — the screen is otherwise identical for a push alert
+     * and for an email receipt.
+     */
+    source: EventSource = EventSource.Notification,
     onNavigateBack: () -> Unit,
     /** Runs the full suggestion pipeline and opens its trace. */
     onTrySuggestion: () -> Unit,
@@ -63,18 +70,21 @@ fun SuggestSourcesScreen(
     onOpenEmail: (String) -> Unit = {},
     onOpenTransaction: (String) -> Unit = {},
 ) {
-    var linkedTo by remember(id) { mutableStateOf<Set<String>>(emptySet()) }
+    var linkedTo by remember(source, id) { mutableStateOf<Set<String>>(emptySet()) }
+    // The row on screen lives in one of the two embedded message tables; its
+    // neighbours of the same kind are the precedents the pipeline uses.
+    val ownKind = if (source == EventSource.Email) EmbedKind.Email else EmbedKind.Notification
     val scope = rememberCoroutineScope()
     val linkedMessage = stringResource(Res.string.similar_link_done)
 
     suspend fun reloadLinks() {
         // The linking buttons live on the transactions section, and "linked"
-        // means "already carries this notification as a source" — the same
-        // one question every other detail screen asks.
-        linkedTo = ledger.transactionsForSource(EventSource.Notification, id)
+        // means "already carries this message as a source" — the same one
+        // question every other detail screen asks.
+        linkedTo = ledger.transactionsForSource(source, id)
     }
 
-    LaunchedEffect(id) { reloadLinks() }
+    LaunchedEffect(source, id) { reloadLinks() }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -103,9 +113,11 @@ fun SuggestSourcesScreen(
             SimilarSection(
                 embeddings = embeddings,
                 title = stringResource(Res.string.similar_notifications),
-                kind = EmbedKind.Notification,
+                kind = ownKind,
                 id = id,
-                allowPackageFilter = true,
+                into = EmbedKind.Notification,
+                // Only meaningful when the rows listed are notifications.
+                allowPackageFilter = ownKind == EmbedKind.Notification,
                 onOpen = { onOpenNotification(it.id) },
             )
 
@@ -113,7 +125,7 @@ fun SuggestSourcesScreen(
             SimilarSection(
                 embeddings = embeddings,
                 title = stringResource(Res.string.similar_emails),
-                kind = EmbedKind.Notification,
+                kind = ownKind,
                 id = id,
                 into = EmbedKind.Email,
                 onOpen = { onOpenEmail(it.id) },
@@ -123,7 +135,7 @@ fun SuggestSourcesScreen(
             SimilarSection(
                 embeddings = embeddings,
                 title = stringResource(Res.string.similar_transactions),
-                kind = EmbedKind.Notification,
+                kind = ownKind,
                 id = id,
                 into = EmbedKind.Transaction,
                 onOpen = { onOpenTransaction(it.id) },
@@ -137,7 +149,7 @@ fun SuggestSourcesScreen(
                                     AssociateOp(
                                         transactionId = match.id,
                                         sources = listOf(
-                                            TransactionSource(EventSource.Notification, id),
+                                            TransactionSource(source, id),
                                         ),
                                     ),
                                 ),

@@ -63,16 +63,18 @@ fun SuggestDebugScreen(
      */
     state: SuggestDebugState,
     id: String,
+    /** Which table [id] lives in; the pipeline reads both the same way. */
+    source: EventSource = EventSource.Notification,
     onNavigateBack: () -> Unit,
     /** Hands the proposed row to the review screen. Nothing is written here. */
     onReview: (ImportCandidate) -> Unit = {},
 ) {
-    val trace = state.trace(id)
-    val running = state.isRunning(id)
-    val failure = state.failure(id)
+    val trace = state.trace(source, id)
+    val running = state.isRunning(source, id)
+    val failure = state.failure(source, id)
     val clipboard = LocalClipboardManager.current
 
-    LaunchedEffect(id) { state.run(id) }
+    LaunchedEffect(source, id) { state.run(source, id) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         AppTopBar(
@@ -89,7 +91,7 @@ fun SuggestDebugScreen(
                     }
                 }
                 if (!running) {
-                    IconButton(onClick = { state.run(id, force = true) }) {
+                    IconButton(onClick = { state.run(source, id, force = true) }) {
                         Icon(
                             Icons.Filled.Refresh,
                             contentDescription = stringResource(Res.string.suggest_debug_rerun),
@@ -219,14 +221,13 @@ private fun Block(title: String, body: String, open: Boolean = false) {
 }
 
 private fun notificationText(trace: SuggestTrace): String {
-    val n = trace.notification ?: return "—"
+    val m = trace.message ?: return "—"
     return buildString {
-        appendLine("app:   ${n.appName} (${n.packageName})")
-        appendLine("fecha: ${formatTimestamp(n.postTime)}")
-        appendLine("cat:   ${n.category ?: "—"}")
+        appendLine("origen: ${m.origin} (${m.source.db})")
+        appendLine("fecha:  ${formatTimestamp(m.at)}")
         appendLine()
-        appendLine(n.title)
-        append(n.text)
+        appendLine(m.title)
+        append(m.text)
     }
 }
 

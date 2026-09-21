@@ -19,20 +19,31 @@ object NotificationsRoute
 data class NotificationDetailRoute(val id: String)
 
 /**
- * The test bench for the notification→transaction path: runs the two model
+ * The test bench for the message→transaction path: runs the two model
  * calls and shows everything they were given and answered. Writes nothing.
  */
-data class SuggestDebugRoute(val id: String)
+data class SuggestDebugRoute(
+    val id: String,
+    /**
+     * Which door the message came through. The same bench serves a push alert
+     * and an email receipt, because one pipeline reads both.
+     */
+    val source: EventSource = EventSource.Notification,
+)
 
 /** The suggestion's sources: the raw vector neighbours of one captured
- * notification, with the button that runs the pipeline and opens the trace. */
-data class SuggestSourcesRoute(val id: String)
+ * message, with the button that runs the pipeline and opens the trace. */
+data class SuggestSourcesRoute(
+    val id: String,
+    val source: EventSource = EventSource.Notification,
+)
 
 /** The end of that path: the proposed row, ready to review and record. */
 data class SuggestedReviewRoute(
     val candidate: ImportCandidate,
     val ref: String,
     val title: String,
+    val source: EventSource = EventSource.Notification,
 )
 
 object EmailsRoute
@@ -85,10 +96,3 @@ data class AccountAddRoute(val initialType: AccountType? = null)
  * bytes here keeps them alive across the analyze round trip.
  */
 data class ImportReviewRoute(val document: PickedDocument)
-
-/**
- * Review of the movements recognized in captured notifications and email
- * receipts — the same screen as [ImportReviewRoute], reading the device's own
- * inbox instead of a document.
- */
-object InboxReviewRoute

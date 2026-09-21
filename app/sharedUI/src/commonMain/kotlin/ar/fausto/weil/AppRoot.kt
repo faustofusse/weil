@@ -123,6 +123,16 @@ fun RootScreen(
         }
     }
 
+    // Emails have no listener: the worker writes them into the user's
+    // database server-side, so the device only meets them on a sync. Opening
+    // the app is the sweep's trigger — trying harder (a background worker,
+    // a poll) would be a second scheduling problem for a path whose whole cost
+    // is two model calls per receipt. Failures are swallowed: an unreachable
+    // worker must not colour the first screen.
+    LaunchedEffect(loggedInNow) {
+        if (loggedInNow) runCatching { graph.autoRecord.sweepEmails() }
+    }
+
     // The theme wraps every state, splash included, so nothing renders unthemed.
     // The state rides in a CompositionLocal: a future settings screen swaps
     // themes with one assignment, no prop drilling.
@@ -254,7 +264,6 @@ fun RootScreen(
                         userState = userState,
                         documents = { graph.documents },
                         onImportDocument = { navigate(ImportReviewRoute(it)) },
-                        onNavigateToInbox = { navigate(InboxReviewRoute) },
                         scanner = { graph.scanner },
                         // Hand off first — the user is standing
                         // at a counter — then write the row from
@@ -506,21 +515,6 @@ fun RootScreen(
                                     ImportReviewScreen(
                                         source = ReviewSource.Document(route.document),
                                         imports = graph.imports,
-                                        ingest = graph.ingest,
-                                        suggestionInbox = graph.suggestionInbox,
-                                        ledger = graph.ledger,
-                                        accounts = graph.accounts,
-                                        settings = graph.settings,
-                                        onDone = { pop() },
-                                        onNavigateBack = { pop() },
-                                    )
-                                }
-                                entry<InboxReviewRoute> {
-                                    ImportReviewScreen(
-                                        source = ReviewSource.Inbox,
-                                        imports = graph.imports,
-                                        ingest = graph.ingest,
-                                        suggestionInbox = graph.suggestionInbox,
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
                                         settings = graph.settings,
@@ -538,12 +532,11 @@ fun RootScreen(
                                 entry<EmailDetailRoute> { route ->
                                     EmailDetailScreen(
                                         emails = graph.emails,
-                                        ledger = graph.ledger,
-                                        embeddings = graph.embeddings,
                                         id = route.id,
                                         onNavigateBack = { pop() },
-                                        onOpenEmail = { navigate(EmailDetailRoute(it)) },
-                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
+                                        onTrySuggestion = {
+                                            navigate(SuggestSourcesRoute(route.id, EventSource.Email))
+                                        },
                                     )
                                 }
                                 entry<NotificationsRoute> {
@@ -569,8 +562,11 @@ fun RootScreen(
                                         embeddings = graph.embeddings,
                                         ledger = graph.ledger,
                                         id = route.id,
+                                        source = route.source,
                                         onNavigateBack = { pop() },
-                                        onTrySuggestion = { navigate(SuggestDebugRoute(route.id)) },
+                                        onTrySuggestion = {
+                                            navigate(SuggestDebugRoute(route.id, route.source))
+                                        },
                                         onOpenNotification = { navigate(NotificationDetailRoute(it)) },
                                         onOpenEmail = { navigate(EmailDetailRoute(it)) },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
@@ -580,13 +576,15 @@ fun RootScreen(
                                     SuggestDebugScreen(
                                         state = suggestDebugState,
                                         id = route.id,
+                                        source = route.source,
                                         onNavigateBack = { pop() },
                                         onReview = { candidate ->
                                             navigate(
                                                 SuggestedReviewRoute(
                                                     candidate = candidate,
                                                     ref = route.id,
-                                                    title = candidate.payee.ifBlank { "Notificación" },
+                                                    title = candidate.payee.ifBlank { "Movimiento" },
+                                                    source = route.source,
                                                 ),
                                             )
                                         },
@@ -596,13 +594,11 @@ fun RootScreen(
                                     ImportReviewScreen(
                                         source = ReviewSource.Suggested(
                                             candidate = route.candidate,
-                                            kind = EventSource.Notification,
+                                            kind = route.source,
                                             ref = route.ref,
                                             title = route.title,
                                         ),
                                         imports = graph.imports,
-                                        ingest = graph.ingest,
-                                        suggestionInbox = graph.suggestionInbox,
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
                                         settings = graph.settings,

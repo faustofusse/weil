@@ -142,9 +142,6 @@ sealed interface ReviewSource {
     /** An image/PDF the user picked or shared; analyzed by the worker. */
     data class Document(val document: PickedDocument) : ReviewSource
 
-    /** Movements recognized locally in captured notifications and emails. */
-    data object Inbox : ReviewSource
-
     /**
      * One movement proposed for a single captured message (the
      * notification→transaction path). The candidate arrives ready: the two
@@ -258,8 +255,6 @@ private class CandidateDraft(
 fun ImportReviewScreen(
     source: ReviewSource,
     imports: DocumentAnalyzer,
-    ingest: IngestRepository,
-    suggestionInbox: SuggestionsInboxRepository,
     ledger: TransactionsRepository,
     accounts: AccountsRepository,
     settings: SettingsRepository,
@@ -342,20 +337,6 @@ fun ImportReviewScreen(
                     analysis = result
                     result.candidates.map {
                         CandidateDraft(it, EventSource.Document, result.docId)
-                    }
-                }
-                ReviewSource.Inbox -> {
-                    // Two doors into the same list: the runs the listener
-                    // recorded silently as notifications arrived, and the
-                    // allowlist templates as the net under them (offline
-                    // captures, failed runs). A notification both caught is
-                    // shown once, with the recorded candidate — it is the one
-                    // that carries the account and the category.
-                    val recorded = suggestionInbox.pending()
-                    val recordedRefs = recorded.mapTo(HashSet()) { it.ref }
-                    val templated = ingest.inbox().filter { it.ref !in recordedRefs }
-                    (recorded + templated).map {
-                        CandidateDraft(it.candidate, it.kind, it.ref, it.title)
                     }
                 }
                 is ReviewSource.Suggested -> listOf(
@@ -594,7 +575,6 @@ fun ImportReviewScreen(
                             when (source) {
                                 is ReviewSource.Document -> Res.string.import_title
                                 is ReviewSource.Suggested -> Res.string.inbox_title
-                                ReviewSource.Inbox -> Res.string.inbox_title
                             },
                         ),
                     )
@@ -696,7 +676,6 @@ fun ImportReviewScreen(
                         when (source) {
                             is ReviewSource.Document -> Res.string.import_empty
                             is ReviewSource.Suggested -> Res.string.inbox_empty
-                            ReviewSource.Inbox -> Res.string.inbox_empty
                         },
                     ),
                 )

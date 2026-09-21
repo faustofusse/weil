@@ -49,7 +49,14 @@ class FakeSuggestTracer(
         )
 
         return SuggestTrace(
-            notification = item,
+            message = TracedMessage(
+                source = EventSource.Notification,
+                ref = item.id,
+                origin = item.appName,
+                title = item.title,
+                text = item.text,
+                at = item.postTime,
+            ),
             read = read,
             readDebug = FAKE_GEMINI_DEBUG,
             readMs = 1_480,
@@ -81,6 +88,14 @@ class FakeSuggestTracer(
             decisionMs = 287,
         )
     }
+
+    /**
+     * The harness never sweeps mail (the shot has no worker and no session),
+     * so this only has to exist for the interface. Answering "not found" is
+     * the honest shape: a run that read nothing writes nothing.
+     */
+    override suspend fun traceEmail(id: String): SuggestTrace =
+        SuggestTrace(error = "el harness no lee mails")
 
     private companion object {
         const val WINDOW = 20L * 60 * 60 * 1000
