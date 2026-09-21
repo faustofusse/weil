@@ -27,6 +27,7 @@
  * printed so nobody has to guess whether it is small.
  */
 import { createClient } from '@libsql/client';
+import { decodeMimeHeader, emailPlainText } from '../lib/text';
 
 const ACCOUNT = 'f12da7851e4dd1d107a80417a1d4cbbd';
 const GATEWAY = process.env.CLOUDFLARE_AI_GATEWAY ?? 'finance';
@@ -121,7 +122,15 @@ interface Case {
   text: string;
   movement: boolean;
   origin: string;
+  /** Hand-written in `data/merchants.json`; `?` where the text names none. */
+  merchant?: string;
 }
+
+const MERCHANTS: Record<string, string> = JSON.parse(
+  await Bun.file(new URL('../data/merchants.json', import.meta.url).pathname).text()
+);
+
+const merchantOf = (id: string) => MERCHANTS[id.slice(0, 6)];
 
 /**
  * The corpus: every message Jev scored, which is every message that carried a
@@ -132,23 +141,29 @@ async function corpus(): Promise<Case[]> {
   const db = createClient({ url: `file:${new URL('../data/lab.db', import.meta.url).pathname}` });
   const out: Case[] = [];
   const notifications = await db.execute(
-    'select package_name, title, text, is_movement from notifications where jev_score is not null'
+    'select id, package_name, title, text, is_movement from notifications where jev_score is not null'
   );
   for (const r of notifications.rows) {
     out.push({
       origin: String(r.package_name),
       text: `${r.title}\n${String(r.text).slice(0, 600)}`.trim(),
       movement: Number(r.is_movement ?? 0) === 1,
+      merchant: merchantOf(String(r.id)),
     });
   }
   const emails = await db.execute(
-    'select from_email, subject, body_text, is_movement from emails where jev_score is not null'
+    'select id, from_email, subject, body_text, body_html, is_movement from emails where jev_score is not null'
   );
   for (const r of emails.rows) {
+    // The stored text part is raw MIME truncated at 10 kB with the receipt
+    // past the cut, so the HTML is the one that carries the merchant — the
+    // same reason `Ingest.kt` reads `body_html` first.
+    const body = emailPlainText(String(r.body_html || r.body_text || ''));
     out.push({
       origin: String(r.from_email),
-      text: `${r.subject}\n${String(r.body_text ?? '').slice(0, 600)}`.trim(),
+      text: `${decodeMimeHeader(String(r.subject ?? ''))}\n${body.slice(0, 600)}`.trim(),
       movement: Number(r.is_movement ?? 0) === 1,
+      merchant: merchantOf(String(r.id)),
     });
   }
   return out.filter((c) => c.text.length > 10);
@@ -169,8 +184,21 @@ async function main() {
   );
 
   const rows: string[] = [];
-  rows.push('| modelo | dims | separa | P@1 | P@3 | 1 texto p50 | lote de 64 | USD/1k |');
-  rows.push('| --- | --- | --- | --- | --- | --- | --- | --- |');
+  // Only merchants seen more than once can be retrieved at all: a single
+  // example has nothing of its own kind to find.
+  const counts = new Map<string, number>();
+  for (const c of cases) {
+    if (c.merchant && c.merchant !== '?') counts.set(c.merchant, (counts.get(c.merchant) ?? 0) + 1);
+  }
+  const queries = cases.filter((c) => c.merchant && c.merchant !== '?' && counts.get(c.merchant)! > 1);
+  console.log(
+    `${queries.length} consultas de comercio sobre ${counts.size} comercios etiquetados a mano\n`
+  );
+
+  rows.push(
+    '| modelo | dims | separa | mov@1 | comercio@1 | comercio@3 | 1 texto p50 | lote de 64 | USD/1k |'
+  );
+  rows.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
 
   for (const [key, model] of Object.entries(MODELS)) {
     if (ONLY.length > 0 && !ONLY.includes(key)) continue;
@@ -195,7 +223,10 @@ async function main() {
 
       let correct = 0;
       let atOne = 0;
-      let atThree = 0;
+      let sameMerchantOne = 0;
+      let sameMerchantThree = 0;
+      let asked = 0;
+      const misses: string[] = [];
       for (let i = 0; i < cases.length; i++) {
         const ranked = cases
           .map((c, j) => ({ c, score: j === i ? -Infinity : dot(vectors[i]!, vectors[j]!) }))
@@ -203,22 +234,31 @@ async function main() {
           .slice(0, Math.max(K, 3));
         const votes = ranked.slice(0, K).filter((r) => r.c.movement).length;
         if (votes * 2 > K === cases[i]!.movement) correct++;
-        if (cases[i]!.movement) {
-          if (ranked[0]!.c.movement) atOne++;
-          if (ranked.slice(0, 3).some((r) => r.c.movement)) atThree++;
+        if (cases[i]!.movement && ranked[0]!.c.movement) atOne++;
+        // The merchant question, asked against the whole corpus: a promotion
+        // ranked first counts as a miss, which is the failure that matters.
+        const merchant = cases[i]!.merchant;
+        if (merchant && merchant !== '?' && counts.get(merchant)! > 1) {
+          asked++;
+          if (ranked[0]!.c.merchant === merchant) sameMerchantOne++;
+          else if (process.argv.includes('--misses')) {
+            misses.push(`${merchant} → ${ranked[0]!.c.merchant ?? 'promo'}: ${cases[i]!.text.split('\n')[0]!.slice(0, 48)}`);
+          }
+          if (ranked.slice(0, 3).some((r) => r.c.merchant === merchant)) sameMerchantThree++;
         }
       }
 
       const pct = (n: number, total: number) => `${Math.round((n / total) * 100)}%`;
       rows.push(
         `| ${model.label} | ${vectors[0]!.length} | ${pct(correct, cases.length)} | ` +
-          `${pct(atOne, movements)} | ${pct(atThree, movements)} | ` +
+          `${pct(atOne, movements)} | ${pct(sameMerchantOne, asked)} | ${pct(sameMerchantThree, asked)} | ` +
           `${percentile(singles, 50)} ms | ${batchMs} ms | ` +
           `$${((model.usdPerMillion * TOKENS_PER_TEXT * 1000) / 1_000_000).toFixed(4)} |`
       );
       console.log('ok');
+      for (const m of misses) console.log(`    ${m}`);
     } catch (e) {
-      rows.push(`| ${model.label} | — | — | — | — | — | — | — |`);
+      rows.push(`| ${model.label} | — | — | — | — | — | — | — | — |`);
       console.log(`falló: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
