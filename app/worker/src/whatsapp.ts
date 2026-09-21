@@ -21,6 +21,7 @@ import { suggestCategories, type ChatAccount } from './chat';
 export interface WhatsappEnv extends ImportEnv {
   /** TypeSafe key: the fast path reads messages with a Choice, not a prompt. */
   TYPESAFE_API_KEY?: string;
+  AI?: Ai;
   /** Shared with the bridge; signs both directions. */
   BRIDGE_SECRET: string;
   /** Base URL of the bridge, for messages we start ourselves. */
@@ -327,8 +328,14 @@ async function interpret(
   text: string,
   timestamp: number
 ): Promise<ParsedMessage | null> {
-  const categories = env.TYPESAFE_API_KEY
-    ? suggestCategories({ TYPESAFE_API_KEY: env.TYPESAFE_API_KEY }, accounts as ChatAccount[], text).catch((e) => {
+  // The binding is enough on its own now: Jev is in Cloudflare's catalogue,
+  // so a missing TypeSafe key no longer means no category.
+  const categories = env.TYPESAFE_API_KEY || env.AI
+    ? suggestCategories(
+        { TYPESAFE_API_KEY: env.TYPESAFE_API_KEY ?? '', AI: env.AI, AI_GATEWAY: env.AI_GATEWAY },
+        accounts as ChatAccount[],
+        text
+      ).catch((e) => {
         console.error('typesafe category failed, keeping gemini\'s:', e);
         return null;
       })

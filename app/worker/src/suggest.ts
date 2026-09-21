@@ -15,7 +15,10 @@
  */
 
 export interface SuggestEnv {
+  /** Only needed for the direct fallback; the gateway bills against credits. */
   TYPESAFE_API_KEY: string;
+  AI?: Ai;
+  AI_GATEWAY?: string;
 }
 
 /** `jev-latest` is the flagship System One model. */
@@ -80,11 +83,39 @@ export type SystemOneAnswer = ChoiceAnswer | NoulAnswer;
  * Throws on any non-2xx: callers decide whether that means "no suggestion"
  * (the typing path) or "fall back to the other model" (the chat path).
  */
+/**
+ * Jev is in Cloudflare's unified catalogue as `typesafe/jev`, so the same
+ * call can go through the account's AI Gateway: one bill, a cache, a log of
+ * every question asked, and no TypeSafe key to keep.
+ *
+ * It cannot go through `/v1/chat/completions` — that route forwards
+ * `messages` and `stream`, and Jev's schema is `state` + `questions`, not a
+ * conversation. The binding passes the body through as it is written.
+ *
+ * Falls back to TypeSafe directly on any failure: an evaluation that does not
+ * answer costs the category guess and, on the message path, the accounts.
+ */
 export async function systemOne(
   env: SuggestEnv,
   state: Record<string, unknown>,
-  questions: Record<string, unknown>
+  questions: Record<string, unknown>,
+  ai?: Ai,
+  gateway?: string
 ): Promise<Record<string, SystemOneAnswer>> {
+  if (ai) {
+    try {
+      const result = (await ai.run(
+        'typesafe/jev' as never,
+        { state, questions } as never,
+        gateway ? ({ gateway: { id: gateway } } as never) : undefined
+      )) as { answers?: Record<string, SystemOneAnswer> };
+      if (result?.answers) return result.answers;
+      console.log('jev via cloudflare: no answers in response, falling back');
+    } catch (e) {
+      console.log(`jev via cloudflare failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  if (!env.TYPESAFE_API_KEY) throw new Error('typesafe: no key and no binding');
   const res = await fetch(ENDPOINT, {
     method: 'POST',
     headers: {
@@ -428,14 +459,14 @@ function flatten(answer: SystemOneAnswer | undefined, none: string) {
  * that have not synced yet, which the worker would never see.
  */
 export async function handleSuggestAccounts(request: Request, env: SuggestEnv): Promise<Response> {
-  if (!env.TYPESAFE_API_KEY) return json({ error: 'suggestions not configured' }, 501);
+  if (!env.TYPESAFE_API_KEY && !env.AI) return json({ error: 'suggestions not configured' }, 501);
   const wantsDebug = new URL(request.url).searchParams.get('debug') === '1';
 
   const body = (await request.json()) as AccountsBody;
   const state = messageState(body);
   const questions = messageQuestions(body);
   const started = Date.now();
-  const answers = await systemOne(env, state, questions);
+  const answers = await systemOne(env, state, questions, env.AI, env.AI_GATEWAY);
   const latencyMs = Date.now() - started;
 
   const noul = (key: string) => {

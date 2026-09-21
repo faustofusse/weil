@@ -82,7 +82,7 @@ export async function suggestCategories(
   const questions = chatQuestions(accounts);
   if (Object.keys(questions).length === 0) return null;
 
-  const answers = await systemOne(env, { message: text }, questions);
+  const answers = await systemOne(env, { message: text }, questions, env.AI, env.AI_GATEWAY);
   const pick = (key: string): string | null => {
     const choice = (answers[key] as ChoiceAnswer | undefined)?.choice;
     return !choice || choice === NO_MATCH ? null : choice;
