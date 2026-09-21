@@ -174,6 +174,26 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     }
 
     /**
+     * Hard-deletes a set of transactions (postings and provenance with them)
+     * in one SQL transaction, so a failure halfway leaves the ledger
+     * untouched. Returns the number of rows actually removed. Irreversible
+     * here — undo is the caller's job, same shape as [delete]'s callers: read
+     * the rows back *before* calling this and re-create them on Deshacer.
+     */
+    suspend fun deleteAll(ids: List<String>): Int {
+        val unique = ids.distinct()
+        if (unique.isEmpty()) return 0
+        val idList = quoteList(unique)
+        writeAtomically {
+            execute("delete from postings where transaction_id in ($idList)", null)
+            execute("delete from transaction_sources where transaction_id in ($idList)", null)
+            execute("delete from transactions where id in ($idList)", null)
+        }
+        emitChange()
+        return unique.size
+    }
+
+    /**
      * Attaches incoming events to transactions that already record them: adds
      * the provenance rows and, for a half-recorded transfer, repoints the
      * dangling category leg at the event's own account. One SQL transaction for
@@ -389,6 +409,36 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                     createdAt = (row[3] as? Number)?.toLong() ?: 0L,
                 )
             }.toList()
+        }
+    }
+
+    /**
+     * Batch read of [sources]: one query for every id in [ids], grouped by
+     * transaction. Ids with no provenance simply map to nothing.
+     */
+    suspend fun sourcesFor(ids: List<String>): Map<String, List<StoredSource>> {
+        val unique = ids.distinct()
+        if (unique.isEmpty()) return emptyMap()
+        return db.useForRead { d ->
+            d.query(
+                "select transaction_id, kind, ref, event_key, created_at from transaction_sources" +
+                    " where transaction_id in (${quoteList(unique)}) order by created_at",
+                null,
+            ) { rows ->
+                val grouped = mutableMapOf<String, MutableList<StoredSource>>()
+                for (row in rows) {
+                    if (row.size < 5) continue
+                    val txId = row[0]?.toString() ?: continue
+                    val kind = EventSource.fromDb(row[1]?.toString()) ?: continue
+                    grouped.getOrPut(txId) { mutableListOf() } += StoredSource(
+                        kind = kind,
+                        ref = row[2]?.toString() ?: "",
+                        eventKey = row[3]?.toString(),
+                        createdAt = (row[4] as? Number)?.toLong() ?: 0L,
+                    )
+                }
+                grouped
+            }
         }
     }
 

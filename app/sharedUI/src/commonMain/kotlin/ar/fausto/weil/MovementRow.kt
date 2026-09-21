@@ -34,6 +34,10 @@ internal fun MovementRow(
      * information.
      */
     plain: Boolean = false,
+    /** Ticked in the journal's multi-select run; renders with the checked box. */
+    selected: Boolean = false,
+    /** Long-press starts (or toggles) a selection run; null leaves the plain row. */
+    onLongClick: (() -> Unit)? = null,
 ) {
     val flow = flowOf(tx, types)
     val from = flow?.fromId?.let { names[it] }
@@ -45,10 +49,25 @@ internal fun MovementRow(
     // no leg means anything the other doesn't) stays neutral.
     val categorical = types[iconId] == AccountType.Expense || types[iconId] == AccountType.Income
     val paint = accountPaint(colors[iconId], seed = iconId.takeIf { categorical })
+    // The selected disc's ink on a primary slab: `primary` alone is a surface
+    // tone that a white glyph can wash out on, and `onPrimary` is the exact
+    // pair the theme guarantees legible.
+    val primary = MaterialTheme.colorScheme.primary
+    val selectedPaint = AccountPaint(primary, MaterialTheme.colorScheme.onPrimary)
 
     AppListRow(
-        icon = if (plain) null else AccountIcons.resolve(icons[iconId], types[iconId]),
-        paint = paint,
+        icon = if (plain) null else {
+            if (selected) {
+                // The checkbox replaces the disc while a selection run is on:
+                // a tick beside the amount is invisible against a list of
+                // amounts, but the slot that always identifies the row is
+                // where a picker's mark belongs.
+                Icons.Filled.Check
+            } else {
+                AccountIcons.resolve(icons[iconId], types[iconId])
+            }
+        },
+        paint = if (selected) selectedPaint else paint,
         title = tx.payee.censored().ifBlank { names[iconId] ?: "" },
         // The payee takes the category's ink, like the category's own name
         // does in the lists: the disc and the title are one label, and the
@@ -59,6 +78,7 @@ internal fun MovementRow(
             else -> from ?: to
         },
         onClick = onOpen,
+        onLongClick = onLongClick,
         modifier = modifier,
     ) {
         if (flow != null) {

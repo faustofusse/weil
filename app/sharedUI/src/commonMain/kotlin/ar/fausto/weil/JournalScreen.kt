@@ -59,6 +59,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringArrayResource
@@ -68,10 +69,16 @@ import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.action_delete
 import weil.app.sharedui.generated.resources.action_ok
+import weil.app.sharedui.generated.resources.action_undo
+import weil.app.sharedui.generated.resources.action_undo
 import weil.app.sharedui.generated.resources.day_date
 import weil.app.sharedui.generated.resources.day_date_year
 import weil.app.sharedui.generated.resources.day_today
 import weil.app.sharedui.generated.resources.day_yesterday
+import weil.app.sharedui.generated.resources.journal_delete_failed
+import weil.app.sharedui.generated.resources.journal_delete_selected
+import weil.app.sharedui.generated.resources.journal_delete_selected_body
+import weil.app.sharedui.generated.resources.journal_delete_selected_title
 import weil.app.sharedui.generated.resources.journal_dev_delete_range
 import weil.app.sharedui.generated.resources.journal_dev_delete_range_body
 import weil.app.sharedui.generated.resources.journal_dev_delete_range_confirm
@@ -83,6 +90,8 @@ import weil.app.sharedui.generated.resources.journal_dev_delete_range_to
 import weil.app.sharedui.generated.resources.journal_empty
 import weil.app.sharedui.generated.resources.journal_filter_all
 import weil.app.sharedui.generated.resources.journal_more_postings
+import weil.app.sharedui.generated.resources.journal_selected_count
+import weil.app.sharedui.generated.resources.journal_title
 import weil.app.sharedui.generated.resources.journal_title
 import weil.app.sharedui.generated.resources.journal_filter_expense
 import weil.app.sharedui.generated.resources.journal_filter_income
@@ -116,6 +125,9 @@ fun JournalScreen(
 ) {
     val listState = rememberLazyListState()
     var showDeleteRangeDialog by remember { mutableStateOf(false) }
+    var showDeleteSelectedDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val selecting = state.isSelecting
 
     // Consecutive same-day runs, computed once per page rather than inside
     // the LazyListScope builder (which isn't @Composable, so a plain
@@ -173,31 +185,62 @@ fun JournalScreen(
             // Refresh is pull-to-refresh now, same gesture as everywhere
             // else in the app; a second button doing the same thing was a
             // second control for one action.
-            val actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
-                Box {
-                    var menuOpen by remember { mutableStateOf(false) }
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.more_options))
+            // In a selection run the bar swaps the overflow for a count and
+            // the delete action — the same role the title plays on a pushed
+            // screen, and one control fewer between the user and the action
+            // they came here for. Deselecting every row ends the run.
+            val actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit =
+                if (selecting) {
+                    {
+                        IconButton(onClick = { showDeleteSelectedDialog = true }) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = stringResource(Res.string.journal_delete_selected, state.selected.size),
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(Res.string.journal_dev_delete_range)) },
-                            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
-                            onClick = {
-                                menuOpen = false
-                                showDeleteRangeDialog = true
-                            },
-                        )
+                } else {
+                    {
+                        Box {
+                            var menuOpen by remember { mutableStateOf(false) }
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.more_options))
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(Res.string.journal_dev_delete_range)) },
+                                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                                    onClick = {
+                                        menuOpen = false
+                                        showDeleteRangeDialog = true
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
+            // While selecting, the bar wears the stock pushed-screen shape:
+            // a back arrow that ends the run and a title that says how many
+            // rows are ticked, whichever chrome this screen arrived with.
+            val titleText = if (selecting) {
+                stringResource(Res.string.journal_selected_count, state.selected.size)
+            } else if (bottomBar != null) {
+                stringResource(Res.string.nav_movements)
+            } else {
+                stringResource(Res.string.journal_title)
             }
             if (bottomBar != null) {
-                AppTopBar(title = stringResource(Res.string.nav_movements), actions = actions)
+                AppTopBar(
+                    title = titleText,
+                    onNavigateBack = if (selecting) ({ state.clearSelection() }) else null,
+                    actions = actions,
+                )
             } else {
                 TopAppBar(
-                    title = { Text(stringResource(Res.string.journal_title)) },
+                    title = { Text(titleText) },
                     navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
+                        IconButton(onClick = { if (selecting) state.clearSelection() else onNavigateBack() }) {
                             Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                         }
                     },
@@ -208,8 +251,10 @@ fun JournalScreen(
         bottomBar = bottomBar ?: {},
         floatingActionButton = {
             // As a tab root the bar carries the create button already; a
-            // second one in the corner would be the same action twice.
-            if (bottomBar == null) {
+            // second one in the corner would be the same action twice. Hidden
+            // mid-selection: registering a movement is the last thing the
+            // gesture is reaching for, and the FAB overlaps the bottom rows.
+            if (bottomBar == null && !selecting) {
                 FloatingActionButton(
                     onClick = onNavigateToNew,
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -288,6 +333,7 @@ fun JournalScreen(
                     // mistaken for a caption on the first one, the ambiguity
                     // that made Home drop it.
                     items(txs, key = { it.id }) { tx ->
+                        val selected = tx.id in state.selected
                         MovementRow(
                             tx = tx,
                             names = state.names,
@@ -295,7 +341,14 @@ fun JournalScreen(
                             icons = state.icons,
                             colors = state.colors,
                             hidden = false,
-                            onOpen = { onOpenTransaction(tx.id) },
+                            selected = selected,
+                            // The long-press that starts a run also ticks its
+                            // row; afterwards every tap toggles, so a run can
+                            // be built without lifting the finger.
+                            onLongClick = { state.toggleSelected(tx.id) },
+                            onOpen = {
+                                if (state.isSelecting) state.toggleSelected(tx.id) else onOpenTransaction(tx.id)
+                            },
                         )
                     }
                 }
@@ -315,6 +368,73 @@ fun JournalScreen(
     if (showDeleteRangeDialog) {
         DeleteRangeDialog(state = state, onDismiss = { showDeleteRangeDialog = false })
     }
+
+    if (showDeleteSelectedDialog) {
+        DeleteSelectedDialog(
+            state = state,
+            scope = scope,
+            onDismiss = { showDeleteSelectedDialog = false },
+        )
+    }
+}
+
+/**
+ * Confirm-and-delete for the multi-select run: one transaction for the whole
+ * batch ([JournalState.deleteSelected]), then the Snackbar carries every
+ * removed row back ([JournalState.restore]) — the same undoable-delete shape
+ * the editor and the detail screen use, extended to N rows.
+ */
+@Composable
+private fun DeleteSelectedDialog(
+    state: JournalState,
+    scope: CoroutineScope,
+    onDismiss: () -> Unit,
+) {
+    var deleting by remember { mutableStateOf(false) }
+    val count = state.selected.size
+    val undoLabel = stringResource(Res.string.action_undo)
+    val deletedMessage = stringResource(Res.string.journal_selected_count, count)
+    val failedMessage = stringResource(Res.string.journal_delete_failed)
+
+    AlertDialog(
+        onDismissRequest = { if (!deleting) onDismiss() },
+        title = { Text(stringResource(Res.string.journal_delete_selected_title, count)) },
+        text = {
+            Text(
+                stringResource(Res.string.journal_delete_selected_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    deleting = true
+                    scope.launch {
+                        try {
+                            val backups = state.deleteSelected()
+                            onDismiss()
+                            if (backups.isNotEmpty()) {
+                                Feedback.undoable(deletedMessage, undoLabel) {
+                                    state.restore(backups)
+                                }
+                            }
+                        } catch (e: Throwable) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Feedback.show(failedMessage)
+                            deleting = false
+                        }
+                    }
+                },
+                enabled = !deleting && count > 0,
+            ) { Text(stringResource(Res.string.action_delete)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !deleting) {
+                Text(stringResource(Res.string.action_cancel))
+            }
+        },
+    )
 }
 
 private fun matchesFilter(

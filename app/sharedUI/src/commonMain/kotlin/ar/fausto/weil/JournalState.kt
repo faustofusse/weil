@@ -2,6 +2,7 @@ package ar.fausto.weil
 
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
@@ -22,7 +23,6 @@ import kotlinx.coroutines.launch
  */
 /** Gasto / Ingreso / Traspaso, or no filter at all. */
 enum class JournalFilter { All, Expense, Income, Transfer }
-
 @Stable
 class JournalState(
     private val ledger: TransactionsRepository,
@@ -39,9 +39,34 @@ class JournalState(
      */
     var filter by mutableStateOf(JournalFilter.All)
         private set
-
     fun pickFilter(next: JournalFilter) {
         filter = next
+    }
+
+    // Multi-select: entered by long-pressing a row, exited by tapping the
+    // back arrow, a successful delete, or a page load that no longer shows
+    // every selected id (a sync removing a row under us). Kept in the state
+    // rather than the screen so navigation to a transaction and back doesn't
+    // drop the pick mid-selection.
+    private var selection = mutableStateListOf<String>()
+
+    /** Ids currently ticked, in pick order. */
+    val selected: List<String> get() = selection.toList()
+
+    /** True once a long-press has started a selection run. */
+    val isSelecting: Boolean get() = selection.isNotEmpty()
+
+    fun toggleSelected(id: String) {
+        if (id in selection) selection.remove(id) else selection.add(id)
+    }
+
+    fun clearSelection() {
+        selection.clear()
+    }
+
+    private fun pruneSelection() {
+        val known = items.mapTo(HashSet()) { it.id }
+        selection.removeAll { it !in known }
     }
     var cursor by mutableStateOf<LedgerCursor?>(null)
         private set
@@ -193,6 +218,7 @@ class JournalState(
         items = page
         loaded = true
         fetchedOwnPage = true
+        pruneSelection()
     }
 
     /**
@@ -204,6 +230,46 @@ class JournalState(
         val count = ledger.deleteRange(from, to)
         loadFirst()
         return count
+    }
+
+    /**
+     * Multi-select delete: hard-deletes every ticked transaction and reloads
+     * the first page. Returns a backup of what was removed, in input order,
+     * for the caller's Deshacer — [restore] re-creates it verbatim (date,
+     * payee, note, postings, provenance), so undo is a true inverse rather
+     * than the single-row approximation the editor can get away with.
+     */
+    suspend fun deleteSelected(): List<Backup> {
+        val ids = selection.toList()
+        if (ids.isEmpty()) return emptyList()
+        val backup = ids.mapNotNull { ledger.get(it) }
+        val sources = ledger.sourcesFor(ids)
+        ledger.deleteAll(ids)
+        selection.clear()
+        loadFirst()
+        return backup.map { Backup(it, sources[it.id].orEmpty().map { s -> TransactionSource(s.kind, s.ref, s.eventKey) }) }
+    }
+
+    /** Everything needed to re-create a deleted transaction. */
+    data class Backup(val tx: Transaction, val sources: List<TransactionSource>)
+
+    /** Re-creates rows deleted by [deleteSelected]; the Deshacer half. */
+    suspend fun restore(backups: List<Backup>) {
+        if (backups.isEmpty()) return
+        ledger.addAll(
+            backups.map { b ->
+                NewTransaction(
+                    date = b.tx.date,
+                    payee = b.tx.payee,
+                    note = b.tx.note,
+                    drafts = b.tx.postings.map { p ->
+                        DraftPosting(p.accountId, formatMinorUnits(p.amountMinor), p.commodity)
+                    },
+                    timeKnown = b.tx.timeKnown,
+                    sources = b.sources,
+                )
+            },
+        )
     }
 
     fun loadMore() {
