@@ -165,6 +165,10 @@ fun RootScreen(
                     // doesn't re-fetch and re-show a skeleton.
                     val emailsState = remember(loggedIn) { EmailsState(graph.emails) }
                     val notificationsState = remember(loggedIn) { NotificationsState(graph.notifications) }
+                    // Same reasoning: the suggestion bench costs two model
+                    // calls and ~20 s, so stepping into the review screen and
+                    // back must find the trace still there.
+                    val suggestDebugState = remember(loggedIn) { SuggestDebugState(graph.suggestions) }
                     val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
                     // Home greets with the name and Profile edits it; one
                     // holder above the nav host keeps the two in step.
@@ -551,7 +555,7 @@ fun RootScreen(
                                 }
                                 entry<SuggestDebugRoute> { route ->
                                     SuggestDebugScreen(
-                                        suggestions = graph.suggestions,
+                                        state = suggestDebugState,
                                         id = route.id,
                                         onNavigateBack = { pop() },
                                         onReview = { candidate ->

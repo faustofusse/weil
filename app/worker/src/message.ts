@@ -319,6 +319,32 @@ function usable(reading: ReadMessage | null): reading is ReadMessage {
   return reading != null && typeof reading.isMovement === 'boolean';
 }
 
+/**
+ * The contract, enforced here rather than hoped for.
+ *
+ * Through the unified endpoint there is no `responseSchema` to lean on — it
+ * is OpenAI-shaped and takes a prompt, not a schema — so a model is free to
+ * answer `"payee": null` or `"amount": 21389`. Both are reasonable readings of
+ * the request and both broke the app, which decodes this strictly. Whatever
+ * the model sends, what leaves this worker has the declared types.
+ */
+function normalizeReading(reading: ReadMessage): ReadMessage {
+  const text = (value: unknown): string =>
+    value == null ? '' : typeof value === 'string' ? value : String(value);
+  return {
+    isMovement: reading.isMovement === true,
+    direction: ['expense', 'income', 'transfer'].includes(reading.direction)
+      ? reading.direction
+      : 'expense',
+    payee: text(reading.payee),
+    amount: text(reading.amount),
+    commodity: text(reading.commodity) || 'ARS',
+    account: reading.account == null ? null : text(reading.account),
+    note: reading.note == null ? null : text(reading.note),
+    normalized: text(reading.normalized),
+  };
+}
+
 export async function readMessage(
   env: ImportEnv,
   body: MessageBody,
@@ -341,12 +367,15 @@ export async function readMessage(
         const reading = extractJson(raw);
         if (usable(reading)) {
           if (debug) {
+            // The raw text is kept as it came: the normalization above is
+            // what the app sees, and the trace has to be able to show the
+            // difference.
             debug.model = model;
             debug.rawText = raw;
             debug.latencyMs = Date.now() - started;
             debug.viaGateway = env.AI_GATEWAY != null;
           }
-          return reading;
+          return normalizeReading(reading);
         }
         console.log(`reader ${model}: unusable answer, trying next`);
       } catch (e) {
@@ -358,7 +387,9 @@ export async function readMessage(
   // Last resort: Google directly, with its own structured output, which is
   // the path this feature shipped on. Keeps the feature alive when the
   // binding or the gateway is the thing that is down.
-  return geminiJson<ReadMessage>(liteFirst(env), [{ text: messagePrompt(body) }], SCHEMA, debug);
+  return normalizeReading(
+    await geminiJson<ReadMessage>(liteFirst(env), [{ text: messagePrompt(body) }], SCHEMA, debug)
+  );
 }
 
 /**

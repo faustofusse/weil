@@ -33,11 +33,11 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CancellationException
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.suggest_debug_copy
 import weil.app.sharedui.generated.resources.suggest_debug_create
+import weil.app.sharedui.generated.resources.suggest_debug_rerun
 import weil.app.sharedui.generated.resources.suggest_debug_title
 
 /**
@@ -52,28 +52,22 @@ import weil.app.sharedui.generated.resources.suggest_debug_title
  */
 @Composable
 fun SuggestDebugScreen(
-    suggestions: SuggestTracer,
+    /**
+     * Hoisted above the nav host: stepping into the review screen and back
+     * must show the same trace, not pay for it twice.
+     */
+    state: SuggestDebugState,
     id: String,
     onNavigateBack: () -> Unit,
     /** Hands the proposed row to the review screen. Nothing is written here. */
     onReview: (ImportCandidate) -> Unit = {},
 ) {
-    var trace by remember(id) { mutableStateOf<SuggestTrace?>(null) }
-    var running by remember(id) { mutableStateOf(true) }
-    var failure by remember(id) { mutableStateOf<String?>(null) }
+    val trace = state.trace(id)
+    val running = state.isRunning(id)
+    val failure = state.failure(id)
     val clipboard = LocalClipboardManager.current
 
-    LaunchedEffect(id) {
-        running = true
-        failure = null
-        try {
-            trace = suggestions.traceNotification(id)
-        } catch (e: Throwable) {
-            if (e is CancellationException) throw e
-            failure = e.message ?: e.toString()
-        }
-        running = false
-    }
+    LaunchedEffect(id) { state.run(id) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         AppTopBar(
@@ -89,10 +83,20 @@ fun SuggestDebugScreen(
                         )
                     }
                 }
+                if (!running) {
+                    IconButton(onClick = { state.run(id, force = true) }) {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = stringResource(Res.string.suggest_debug_rerun),
+                        )
+                    }
+                }
             },
         )
 
-        if (running) {
+        // Also covers the frame before [LaunchedEffect] starts the run, so a
+        // first visit never flashes an empty list.
+        if (running || (trace == null && failure == null)) {
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,

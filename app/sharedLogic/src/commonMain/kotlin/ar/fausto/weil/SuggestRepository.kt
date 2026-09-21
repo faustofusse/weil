@@ -52,8 +52,17 @@ class SuggestRepository(
 ) : SuggestTracer {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
-    /** For the other model's answer, which follows no contract of ours. */
-    private val lenient = Json { ignoreUnknownKeys = true; isLenient = true }
+    /**
+     * For anything a model wrote. Through Cloudflare's unified endpoint there
+     * is no schema to constrain the answer, so a reading can arrive with a
+     * null payee or a numeric amount; the worker normalizes what it returns,
+     * and this is the second line of defence for a field nobody anticipated.
+     */
+    private val lenient = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
     private val client = platformHttpClient {
         install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         install(HttpTimeout) {
@@ -96,7 +105,7 @@ class SuggestRepository(
             if (e is kotlinx.coroutines.CancellationException) throw e
             return SuggestTrace(notification = item, error = "lectura: ${e.message ?: e.toString()}")
         }
-        val read = decodeBody<ReadResponse>(json, readWire)
+        val read = decodeBody<ReadResponse>(lenient, readWire)
         // The comparison is an observation and must never take the run with
         // it: a second model answers in whatever shape it feels like (this one
         // sent `amount` as a number and the strict decoder threw), and the
