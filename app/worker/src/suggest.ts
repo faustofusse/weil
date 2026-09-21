@@ -84,16 +84,18 @@ export type SystemOneAnswer = ChoiceAnswer | NoulAnswer;
  * (the typing path) or "fall back to the other model" (the chat path).
  */
 /**
- * Jev is in Cloudflare's unified catalogue as `typesafe/jev`, so the same
- * call can go through the account's AI Gateway: one bill, a cache, a log of
- * every question asked, and no TypeSafe key to keep.
+ * **Straight at TypeSafe when there is a key.** Jev is in Cloudflare's
+ * catalogue as `typesafe/jev` and the binding reaches it — not through
+ * `/v1/chat/completions`, which forwards `messages` and `stream` while Jev's
+ * schema is `state` + `questions`, but through `env.AI.run`, which passes the
+ * body as written. Measured on the notification path, that route answers in
+ * **1.756 ms against 307 ms** direct. The reader can afford that trade (it is
+ * one call the user is already waiting on, and the cache and the logs are
+ * worth a second); this cannot — the same question runs on a 450 ms typing
+ * debounce, where a guess that lands late is worse than no guess.
  *
- * It cannot go through `/v1/chat/completions` — that route forwards
- * `messages` and `stream`, and Jev's schema is `state` + `questions`, not a
- * conversation. The binding passes the body through as it is written.
- *
- * Falls back to TypeSafe directly on any failure: an evaluation that does not
- * answer costs the category guess and, on the message path, the accounts.
+ * The binding stays as the fallback, which is also what makes the key
+ * optional: no TypeSafe account, still a category.
  */
 export async function systemOne(
   env: SuggestEnv,
@@ -102,20 +104,18 @@ export async function systemOne(
   ai?: Ai,
   gateway?: string
 ): Promise<Record<string, SystemOneAnswer>> {
-  if (ai) {
-    try {
-      const result = (await ai.run(
-        'typesafe/jev' as never,
-        { state, questions } as never,
-        gateway ? ({ gateway: { id: gateway } } as never) : undefined
-      )) as { answers?: Record<string, SystemOneAnswer> };
-      if (result?.answers) return result.answers;
-      console.log('jev via cloudflare: no answers in response, falling back');
-    } catch (e) {
-      console.log(`jev via cloudflare failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  if (!env.TYPESAFE_API_KEY) throw new Error('typesafe: no key and no binding');
+  const viaCloudflare = async (): Promise<Record<string, SystemOneAnswer>> => {
+    if (!ai) throw new Error('typesafe: no key and no binding');
+    const result = (await ai.run(
+      'typesafe/jev' as never,
+      { state, questions } as never,
+      gateway ? ({ gateway: { id: gateway } } as never) : undefined
+    )) as { answers?: Record<string, SystemOneAnswer> };
+    if (!result?.answers) throw new Error('typesafe via cloudflare: no answers');
+    return result.answers;
+  };
+
+  if (!env.TYPESAFE_API_KEY) return viaCloudflare();
   const res = await fetch(ENDPOINT, {
     method: 'POST',
     headers: {
@@ -125,7 +125,12 @@ export async function systemOne(
     body: JSON.stringify({ model: MODEL, state, questions }),
   });
   if (!res.ok) {
-    throw new Error(`typesafe: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    const detail = (await res.text()).slice(0, 200);
+    if (ai) {
+      console.log(`typesafe direct failed (${res.status} ${detail}), trying cloudflare`);
+      return viaCloudflare();
+    }
+    throw new Error(`typesafe: ${res.status} ${detail}`);
   }
   const data = (await res.json()) as { answers: Record<string, SystemOneAnswer> };
   return data.answers;

@@ -60,7 +60,13 @@ problema es la instruccion, no el modelo: esa frase probablemente tenga que
 armarse en codigo desde payee + cuenta, que es literalmente lo que pide.
 
 **Jev** (etapa 3, otra pregunta: un Choice sobre el arbol del usuario): p50
-**307 ms** (714, 279, 277, 366, 307). No esta en la tabla porque no hace el
+**307 ms** directo (714, 279, 277, 366, 307), **1.756 ms** por el binding de
+Cloudflare (`typesafe/jev`, que existe y funciona: no por
+`/v1/chat/completions`, que le agrega `messages` y `stream`, sino por
+`env.AI.run`). Cinco veces mas lento, asi que Jev sigue saliendo directo y el
+binding queda de fallback: la misma pregunta corre en el debounce de 450 ms
+de la pantalla de carga, donde una sugerencia que llega tarde es peor que
+ninguna. No esta en la tabla porque no hace el
 mismo trabajo, y TypeSafe no es proveedor de AI Gateway, asi que tampoco se
 puede enrutar por ahi. Esta medido porque la pregunta que siempre aparece es
 "no sera Jev lo lento", y es el 6% del total.
