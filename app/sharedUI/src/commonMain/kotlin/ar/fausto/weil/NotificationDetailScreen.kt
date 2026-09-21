@@ -17,70 +17,70 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.notification_detail_title
+import weil.app.sharedui.generated.resources.notification_related
+import weil.app.sharedui.generated.resources.notification_related_none
 import weil.app.sharedui.generated.resources.notifications_app_icon_content
 import weil.app.sharedui.generated.resources.notifications_category
-import weil.app.sharedui.generated.resources.similar_link_done
-import weil.app.sharedui.generated.resources.similar_notifications
-import weil.app.sharedui.generated.resources.similar_transactions
 import weil.app.sharedui.generated.resources.suggest_debug_action
 
 /**
- * Vista completa de una notificación capturada, y sus parecidas.
+ * Vista completa de una notificación capturada, con sus transacciones
+ * relacionadas.
  *
- * The transactions listed here can be linked back as this notification's
- * origin, which is the point of the whole feature: the device has 184 document
- * sources, 6 from WhatsApp and **zero** from notifications, and every manual
- * link is one labelled example for the automatic pipeline that comes next —
- * collected while using the app, with no labelling screen.
+ * "Relacionadas" es el provenance hecho lista: las filas del ledger que ya
+ * llevan esta notificación como origen (`transaction_sources`). Uno o cero en
+ * la práctica, pero la tabla es many-to-many y la lista miente menos que un
+ * supuesto. Las parecidas —los vecinos por vector, con sus botones de
+ * vincular— viven en el laboratorio («Probar sugerencia», el ícono del top
+ * bar), que es donde son útiles: ahí son visibles como entrada de la pipeline
+ * antes de que exista la fila que vincular.
  */
 @Composable
 fun NotificationDetailScreen(
     notifications: NotificationsRepository,
     ledger: TransactionsRepository,
-    embeddings: EmbeddingsRepository,
+    accounts: AccountsRepository,
     id: String,
     onNavigateBack: () -> Unit,
-    onOpenNotification: (String) -> Unit,
     onOpenTransaction: (String) -> Unit,
-    /** Opens the suggestion test bench for this notification. */
+    /** Opens the suggestion lab for this notification. */
     onTrySuggestion: (() -> Unit)? = null,
 ) {
     var item by remember(id) { mutableStateOf<NotificationItem?>(null) }
+    var related by remember(id) { mutableStateOf<List<Transaction>>(emptyList()) }
+    var names by remember(id) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var types by remember(id) { mutableStateOf<Map<String, AccountType>>(emptyMap()) }
     var loaded by remember(id) { mutableStateOf(false) }
-    var linkedTo by remember(id) { mutableStateOf<Set<String>>(emptySet()) }
-    val scope = rememberCoroutineScope()
-    val linkedMessage = stringResource(Res.string.similar_link_done)
 
-    suspend fun reloadLinks() {
+    LaunchedEffect(id) {
         // One notification links to at most one transaction in practice, but
         // the table is many-to-many, so ask which transactions already carry
         // this ref rather than assuming.
-        linkedTo = ledger.transactionsForSource(EventSource.Notification, id)
-    }
-
-    LaunchedEffect(id) {
+        val linked = ledger.transactionsForSource(EventSource.Notification, id)
+        related = linked.mapNotNull { ledger.get(it) }
+        val nodes = accounts.tree().flatMap { it.selfAndDescendants }
+        names = nodes.associate { it.account.id to it.account.name }
+        types = nodes.associate { it.account.id to it.account.type }
         item = notifications.get(id)
-        reloadLinks()
         loaded = true
     }
 
@@ -91,11 +91,15 @@ fun NotificationDetailScreen(
                 title = stringResource(Res.string.notification_detail_title),
                 onNavigateBack = onNavigateBack,
                 actions = {
-                    // A dry run of the notification→transaction path: it opens
-                    // the trace, never the ledger.
+                    // The suggestion lab: the trace of the whole
+                    // notification→transaction path plus the raw neighbours,
+                    // never the ledger.
                     onTrySuggestion?.let { open ->
-                        TextButton(onClick = open) {
-                            Text(stringResource(Res.string.suggest_debug_action))
+                        IconButton(onClick = open) {
+                            Icon(
+                                Icons.Filled.Science,
+                                contentDescription = stringResource(Res.string.suggest_debug_action),
+                            )
                         }
                     }
                 },
@@ -169,47 +173,46 @@ fun NotificationDetailScreen(
             }
 
             Spacer(Modifier.height(24.dp))
-            SimilarSection(
-                embeddings = embeddings,
-                title = stringResource(Res.string.similar_notifications),
-                kind = EmbedKind.Notification,
-                id = id,
-                allowPackageFilter = true,
-                onOpen = { onOpenNotification(it.id) },
+            Text(
+                stringResource(Res.string.notification_related),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
             )
-
-            Spacer(Modifier.height(24.dp))
-            SimilarSection(
-                embeddings = embeddings,
-                title = stringResource(Res.string.similar_transactions),
-                kind = EmbedKind.Notification,
-                id = id,
-                into = EmbedKind.Transaction,
-                onOpen = { onOpenTransaction(it.id) },
-                linkedRefs = linkedTo,
-                reloadKey = linkedTo,
-                onLink = { match ->
-                    scope.launch {
-                        try {
-                            ledger.associate(
-                                listOf(
-                                    AssociateOp(
-                                        transactionId = match.id,
-                                        sources = listOf(
-                                            TransactionSource(EventSource.Notification, id),
-                                        ),
-                                    ),
-                                ),
+            Spacer(Modifier.height(8.dp))
+            Surface(
+                shape = RoundedCornerShape(RowRadius),
+                color = rowTint(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (related.isEmpty()) {
+                    Text(
+                        stringResource(Res.string.notification_related_none),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                    )
+                } else {
+                    Column {
+                        related.forEachIndexed { index, tx ->
+                            if (index > 0) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(start = 16.dp),
+                                    // Same ink as the slab, one step stronger —
+                                    // the divider treatment of every other
+                                    // list-on-a-slab in the app.
+                                    color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.12f),
+                                )
+                            }
+                            TransactionRow(
+                                tx = tx,
+                                names = names,
+                                types = types,
+                                onOpen = { onOpenTransaction(tx.id) },
                             )
-                            reloadLinks()
-                            Feedback.show(linkedMessage)
-                        } catch (e: Throwable) {
-                            if (e is CancellationException) throw e
-                            Feedback.show(e.message ?: e.toString())
                         }
                     }
-                },
-            )
+                }
+            }
             Spacer(Modifier.height(32.dp))
         }
     }

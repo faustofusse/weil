@@ -36,6 +36,13 @@ enum class AppTheme(
     val displayName: String,
     val colorScheme: ColorScheme,
     val money: MoneyColors = MoneyColors(),
+    /**
+     * Whether this palette paints a dark page. The system bars read it: the
+     * status/navigation icon tint is not a Material role, so the only
+     * trustworthy source is the theme itself (the system's dark-mode setting
+     * says nothing about which palette the user picked in-app).
+     */
+    val dark: Boolean = false,
 ) {
     /**
      * The dashboard palette: a pale lavender page, one mint hero card and
@@ -223,9 +230,11 @@ enum class AppTheme(
             positive = Color(0xFF74C562),
             negative = Color(0xFFFF6B5E),
         ),
+        dark = true,
     ),
     Weil(
         displayName = "Weil",
+        dark = true,
         // `error` was left to the darkColorScheme() default, which is
         // 0xFFF2B8B5 — pixel-identical to this theme's own `primary`. Every
         // negative amount and every error banner rendered in the exact same

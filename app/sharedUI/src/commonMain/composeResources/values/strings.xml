@@ -431,11 +431,13 @@
 
     <!-- Detalle de notificación -->
     <string name="notification_detail_title">Notificación</string>
-    <string name="suggest_debug_action">Probar</string>
-    <string name="suggest_debug_title">Prueba de sugerencia</string>
+    <string name="suggest_debug_action">Probar sugerencia</string>
+    <string name="suggest_debug_title">Probar sugerencia</string>
     <string name="suggest_debug_copy">Copiar el trazo</string>
     <string name="suggest_debug_create">Revisar y crear</string>
     <string name="suggest_debug_rerun">Volver a probar</string>
+    <string name="notification_related">Transacciones relacionadas</string>
+    <string name="notification_related_none">Ninguna todavía</string>
 
     <!-- Perfil: apariencia -->
     <string name="profile_theme_title">Apariencia</string>

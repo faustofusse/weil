@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,8 +34,13 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.similar_link_done
+import weil.app.sharedui.generated.resources.similar_notifications
+import weil.app.sharedui.generated.resources.similar_transactions
 import weil.app.sharedui.generated.resources.suggest_debug_copy
 import weil.app.sharedui.generated.resources.suggest_debug_create
 import weil.app.sharedui.generated.resources.suggest_debug_rerun
@@ -42,13 +48,21 @@ import weil.app.sharedui.generated.resources.suggest_debug_title
 
 /**
  * What the two models were asked and what they answered, for one captured
- * notification. It writes nothing and goes nowhere: it exists so the pipeline
- * can be *watched* before it is allowed to propose a transaction.
+ * notification. It writes nothing to the ledger by itself and goes nowhere:
+ * it exists so the pipeline can be *watched* before it is allowed to propose a
+ * transaction.
  *
  * Deliberately raw — JSON in monospace, one block per stage, in the order the
  * stages ran. A summarized view would hide exactly the thing being debugged:
  * every wrong answer here has so far been a wrong *question*, or a context
  * that did not contain what the answer needed.
+ *
+ * Under the trace live the raw neighbours (the "parecidas" sections that used
+ * to hang off the notification detail): the same inputs the retrieval stage
+ * feeds the matcher and Jev, unfiltered and with their own link buttons.
+ * Watching the trace says what the pipeline *did* with them; these say what
+ * it *had*. Linking from here writes provenance — the one write this screen
+ * offers — because a manual link is a labelled example for every later run.
  */
 @Composable
 fun SuggestDebugScreen(
@@ -58,16 +72,33 @@ fun SuggestDebugScreen(
      */
     state: SuggestDebugState,
     id: String,
+    embeddings: EmbeddingsRepository,
+    ledger: TransactionsRepository,
     onNavigateBack: () -> Unit,
     /** Hands the proposed row to the review screen. Nothing is written here. */
     onReview: (ImportCandidate) -> Unit = {},
+    onOpenNotification: (String) -> Unit = {},
+    onOpenTransaction: (String) -> Unit = {},
 ) {
     val trace = state.trace(id)
     val running = state.isRunning(id)
     val failure = state.failure(id)
     val clipboard = LocalClipboardManager.current
 
-    LaunchedEffect(id) { state.run(id) }
+    // The link state of the raw neighbours below: which transactions already
+    // carry this notification as a source, so a linked row shows as such.
+    var linkedTo by remember(id) { mutableStateOf<Set<String>>(emptySet()) }
+    val scope = rememberCoroutineScope()
+    val linkedMessage = stringResource(Res.string.similar_link_done)
+
+    suspend fun reloadLinks() {
+        linkedTo = ledger.transactionsForSource(EventSource.Notification, id)
+    }
+
+    LaunchedEffect(id) {
+        state.run(id)
+        reloadLinks()
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         AppTopBar(
@@ -169,6 +200,52 @@ fun SuggestDebugScreen(
                         Text(stringResource(Res.string.suggest_debug_create))
                     }
                 }
+            }
+
+            // The raw inputs, below the trace that consumed them.
+            item {
+                Spacer(Modifier.height(8.dp))
+                SimilarSection(
+                    embeddings = embeddings,
+                    title = stringResource(Res.string.similar_notifications),
+                    kind = EmbedKind.Notification,
+                    id = id,
+                    allowPackageFilter = true,
+                    onOpen = { onOpenNotification(it.id) },
+                )
+            }
+            item {
+                SimilarSection(
+                    embeddings = embeddings,
+                    title = stringResource(Res.string.similar_transactions),
+                    kind = EmbedKind.Notification,
+                    id = id,
+                    into = EmbedKind.Transaction,
+                    onOpen = { onOpenTransaction(it.id) },
+                    linkedRefs = linkedTo,
+                    reloadKey = linkedTo,
+                    onLink = { match ->
+                        scope.launch {
+                            try {
+                                ledger.associate(
+                                    listOf(
+                                        AssociateOp(
+                                            transactionId = match.id,
+                                            sources = listOf(
+                                                TransactionSource(EventSource.Notification, id),
+                                            ),
+                                        ),
+                                    ),
+                                )
+                                reloadLinks()
+                                Feedback.show(linkedMessage)
+                            } catch (e: Throwable) {
+                                if (e is CancellationException) throw e
+                                Feedback.show(e.message ?: e.toString())
+                            }
+                        }
+                    },
+                )
             }
             item { Spacer(Modifier.height(32.dp)) }
         }

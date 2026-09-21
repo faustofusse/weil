@@ -547,10 +547,9 @@ fun RootScreen(
                                     NotificationDetailScreen(
                                         notifications = graph.notifications,
                                         ledger = graph.ledger,
-                                        embeddings = graph.embeddings,
+                                        accounts = graph.accounts,
                                         id = route.id,
                                         onNavigateBack = { pop() },
-                                        onOpenNotification = { navigate(NotificationDetailRoute(it)) },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                         onTrySuggestion = { navigate(SuggestDebugRoute(route.id)) },
                                     )
@@ -559,7 +558,11 @@ fun RootScreen(
                                     SuggestDebugScreen(
                                         state = suggestDebugState,
                                         id = route.id,
+                                        embeddings = graph.embeddings,
+                                        ledger = graph.ledger,
                                         onNavigateBack = { pop() },
+                                        onOpenNotification = { navigate(NotificationDetailRoute(it)) },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                         onReview = { candidate ->
                                             navigate(
                                                 SuggestedReviewRoute(

@@ -76,6 +76,14 @@ object Icons {
             "M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
         )
 
+        /** Erlenmeyer flask: the suggestion lab, "Probar sugerencia". */
+        val Science: ImageVector = lineIcon(
+            "Science",
+            "M10 2.5h4",
+            "M10 2.5v5.7l-5.1 8.4A2.2 2.2 0 0 0 6.8 20h10.4a2.2 2.2 0 0 0 1.9-3.4L14 8.2V2.5",
+            "M7.4 14.5h9.2",
+        )
+
         val Warning: ImageVector = lineIcon(
             "Warning",
             "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z",
