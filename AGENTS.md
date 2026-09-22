@@ -2,6 +2,7 @@ when you need to use a sdk or library use pi to spawn a subagent with deepseek-v
 after adding a swiftpm dependency remember to run ```XCODEPROJ_PATH='./app/iosApp/iosApp.xcodeproj' ./gradlew ':app:sharedUI:integrateLinkagePackage' -i```
 when implementing UI-only changes, use the desktop hot reload (`./gradlew :app:desktopApp:hotRun --auto`) instead of a heavy emulator to test
 to check a UI change without stealing focus, render it headless: `./gradlew :app:desktopApp:shot -Pshot.out=/tmp/home.png [-Pshot.seconds=6]` (offscreen `ImageComposeScene` of the real `RootScreen`, sandboxed session + seeded `FakeDatabase` under the temp dir — never touches `~/.weil`). Note `./gradlew :app:desktopApp:run -Dweil.mode=fake` does **not** reach the app JVM: `-D` goes to Gradle, so `run` always uses the real session/live Turso data.
+when commiting prefix with fix:, feat:, chore:, refactor:, ...
 
 ## Build & verify
 
