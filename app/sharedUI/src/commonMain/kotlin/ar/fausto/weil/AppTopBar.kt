@@ -42,6 +42,12 @@ fun AppTopBar(
      * every pushed screen's stock bar wears one.
      */
     onNavigateBack: (() -> Unit)? = null,
+    /**
+     * Overrides [title] with an arbitrary composable — the one caller today
+     * is the journal's inline search field, which needs a live-editable slot
+     * rather than a static string but otherwise wears the same bar.
+     */
+    titleContent: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     // The app draws edge to edge, so the header owns the status-bar inset:
@@ -63,18 +69,22 @@ fun AppTopBar(
                     Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                 }
             }
-            Text(
-                title,
-                style = MaterialTheme.typography.headlineMedium,
-                // headlineMedium is Bold app-wide (it's also the balance
-                // hero's weight); the header overrides it to Light on its
-                // own so that doesn't move the hero figure's weight too.
-                fontWeight = FontWeight.Light,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+            if (titleContent != null) {
+                androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f)) { titleContent() }
+            } else {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    // headlineMedium is Bold app-wide (it's also the balance
+                    // hero's weight); the header overrides it to Light on its
+                    // own so that doesn't move the hero figure's weight too.
+                    fontWeight = FontWeight.Light,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             actions()
         }
     }

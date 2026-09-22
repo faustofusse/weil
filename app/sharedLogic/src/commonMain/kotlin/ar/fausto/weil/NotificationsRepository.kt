@@ -22,6 +22,10 @@ data class NotificationItem(
     val receivedAt: Long,
     val appName: String,
     val appIcon: ByteArray?,
+    /** True once at least one transaction records this notification as an origin. */
+    val hasTransaction: Boolean = false,
+    /** True once this row has an embedding, i.e. is findable by "parecidos a este". */
+    val vectorized: Boolean = false,
 )
 
 /** Package-manager enrichment the Android listener passes along with each capture. */
@@ -91,13 +95,14 @@ class NotificationsRepository(private val db: DatabaseProvider) {
             if (onlyTransactions) add(TRANSACTION_FILTER)
             if (before != null) add(CURSOR_FILTER)
         }.joinToString(" and ")
-        val sql = "select id, package_name, title, text, category, post_time, received_at" +
+        val sql = "select id, package_name, title, text, category, post_time, received_at," +
+            " $LINKED_EXPR, embedding is not null" +
             " from notifications" +
             (if (where.isEmpty()) "" else " where $where") +
             " order by post_time desc, received_at desc, id desc" +
             " limit $limit"
         d.query(sql, cursorParams(before)) { rows ->
-            val items = rows.filter { it.size >= 7 }
+            val items = rows.filter { it.size >= 9 }
                 .map { row -> toNotificationItem(row, apps) }
                 .toList()
             val next = if (items.size < limit) {
@@ -115,11 +120,12 @@ class NotificationsRepository(private val db: DatabaseProvider) {
     suspend fun get(id: String): NotificationItem? = db.useForRead { d ->
         val apps = loadApps(d)
         d.query(
-            "select id, package_name, title, text, category, post_time, received_at" +
+            "select id, package_name, title, text, category, post_time, received_at," +
+                " $LINKED_EXPR, embedding is not null" +
                 " from notifications where id = :id",
             mapOf(":id" to id),
         ) { rows ->
-            rows.firstOrNull()?.takeIf { it.size >= 7 }?.let { toNotificationItem(it, apps) }
+            rows.firstOrNull()?.takeIf { it.size >= 9 }?.let { toNotificationItem(it, apps) }
         }
     }
 
@@ -228,6 +234,8 @@ class NotificationsRepository(private val db: DatabaseProvider) {
             receivedAt = (row[6] as? Number)?.toLong() ?: 0L,
             appName = app?.name ?: packageName,
             appIcon = app?.icon,
+            hasTransaction = row[7].asBoolean(),
+            vectorized = row[8].asBoolean(),
         )
     }
 
@@ -242,11 +250,21 @@ class NotificationsRepository(private val db: DatabaseProvider) {
             }
         }
 
+    /** sqlite has no boolean type: driven engines answer 0/1 as `Long`. */
+    private fun Any?.asBoolean(): Boolean = when (this) {
+        is Boolean -> this
+        is Number -> toLong() != 0L
+        else -> false
+    }
+
     private class AppMeta(val id: String, val name: String, val icon: ByteArray?)
 
     private companion object {
         const val SYNC_INTERVAL_MILLIS = 30_000L
         const val TRANSACTION_FILTER = "(text like '%\$%' or title like '%\$%')"
+        const val LINKED_EXPR =
+            "exists(select 1 from transaction_sources" +
+                " where kind = 'notification' and ref = notifications.id)"
         const val CURSOR_FILTER =
             "(post_time < :pt" +
                 " or (post_time = :pt and received_at < :ra)" +

@@ -1,6 +1,5 @@
 package ar.fausto.weil
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -68,8 +66,14 @@ fun AccountDetailScreen(
     val ledger = ledgerState.ledger
     val accounts = ledgerState.accounts
     val node = findNode(ledgerState.tree, accountId)
+    // Leaf names + types, same derivation Home uses, so this register's rows
+    // draw with the identical TransactionRow the journal and Home show.
+    val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
+    val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
+    val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
     var includeSubtree by remember { mutableStateOf(false) }
     var entries by remember { mutableStateOf(emptyList<RegisterEntry>()) }
+    var transactions by remember { mutableStateOf(emptyMap<String, Transaction>()) }
     var loaded by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(true) }
@@ -84,8 +88,10 @@ fun AccountDetailScreen(
     suspend fun loadAll() {
         error = null
         try {
-            entries = ledger.register(subtreeIds = ids())
-            hasMore = entries.size >= LIST_PAGE_SIZE
+            val page = ledger.register(subtreeIds = ids())
+            entries = page
+            transactions = ledger.getAll(page.map { it.posting.transactionId }.distinct())
+            hasMore = page.size >= LIST_PAGE_SIZE
             loaded = true
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -115,7 +121,9 @@ fun AccountDetailScreen(
                 // the list while this page was in flight; appending blind
                 // would duplicate rows and crash the LazyColumn's keys.
                 val seen = entries.mapTo(HashSet()) { it.posting.id }
-                entries = entries + nextPage.filter { seen.add(it.posting.id) }
+                val added = nextPage.filter { seen.add(it.posting.id) }
+                entries = entries + added
+                transactions = transactions + ledger.getAll(added.map { it.posting.transactionId }.distinct())
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()
@@ -235,10 +243,24 @@ fun AccountDetailScreen(
                     item(key = "day-${group.key}") { DayHeader(group) }
                 }
                 item(key = entry.posting.id) {
-                    RegisterRowView(
-                        entry = entry,
-                        accountType = node?.account?.type,
-                        onOpen = { id -> onOpenTransaction(id) },
+                    val tx = transactions[entry.posting.transactionId] ?: Transaction(
+                        id = entry.posting.transactionId,
+                        date = entry.date,
+                        payee = entry.payee,
+                        note = null,
+                        createdAt = entry.date,
+                        postings = listOf(entry.posting),
+                        timeKnown = entry.timeKnown,
+                    )
+                    TransactionRow(
+                        tx = tx,
+                        names = names,
+                        types = types,
+                        onOpen = { onOpenTransaction(entry.posting.transactionId) },
+                        // The running balance after this row, in the same dim
+                        // bodySmall slot the journal/Home use for a per-row
+                        // date — here it's the number this screen exists to show.
+                        dateLabel = formatMoney(entry.balanceAfter.minorUnits, entry.balanceAfter.commodity, signed = true),
                     )
                 }
             }
@@ -267,51 +289,3 @@ fun AccountDetailScreen(
     }
 }
 
-@Composable
-private fun RegisterRowView(
-    entry: RegisterEntry,
-    accountType: AccountType?,
-    onOpen: (id: String) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .clickable { onOpen(entry.posting.transactionId) }
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                entry.payee.censored(),
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // Imported statement rows only know their day (the register is
-            // already grouped by day headers), so the secondary line is
-            // dropped entirely rather than showing a made-up hour.
-            if (entry.timeKnown) {
-                Text(
-                    timeShort(entry.date),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
-            Text(
-                formatMoney(entry.posting.amountMinor, entry.posting.commodity),
-                style = MaterialTheme.typography.bodyLarge,
-                color = postingColor(accountType, entry.posting.amountMinor),
-            )
-            Text(
-                // The running balance carries no color of its own, so it
-                // keeps its sign: an overdrawn account must look overdrawn.
-                formatMoney(entry.balanceAfter.minorUnits, entry.balanceAfter.commodity, signed = true),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}

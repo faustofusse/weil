@@ -5,6 +5,10 @@ class Email(
     val fromEmail: String,
     val subject: String?,
     val receivedAt: Long,
+    /** True once at least one transaction records this email as an origin. */
+    val hasTransaction: Boolean = false,
+    /** True once this row has an embedding, i.e. is findable by "parecidos a este". */
+    val vectorized: Boolean = false,
 )
 
 /** Last row of a page; querying strictly before it yields the next page. */
@@ -64,17 +68,20 @@ class EmailsRepository(private val db: DatabaseProvider) {
             if (onlyTransactions) add(TRANSACTION_FILTER)
             if (before != null) add("(received_at < :ra or (received_at = :ra and id < :id))")
         }.joinToString(" and ")
-        val sql = "select id, from_email, subject, received_at from emails" +
+        val sql = "select id, from_email, subject, received_at, $LINKED_EXPR, embedding is not null" +
+            " from emails" +
             (if (where.isEmpty()) "" else " where $where") +
             " order by received_at desc, id desc limit $limit"
         d.query(sql, cursorParams(before)) { rows ->
-            val items = rows.filter { it.size >= 4 }
+            val items = rows.filter { it.size >= 6 }
                 .map {
                     Email(
                         id = it[0]?.toString() ?: "",
                         fromEmail = it[1]?.toString() ?: "",
                         subject = it[2]?.toString(),
                         receivedAt = (it[3] as? Number)?.toLong() ?: 0L,
+                        hasTransaction = it[4].asBoolean(),
+                        vectorized = it[5].asBoolean(),
                     )
                 }
                 .toList()
@@ -146,8 +153,18 @@ class EmailsRepository(private val db: DatabaseProvider) {
             }
         }
 
+    /** sqlite has no boolean type: driven engines answer 0/1 as `Long`. */
+    private fun Any?.asBoolean(): Boolean = when (this) {
+        is Boolean -> this
+        is Number -> toLong() != 0L
+        else -> false
+    }
+
     private companion object {
         const val TRANSACTION_FILTER =
             "(subject like '%\$%' or body_text like '%\$%' or body_html like '%\$%')"
+        const val LINKED_EXPR =
+            "exists(select 1 from transaction_sources" +
+                " where kind = 'email' and ref = emails.id)"
     }
 }

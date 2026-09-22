@@ -48,6 +48,8 @@ import weil.app.sharedui.generated.resources.notifications_filter_all
 import weil.app.sharedui.generated.resources.notifications_filter_movements
 import weil.app.sharedui.generated.resources.notifications_grant
 import weil.app.sharedui.generated.resources.notifications_title
+import weil.app.sharedui.generated.resources.row_has_transaction
+import weil.app.sharedui.generated.resources.row_vectorized
 import weil.app.sharedui.generated.resources.sync_error
 
 // Enough rows to cover any screen height while loading; harmless past the
@@ -282,13 +284,23 @@ private fun NotificationRow(notificationItem: NotificationItem, onClick: () -> U
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                notificationItem.appName.censored(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    notificationItem.appName.censored(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                RowBadges(
+                    hasTransaction = notificationItem.hasTransaction,
+                    vectorized = notificationItem.vectorized,
+                )
+            }
         }
         Text(
             timeShort(notificationItem.postTime),
@@ -301,3 +313,33 @@ private fun NotificationRow(notificationItem: NotificationItem, onClick: () -> U
 @Composable
 private fun rememberIcon(bytes: ByteArray?): ImageBitmap? =
     remember(bytes) { bytes?.let { decodeIcon(it) } }
+
+/**
+ * Small trailing marks shared by the notification and email rows: a
+ * ledger-list glyph once the row already recorded a transaction, and a
+ * linked-nodes glyph once it carries an embedding and is findable by
+ * "parecidos a este". Neither is a button \u2014 both link out from the detail
+ * screen already, this is only "has this happened to this row yet".
+ */
+@Composable
+internal fun RowBadges(hasTransaction: Boolean, vectorized: Boolean) {
+    if (!hasTransaction && !vectorized) return
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (hasTransaction) {
+            Icon(
+                Icons.Filled.ListAlt,
+                contentDescription = stringResource(Res.string.row_has_transaction),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        if (vectorized) {
+            Icon(
+                Icons.Filled.Vector,
+                contentDescription = stringResource(Res.string.row_vectorized),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
+}

@@ -296,6 +296,21 @@ object Icons {
         )
 
         /** Bottom bar: the categories tab — the mock's triangle/square/circle. */
+        /**
+         * Three linked nodes — this row has an embedding, i.e. it can be found
+         * by "parecidos a este". Deliberately not [Science] (the suggestion
+         * lab): that flask means "a pipeline ran over this", this means "this
+         * row is a point in vector space".
+         */
+        val Vector: ImageVector = lineIcon(
+            "Vector",
+            "M5 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+            "M19 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+            "M19 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+            "M6.7 10.8L17.3 6.2",
+            "M7 12.9L17.5 17.4",
+        )
+
         val Category: ImageVector = lineIcon(
             "Category",
             "M12 3l4 6.5H8z",

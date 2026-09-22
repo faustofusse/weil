@@ -1,8 +1,9 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package ar.fausto.weil
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -388,6 +389,11 @@ fun TransactionDetailScreen(
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.height(8.dp))
+                        // Un toque abre el origen; el tacho de borrar el
+                        // vínculo solo aparece tras un long-press ("armar"
+                        // la fila), porque un tap perdido no debe poder
+                        // desvincular una fuente por accidente.
+                        var armedSource by remember { mutableStateOf<StoredSource?>(null) }
                         Surface(
                             shape = RoundedCornerShape(GroupRadius),
                             color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -414,11 +420,10 @@ fun TransactionDetailScreen(
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .then(
-                                                if (onOpenOrigin != null) {
-                                                    Modifier.clickable(onClick = onOpenOrigin)
-                                                } else {
-                                                    Modifier
+                                            .combinedClickable(
+                                                onClick = { onOpenOrigin?.invoke() },
+                                                onLongClick = {
+                                                    armedSource = if (armedSource == origin) null else origin
                                                 },
                                             )
                                             .heightIn(min = 48.dp)
@@ -444,14 +449,6 @@ fun TransactionDetailScreen(
                                             style = MaterialTheme.typography.bodyMedium,
                                             modifier = Modifier.weight(1f),
                                         )
-                                        if (onOpenOrigin != null) {
-                                            Icon(
-                                                Icons.Filled.ChevronRight,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                        }
                                         // When it was linked, which is not the
                                         // transaction's date: a statement
                                         // imported in September can attach to
@@ -461,38 +458,51 @@ fun TransactionDetailScreen(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
-                                        IconButton(
-                                            onClick = {
-                                                scope.launch {
-                                                    ledger.unlink(id, origin)
-                                                    sources = ledger.sources(id)
-                                                    Feedback.undoable(unlinkedMessage, undoLabel) {
-                                                        ledger.associate(
-                                                            listOf(
-                                                                AssociateOp(
-                                                                    id,
-                                                                    listOf(
-                                                                        TransactionSource(
-                                                                            origin.kind,
-                                                                            origin.ref,
-                                                                            origin.eventKey,
+                                        if (onOpenOrigin != null) {
+                                            Icon(
+                                                Icons.Filled.ChevronRight,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier
+                                                    .padding(start = 4.dp)
+                                                    .size(18.dp),
+                                            )
+                                        }
+                                        if (armedSource == origin) {
+                                            IconButton(
+                                                onClick = {
+                                                    armedSource = null
+                                                    scope.launch {
+                                                        ledger.unlink(id, origin)
+                                                        sources = ledger.sources(id)
+                                                        Feedback.undoable(unlinkedMessage, undoLabel) {
+                                                            ledger.associate(
+                                                                listOf(
+                                                                    AssociateOp(
+                                                                        id,
+                                                                        listOf(
+                                                                            TransactionSource(
+                                                                                origin.kind,
+                                                                                origin.ref,
+                                                                                origin.eventKey,
+                                                                            ),
                                                                         ),
                                                                     ),
                                                                 ),
-                                                            ),
-                                                        )
-                                                        sources = ledger.sources(id)
+                                                            )
+                                                            sources = ledger.sources(id)
+                                                        }
                                                     }
-                                                }
-                                            },
-                                            modifier = Modifier.size(36.dp),
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Close,
-                                                contentDescription = unlinkLabel,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(18.dp),
-                                            )
+                                                },
+                                                modifier = Modifier.size(36.dp),
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Close,
+                                                    contentDescription = unlinkLabel,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
                                         }
                                     }
                                 }

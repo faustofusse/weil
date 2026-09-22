@@ -1,6 +1,6 @@
 package ar.fausto.weil
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -27,7 +26,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -110,20 +108,26 @@ fun SimilarSection(
         Spacer(Modifier.height(8.dp))
     }
 
-    Surface(
-        shape = RoundedCornerShape(RowRadius),
-        color = rowTint(),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        when {
-            loading -> Row(
+    when {
+        loading -> Surface(
+            shape = RoundedCornerShape(RowRadius),
+            color = rowTint(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp))
             }
+        }
 
-            !embedded -> Row(
+        !embedded -> Surface(
+            shape = RoundedCornerShape(RowRadius),
+            color = rowTint(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -150,35 +154,42 @@ fun SimilarSection(
                     },
                 ) { Text(stringResource(Res.string.similar_search)) }
             }
+        }
 
-            items.isEmpty() -> Text(
+        items.isEmpty() -> Surface(
+            shape = RoundedCornerShape(RowRadius),
+            color = rowTint(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
                 stringResource(Res.string.similar_none),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
             )
+        }
 
-            else -> Column {
-                items.forEachIndexed { index, item ->
-                    if (index > 0) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 16.dp),
-                            // On the tinted slab the old outline alpha was
-                            // invisible; this is the same ink as the slab,
-                            // one step stronger.
-                            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.12f),
-                        )
-                    }
-                    SimilarRow(
-                        item = item,
-                        onOpen = { onOpen(item) },
-                        onLink = onLink,
-                        linked = item.id in linkedRefs,
-                    )
-                }
+        // Each row is its own tinted pill (`AppListRow`), same as the
+        // notification/mail lists — no wrapping slab here.
+        else -> Column {
+            items.forEach { item ->
+                SimilarRow(
+                    item = item,
+                    onOpen = { onOpen(item) },
+                    onLink = onLink,
+                    linked = item.id in linkedRefs,
+                )
             }
         }
     }
+}
+
+/** One glyph per embedded table, same family as the notification/mail lists. */
+private fun EmbedKind.icon() = when (this) {
+    // Same glyph the journal tab and Home's "ver todo" use for a ledger row.
+    EmbedKind.Transaction -> Icons.Filled.ListAlt
+    EmbedKind.Notification -> Icons.Filled.Notifications
+    EmbedKind.Email -> Icons.Filled.Email
 }
 
 @Composable
@@ -188,69 +199,62 @@ private fun SimilarRow(
     onLink: ((SimilarItem) -> Unit)?,
     linked: Boolean,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onOpen() }
-            .heightIn(min = 64.dp)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                item.title.censored().ifBlank { item.subtitle.censored() },
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (item.subtitle.isNotBlank() && item.title.isNotBlank()) {
-                Text(
-                    item.subtitle.censored(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    dayLabel(dayGroup(item.date)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    stringResource(Res.string.similar_distance, formatDistance(item.distance)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                )
-            }
-        }
-        val amount = item.amountMinor
-        if (amount != null) {
-            Text(
-                // No color here to carry direction, so the minus has to.
-                formatMoney(amount, item.commodity ?: Money.DEFAULT_COMMODITY, signed = true),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(start = 12.dp),
-            )
-        }
-        if (onLink != null) {
-            if (linked) {
-                Text(
-                    stringResource(Res.string.similar_linked),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            } else {
-                TextButton(onClick = { onLink(item) }) {
-                    Text(stringResource(Res.string.similar_link))
+    val amount = item.amountMinor
+    AppListRow(
+        icon = item.kind.icon(),
+        paint = AccountPaint(
+            tint = MaterialTheme.colorScheme.background,
+            ink = MaterialTheme.colorScheme.inverseSurface,
+        ),
+        title = item.title.censored().ifBlank { item.subtitle.censored() },
+        subtitle = if (item.subtitle.isNotBlank() && item.title.isNotBlank()) {
+            item.subtitle.censored()
+        } else {
+            null
+        },
+        onClick = onOpen,
+        modifier = Modifier.heightIn(min = 64.dp),
+        trailing = {
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                if (amount != null) {
+                    Text(
+                        // No color here to carry direction, so the minus has to.
+                        formatMoney(amount, item.commodity ?: Money.DEFAULT_COMMODITY, signed = true),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        dayLabel(dayGroup(item.date)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(Res.string.similar_distance, formatDistance(item.distance)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    )
+                }
+                if (onLink != null) {
+                    if (linked) {
+                        Text(
+                            stringResource(Res.string.similar_linked),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        TextButton(onClick = { onLink(item) }) {
+                            Text(stringResource(Res.string.similar_link))
+                        }
+                    }
                 }
             }
-        }
-    }
+        },
+    )
 }
 
 /** Two decimals, formatted by hand: Kotlin common has no printf. */

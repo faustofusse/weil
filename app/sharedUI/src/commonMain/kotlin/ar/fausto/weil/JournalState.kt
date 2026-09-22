@@ -43,6 +43,48 @@ class JournalState(
         filter = next
     }
 
+    /**
+     * Free-text query over payee/note/leaf account names, same lens-not-query
+     * shape as [filter]: it narrows what's already on screen rather than
+     * changing what's fetched, so paging still walks the whole journal.
+     * Hoisted for the same reason as [filter] — opening a transaction from
+     * a search result and coming back shouldn't clear it.
+     */
+    var query by mutableStateOf("")
+        private set
+    fun updateQuery(next: String) {
+        query = next
+    }
+
+    /** True while the inline search field in the top bar is open. */
+    var searching by mutableStateOf(false)
+        private set
+
+    /**
+     * One-shot: [startSearch] sets it so the screen grabs focus (and opens
+     * the keyboard) exactly once, for the tap that opened the field. Without
+     * this, hoisting [searching] above the nav host — needed so it survives
+     * a trip to a transaction and back — means the field re-enters
+     * composition on every return visit, and a plain `LaunchedEffect(Unit)`
+     * would request focus (and the keyboard) again even after the user had
+     * dismissed it on purpose.
+     */
+    var pendingFocus by mutableStateOf(false)
+        private set
+    fun focusConsumed() {
+        pendingFocus = false
+    }
+    fun startSearch() {
+        searching = true
+        pendingFocus = true
+    }
+    fun closeSearch() {
+        searching = false
+        pendingFocus = false
+        query = ""
+    }
+
+
     // Multi-select: entered by long-pressing a row, exited by tapping the
     // back arrow, a successful delete, or a page load that no longer shows
     // every selected id (a sync removing a row under us). Kept in the state

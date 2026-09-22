@@ -179,6 +179,8 @@
     <string name="journal_delete_selected_title">¿Eliminar %1$d transacciones?</string>
     <string name="journal_delete_selected_body">Se eliminan las transacciones elegidas con todos sus registros. Podés deshacerlo desde el aviso.</string>
     <string name="journal_delete_failed">No se pudieron eliminar las transacciones</string>
+    <string name="journal_search_hint">Buscar por descripción o cuenta</string>
+    <string name="journal_search_empty">Sin resultados para «%1$s»</string>
 
     <!-- Transaction detail -->
     <string name="txn_detail_title">Transacción</string>
@@ -274,6 +276,8 @@
     <string name="notifications_category">Categoría: %1$s</string>
     <string name="notifications_time">Hora: %1$s</string>
     <string name="notifications_app_icon_content">Ícono de %1$s</string>
+    <string name="row_has_transaction">Ya tiene una transacción asociada</string>
+    <string name="row_vectorized">Vectorizado</string>
 
     <!-- Emails -->
     <string name="emails_title">Correos</string>

@@ -28,7 +28,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
-import weil.app.sharedui.generated.resources.similar_emails
 import weil.app.sharedui.generated.resources.similar_link_done
 import weil.app.sharedui.generated.resources.similar_notifications
 import weil.app.sharedui.generated.resources.similar_transactions
@@ -119,16 +118,6 @@ fun SuggestSourcesScreen(
                 // Only meaningful when the rows listed are notifications.
                 allowPackageFilter = ownKind == EmbedKind.Notification,
                 onOpen = { onOpenNotification(it.id) },
-            )
-
-            Spacer(Modifier.height(24.dp))
-            SimilarSection(
-                embeddings = embeddings,
-                title = stringResource(Res.string.similar_emails),
-                kind = ownKind,
-                id = id,
-                into = EmbedKind.Email,
-                onOpen = { onOpenEmail(it.id) },
             )
 
             Spacer(Modifier.height(24.dp))

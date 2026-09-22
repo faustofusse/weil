@@ -1,5 +1,6 @@
 package ar.fausto.weil
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -180,11 +181,14 @@ private fun EmailRow(email: Email, onOpen: () -> Unit) {
         subtitle = email.fromEmail.censored(),
         onClick = onOpen,
         trailing = {
-            Text(
-                timeShort(email.receivedAt),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    timeShort(email.receivedAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                RowBadges(hasTransaction = email.hasTransaction, vectorized = email.vectorized)
+            }
         },
     )
 }

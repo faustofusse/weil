@@ -48,6 +48,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +70,8 @@ import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.action_cancel
+import weil.app.sharedui.generated.resources.action_close
+import weil.app.sharedui.generated.resources.action_search
 import weil.app.sharedui.generated.resources.action_delete
 import weil.app.sharedui.generated.resources.action_ok
 import weil.app.sharedui.generated.resources.action_undo
@@ -90,6 +95,8 @@ import weil.app.sharedui.generated.resources.journal_dev_delete_range_to
 import weil.app.sharedui.generated.resources.journal_empty
 import weil.app.sharedui.generated.resources.journal_filter_all
 import weil.app.sharedui.generated.resources.journal_more_postings
+import weil.app.sharedui.generated.resources.journal_search_empty
+import weil.app.sharedui.generated.resources.journal_search_hint
 import weil.app.sharedui.generated.resources.journal_selected_count
 import weil.app.sharedui.generated.resources.journal_title
 import weil.app.sharedui.generated.resources.journal_title
@@ -128,6 +135,11 @@ fun JournalScreen(
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val selecting = state.isSelecting
+    // A selection run always wins the bar's mode: long-pressing a row while
+    // a search is open ends up ticking a search result, and the delete
+    // action needs the same priority the count/back title already has.
+    val searching = state.searching && !selecting
+    val searchFocus = remember { FocusRequester() }
 
     // Consecutive same-day runs, computed once per page rather than inside
     // the LazyListScope builder (which isn't @Composable, so a plain
@@ -137,12 +149,14 @@ fun JournalScreen(
     // The filter narrows what's grouped, not what's fetched: paging still
     // walks the whole journal, and "Gasto" is a lens over pages already on
     // screen rather than a different query.
-    val filteredItems = remember(state.items, state.filter, state.types) {
-        if (state.filter == JournalFilter.All) {
+    val filteredItems = remember(state.items, state.filter, state.types, state.query, state.names) {
+        val byKind = if (state.filter == JournalFilter.All) {
             state.items
         } else {
             state.items.filter { matchesFilter(it, state.filter, state.types) }
         }
+        val q = state.query.trim()
+        if (q.isEmpty()) byKind else byKind.filter { matchesQuery(it, q, state.names) }
     }
     val dayRuns = remember(filteredItems) {
         buildList {
@@ -200,8 +214,23 @@ fun JournalScreen(
                             )
                         }
                     }
+                } else if (searching) {
+                    // Closing the field is the leading (back) icon, same as any
+                    // other mode swap here; the trailing slot only ever clears
+                    // typed text, so there are two ways out and one of them
+                    // keeps the field open for another try.
+                    {
+                        if (state.query.isNotEmpty()) {
+                            IconButton(onClick = { state.updateQuery("") }) {
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(Res.string.action_close))
+                            }
+                        }
+                    }
                 } else {
                     {
+                        IconButton(onClick = { state.startSearch() }) {
+                            Icon(Icons.Filled.Search, contentDescription = stringResource(Res.string.action_search))
+                        }
                         Box {
                             var menuOpen by remember { mutableStateOf(false) }
                             IconButton(onClick = { menuOpen = true }) {
@@ -230,17 +259,72 @@ fun JournalScreen(
             } else {
                 stringResource(Res.string.journal_title)
             }
+            val searchHint = stringResource(Res.string.journal_search_hint)
+            val searchField: @Composable () -> Unit = {
+                // Grabs focus (and opens the keyboard) only for the tap that
+                // opened the field — [JournalState.pendingFocus] is one-shot,
+                // so returning here from a transaction after the user already
+                // dismissed the keyboard doesn't pop it back up.
+                LaunchedEffect(state.pendingFocus) {
+                    if (state.pendingFocus) {
+                        searchFocus.requestFocus()
+                        state.focusConsumed()
+                    }
+                }
+                // Dismissing the keyboard (back gesture, swipe-down, the
+                // system's own close button) drops focus the same way tapping
+                // outside the field would; an empty box at that point isn't a
+                // search in progress, so the field closes itself instead of
+                // sitting there unfocused with nothing typed. `hadFocus`
+                // guards the field's very first, not-yet-focused frame from
+                // reading as a dismissal before [searchFocus] even requests it.
+                var hadFocus by remember { mutableStateOf(false) }
+                androidx.compose.material3.TextField(
+                    value = state.query,
+                    onValueChange = { state.updateQuery(it) },
+                    modifier = Modifier.fillMaxWidth()
+                        .focusRequester(searchFocus)
+                        .onFocusChanged { focus ->
+                            if (focus.isFocused) {
+                                hadFocus = true
+                            } else if (hadFocus && state.query.isEmpty()) {
+                                state.closeSearch()
+                            }
+                        },
+                    placeholder = { Text(searchHint) },
+                    singleLine = true,
+                    colors = androidx.compose.material3.TextFieldDefaults.colors(
+                        focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                    ),
+                )
+            }
             if (bottomBar != null) {
                 AppTopBar(
                     title = titleText,
-                    onNavigateBack = if (selecting) ({ state.clearSelection() }) else null,
+                    onNavigateBack = when {
+                        selecting -> ({ state.clearSelection() })
+                        searching -> ({ state.closeSearch() })
+                        else -> null
+                    },
+                    titleContent = if (searching) searchField else null,
                     actions = actions,
                 )
             } else {
                 TopAppBar(
-                    title = { Text(titleText) },
+                    title = { if (searching) searchField() else Text(titleText) },
                     navigationIcon = {
-                        IconButton(onClick = { if (selecting) state.clearSelection() else onNavigateBack() }) {
+                        IconButton(
+                            onClick = {
+                                when {
+                                    selecting -> state.clearSelection()
+                                    searching -> state.closeSearch()
+                                    else -> onNavigateBack()
+                                }
+                            },
+                        ) {
                             Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                         }
                     },
@@ -302,23 +386,36 @@ fun JournalScreen(
                 }
                 if (filteredItems.isEmpty() && !state.isInitialLoading && state.error == null) {
                     item(key = "empty") {
+                        val activeQuery = state.query.trim()
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 32.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text(
-                                stringResource(Res.string.journal_empty),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                stringResource(Res.string.new_transaction_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            if (activeQuery.isNotEmpty()) {
+                                // A search with no hits reads differently from
+                                // an empty journal: the hint below ("add your
+                                // first transaction") would be actively wrong
+                                // advice when the account isn't empty at all.
+                                Text(
+                                    stringResource(Res.string.journal_search_empty, activeQuery),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            } else {
+                                Text(
+                                    stringResource(Res.string.journal_empty),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    stringResource(Res.string.new_transaction_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
@@ -435,6 +532,22 @@ private fun DeleteSelectedDialog(
             }
         },
     )
+}
+
+/**
+ * Free-text match for the search field: payee, note and the leaf name of
+ * every posting's account (so "efectivo" finds every row touching that
+ * account even when it never made it into the payee/note text).
+ */
+private fun matchesQuery(
+    tx: Transaction,
+    query: String,
+    names: Map<String, String>,
+): Boolean {
+    val q = query.lowercase()
+    if (tx.payee.lowercase().contains(q)) return true
+    if (tx.note?.lowercase()?.contains(q) == true) return true
+    return tx.postings.any { names[it.accountId]?.lowercase()?.contains(q) == true }
 }
 
 private fun matchesFilter(

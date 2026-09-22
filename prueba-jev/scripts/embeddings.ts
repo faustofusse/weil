@@ -111,11 +111,26 @@ function cloudflare(label: string, model: string, usdPerMillion: number): Model 
   };
 }
 
+/**
+ * Gemma is Matryoshka-trained: the first 512 numbers of its 768 are a usable
+ * vector on their own. Worth knowing, because staying at 512 means the
+ * `F32_BLOB(512)` column, and with it SCHEMA_VERSION, never moves.
+ */
+function truncated(model: Model, dims: number): Model {
+  return {
+    label: `${model.label}/${dims}`,
+    usdPerMillion: model.usdPerMillion,
+    embed: async (texts) => (await model.embed(texts)).map((v) => normalize(v.slice(0, dims))),
+  };
+}
+
 const MODELS: Record<string, Model> = {
   gemini,
   gemma: cloudflare('embeddinggemma-300m', '@cf/google/embeddinggemma-300m', 0.012),
   qwen: cloudflare('qwen3-embedding-0.6b', '@cf/qwen/qwen3-embedding-0.6b', 0.0118),
   'bge-m3': cloudflare('bge-m3', '@cf/baai/bge-m3', 0.0118),
+  'gemma-512': truncated(cloudflare('embeddinggemma-300m', '@cf/google/embeddinggemma-300m', 0.012), 512),
+  'gemma-256': truncated(cloudflare('embeddinggemma-300m', '@cf/google/embeddinggemma-300m', 0.012), 256),
 };
 
 interface Case {

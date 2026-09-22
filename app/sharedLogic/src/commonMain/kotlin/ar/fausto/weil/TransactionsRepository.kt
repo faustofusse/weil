@@ -597,6 +597,62 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     }
 
     /**
+     * Full transactions (every posting, not just the one on the account whose
+     * register is being shown) for a batch of ids, keyed by id. Used to feed
+     * the same [TransactionRow] the journal and Home render, so a register
+     * row reads identically instead of reimplementing its own amount/route
+     * logic from a single posting.
+     */
+    suspend fun getAll(ids: List<String>): Map<String, Transaction> {
+        if (ids.isEmpty()) return emptyMap()
+        val idList = quoteList(ids)
+        return db.useForRead { d ->
+            val txs = d.query(
+                "select id, date, payee, note, created_at, time_known from transactions" +
+                    " where id in ($idList)",
+                null,
+            ) { rows ->
+                rows.filter { it.size >= 6 }.map { row ->
+                    Transaction(
+                        id = row[0]?.toString() ?: "",
+                        date = (row[1] as? Number)?.toLong() ?: 0L,
+                        payee = row[2]?.toString() ?: "",
+                        note = row[3]?.toString(),
+                        createdAt = (row[4] as? Number)?.toLong() ?: 0L,
+                        postings = emptyList(),
+                        timeKnown = isTimeKnown(row[5]),
+                    )
+                }.toList()
+            }
+            if (txs.isEmpty()) return@useForRead emptyMap()
+            val byTx = d.query(
+                "select id, transaction_id, account_id, amount_minor, commodity from postings" +
+                    " where transaction_id in ($idList)",
+                null,
+            ) { rows ->
+                val grouped = mutableMapOf<String, MutableList<Posting>>()
+                for (row in rows) {
+                    if (row.size < 5) continue
+                    val postingId = row[0]?.toString() ?: continue
+                    val transactionId = row[1]?.toString() ?: continue
+                    val accountId = row[2]?.toString() ?: continue
+                    val amount = (row[3] as? Number)?.toLong() ?: continue
+                    val commodity = row[4]?.toString() ?: continue
+                    grouped.getOrPut(transactionId) { mutableListOf() } += Posting(
+                        id = postingId,
+                        transactionId = transactionId,
+                        accountId = accountId,
+                        amountMinor = amount,
+                        commodity = commodity,
+                    )
+                }
+                grouped
+            }
+            txs.associate { tx -> tx.id to tx.copy(postings = byTx[tx.id].orEmpty()) }
+        }
+    }
+
+    /**
      * Register for an account (optionally a whole subtree via the account
      * tree): postings newest first with running balances computed by walking
      * the page oldest→newest on top of the opening sum.
