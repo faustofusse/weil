@@ -49,10 +49,6 @@ import weil.app.sharedui.generated.resources.action_undo
 import weil.app.sharedui.generated.resources.editor_deleted_payee_fallback
 import weil.app.sharedui.generated.resources.editor_transaction_deleted
 import weil.app.sharedui.generated.resources.journal_more_postings
-import weil.app.sharedui.generated.resources.similar_emails
-import weil.app.sharedui.generated.resources.similar_link_done
-import weil.app.sharedui.generated.resources.similar_notifications
-import weil.app.sharedui.generated.resources.similar_transactions
 import weil.app.sharedui.generated.resources.txn_detail_postings
 import weil.app.sharedui.generated.resources.txn_detail_title
 import weil.app.sharedui.generated.resources.txn_source_document
@@ -62,31 +58,9 @@ import weil.app.sharedui.generated.resources.txn_source_notification
 import weil.app.sharedui.generated.resources.txn_source_qr
 import weil.app.sharedui.generated.resources.txn_source_unlink
 import weil.app.sharedui.generated.resources.txn_source_unlinked
+import weil.app.sharedui.generated.resources.txn_similar_action
 import weil.app.sharedui.generated.resources.txn_source_whatsapp
 import weil.app.sharedui.generated.resources.txn_sources_title
-
-/**
- * Attaches a message to this transaction as one more origin.
- *
- * Cosine similarity is **not** a decision that these are the same event (two
- * Rappi orders are near-identical vectors), which is why this only ever runs
- * from an explicit tap on a row that shows its own amount and day.
- */
-private suspend fun linkSource(
-    transactionId: String,
-    kind: EventSource,
-    ref: String,
-    ledger: TransactionsRepository,
-    onDone: suspend () -> Unit,
-) {
-    try {
-        ledger.associate(listOf(AssociateOp(transactionId, listOf(TransactionSource(kind, ref)))))
-        onDone()
-    } catch (e: Throwable) {
-        if (e is kotlinx.coroutines.CancellationException) throw e
-        Feedback.show(e.message ?: e.toString())
-    }
-}
 
 /** Nombre visible de cada puerta de entrada; `EventSource` vive sin traducir. */
 @Composable
@@ -108,15 +82,15 @@ private fun sourceLabel(kind: EventSource): String = stringResource(
 fun TransactionDetailScreen(
     ledger: TransactionsRepository,
     accounts: AccountsRepository,
-    embeddings: EmbeddingsRepository,
     id: String,
     onNavigateBack: () -> Unit,
     onNavigateToEdit: (id: String) -> Unit,
     onNavigateToAccount: (id: String) -> Unit,
-    onOpenTransaction: (id: String) -> Unit = {},
     onOpenNotification: (id: String) -> Unit = {},
     onOpenEmail: (id: String) -> Unit = {},
     onOpenDocument: (docId: String) -> Unit = {},
+    /** Opens the vector-neighbour lab for this transaction. */
+    onTrySuggestion: (() -> Unit)? = null,
 ) {
     var tx by remember { mutableStateOf<Transaction?>(null) }
     // Where this transaction came from. A single purchase legitimately has a
@@ -130,12 +104,8 @@ fun TransactionDetailScreen(
     val undoLabel = stringResource(Res.string.action_undo)
     val deletedMessage = stringResource(Res.string.editor_transaction_deleted)
     val deletedPayee = stringResource(Res.string.editor_deleted_payee_fallback)
-    val linkedMessage = stringResource(Res.string.similar_link_done)
     val unlinkLabel = stringResource(Res.string.txn_source_unlink)
     val unlinkedMessage = stringResource(Res.string.txn_source_unlinked)
-    // Refs already attached to this transaction, so the neighbour lists show
-    // "vinculada" instead of offering the same link twice.
-    val linkedRefs = sources.map { it.ref }.toSet()
 
     suspend fun load() {
         try {
@@ -183,6 +153,14 @@ fun TransactionDetailScreen(
                     }
                 },
                 actions = {
+                    onTrySuggestion?.let { open ->
+                        IconButton(onClick = open) {
+                            Icon(
+                                Icons.Filled.Science,
+                                contentDescription = stringResource(Res.string.txn_similar_action),
+                            )
+                        }
+                    }
                     TextButton(
                         onClick = {
                             scope.launch {
@@ -509,58 +487,6 @@ fun TransactionDetailScreen(
                             }
                         }
                     }
-
-                    // Vecinos por similitud (offline: los vectores ya están
-                    // guardados). Los de otras tablas se pueden vincular como
-                    // origen, que es lo que llena el corpus de ejemplos.
-                    Spacer(Modifier.height(24.dp))
-                    SimilarSection(
-                        embeddings = embeddings,
-                        title = stringResource(Res.string.similar_transactions),
-                        kind = EmbedKind.Transaction,
-                        id = id,
-                        onOpen = { onOpenTransaction(it.id) },
-                    )
-
-                    Spacer(Modifier.height(24.dp))
-                    SimilarSection(
-                        embeddings = embeddings,
-                        title = stringResource(Res.string.similar_notifications),
-                        kind = EmbedKind.Transaction,
-                        id = id,
-                        into = EmbedKind.Notification,
-                        onOpen = { onOpenNotification(it.id) },
-                        linkedRefs = linkedRefs,
-                        reloadKey = linkedRefs,
-                        onLink = { match ->
-                            scope.launch {
-                                linkSource(id, EventSource.Notification, match.id, ledger) {
-                                    sources = ledger.sources(id)
-                                    Feedback.show(linkedMessage)
-                                }
-                            }
-                        },
-                    )
-
-                    Spacer(Modifier.height(24.dp))
-                    SimilarSection(
-                        embeddings = embeddings,
-                        title = stringResource(Res.string.similar_emails),
-                        kind = EmbedKind.Transaction,
-                        id = id,
-                        into = EmbedKind.Email,
-                        onOpen = { onOpenEmail(it.id) },
-                        linkedRefs = linkedRefs,
-                        reloadKey = linkedRefs,
-                        onLink = { match ->
-                            scope.launch {
-                                linkSource(id, EventSource.Email, match.id, ledger) {
-                                    sources = ledger.sources(id)
-                                    Feedback.show(linkedMessage)
-                                }
-                            }
-                        },
-                    )
 
                     // Padding inferior para que el FAB no tape contenido.
                     Spacer(Modifier.height(80.dp))

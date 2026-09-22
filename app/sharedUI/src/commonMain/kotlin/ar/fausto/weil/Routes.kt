@@ -77,6 +77,12 @@ data class TransactionDetailRoute(val id: String)
 
 data class TransactionEditRoute(val id: String)
 
+/** The lab bench for a transaction: its vector neighbours across the three
+ * embedded tables, with the same link buttons [SuggestSourcesRoute] shows
+ * for a captured message — reachable from the flask icon, not shown inline
+ * on the read-only detail. */
+data class TransactionSimilarRoute(val id: String)
+
 data class AccountDetailRoute(val id: String)
 
 /**

@@ -1,5 +1,3 @@
-@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-
 package ar.fausto.weil
 
 import androidx.compose.animation.core.CubicBezierEasing
@@ -18,13 +16,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.EntryProviderScope
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 
 /**
  * The four tabs and the bar that commands them.
@@ -64,7 +64,11 @@ fun TabShell(
     // Back from a tab returns to Inicio rather than closing the app: the
     // tabs' stack is one deep on purpose, so this is the only way that
     // expectation can be met.
-    BackHandler(enabled = current != AppTab.Home && !coveredByOverlay) { onSelect(AppTab.Home) }
+    val backState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = backState,
+        isBackEnabled = current != AppTab.Home && !coveredByOverlay,
+    ) { onSelect(AppTab.Home) }
     val density = LocalDensity.current
     // Which way along the bar the move went. Latched the moment `current`
     // changes and then left alone: it has to stay put for the whole

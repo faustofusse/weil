@@ -30,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -810,7 +811,9 @@ internal fun TypeDropdown(
             enabled = enabled,
             label = { Text(stringResource(Res.string.account_type_label)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && enabled) },
-            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled)
+                .fillMaxWidth(),
         )
         ExposedDropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
             AccountType.entries.forEach { candidate ->

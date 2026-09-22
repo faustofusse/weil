@@ -689,7 +689,7 @@ private fun PostingSlab(
             }
             if (mismatch) {
                 Text(
-                    stringResource(Res.string.account_commodity_mismatch, accountCommodity!!),
+                    stringResource(Res.string.account_commodity_mismatch, accountCommodity),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(start = 6.dp),

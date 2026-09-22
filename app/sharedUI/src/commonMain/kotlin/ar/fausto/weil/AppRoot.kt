@@ -513,15 +513,25 @@ fun RootScreen(
                                     TransactionDetailScreen(
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
-                                        embeddings = graph.embeddings,
                                         id = route.id,
                                         onNavigateBack = { pop() },
                                         onNavigateToEdit = { navigate(TransactionEditRoute(it)) },
                                         onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
-                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                         onOpenNotification = { navigate(NotificationDetailRoute(it)) },
                                         onOpenEmail = { navigate(EmailDetailRoute(it)) },
                                         onOpenDocument = { navigate(DocumentRoute(it)) },
+                                        onTrySuggestion = { navigate(TransactionSimilarRoute(route.id)) },
+                                    )
+                                }
+                                entry<TransactionSimilarRoute> { route ->
+                                    TransactionSimilarScreen(
+                                        embeddings = graph.embeddings,
+                                        ledger = graph.ledger,
+                                        id = route.id,
+                                        onNavigateBack = { pop() },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
+                                        onOpenNotification = { navigate(NotificationDetailRoute(it)) },
+                                        onOpenEmail = { navigate(EmailDetailRoute(it)) },
                                     )
                                 }
                                 entry<DocumentRoute> { route ->

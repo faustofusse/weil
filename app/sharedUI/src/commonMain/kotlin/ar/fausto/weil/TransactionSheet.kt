@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
 
 package ar.fausto.weil
 
@@ -56,9 +56,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -133,7 +135,8 @@ fun TransactionSheet(
 ) {
     // Back closes the panel instead of leaving the tab behind it: it is not
     // on the back stack, so nothing else would have answered.
-    BackHandler(enabled = visible, onBack = onDismiss)
+    val backState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(state = backState, isBackEnabled = visible, onBackCompleted = onDismiss)
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     // Tracks a drag-to-dismiss offset on top of the enter/exit slide: the

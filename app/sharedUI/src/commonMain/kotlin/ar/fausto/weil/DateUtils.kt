@@ -16,8 +16,8 @@ fun formatTimestamp(timestamp: Long): String {
     val dt = Instant.fromEpochMilliseconds(timestamp)
         .toLocalDateTime(TimeZone.currentSystemDefault())
     val year = dt.year.toString().padStart(4, '0')
-    val month = dt.monthNumber.toString().padStart(2, '0')
-    val day = dt.dayOfMonth.toString().padStart(2, '0')
+    val month = (dt.month.ordinal + 1).toString().padStart(2, '0')
+    val day = dt.day.toString().padStart(2, '0')
     val hour = dt.hour.toString().padStart(2, '0')
     val minute = dt.minute.toString().padStart(2, '0')
     val second = dt.second.toString().padStart(2, '0')
@@ -62,8 +62,8 @@ fun dayGroup(timestamp: Long): DayGroup {
         today.toEpochDays() == date.toEpochDays() + 1 -> DayYesterday
         else -> DayDate(
             weekday = date.dayOfWeek.ordinal,
-            day = date.dayOfMonth,
-            month = date.monthNumber,
+            day = date.day,
+            month = date.month.ordinal + 1,
             year = date.year.takeIf { it != today.year },
         )
     }
@@ -73,8 +73,8 @@ fun dayGroup(timestamp: Long): DayGroup {
 fun dateInputOf(timestamp: Long): String {
     val dt = Instant.fromEpochMilliseconds(timestamp)
         .toLocalDateTime(TimeZone.currentSystemDefault())
-    val month = dt.monthNumber.toString().padStart(2, '0')
-    val day = dt.dayOfMonth.toString().padStart(2, '0')
+    val month = (dt.month.ordinal + 1).toString().padStart(2, '0')
+    val day = dt.day.toString().padStart(2, '0')
     return dt.year.toString().padStart(4, '0') + "-" + month + "-" + day
 }
 
