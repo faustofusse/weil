@@ -146,17 +146,17 @@ fun JournalScreen(
     // grouping there would redo the work — and worse, lose its identity —
     // on every recomposition). Items arrive newest-first from the server, so
     // a day only ever starts one run: no need to merge non-adjacent slices.
-    // The filter narrows what's grouped, not what's fetched: paging still
-    // walks the whole journal, and "Gasto" is a lens over pages already on
-    // screen rather than a different query.
-    val filteredItems = remember(state.items, state.filter, state.types, state.query, state.names) {
-        val byKind = if (state.filter == JournalFilter.All) {
+    // The kind filter narrows what's grouped, not what's fetched: paging
+    // still walks the whole journal, and "Gasto" is a lens over pages already
+    // on screen rather than a different query. The search field is the
+    // opposite — it is part of the query ([JournalState.updateQuery]), so
+    // there is nothing left to match here.
+    val filteredItems = remember(state.items, state.filter, state.types) {
+        if (state.filter == JournalFilter.All) {
             state.items
         } else {
             state.items.filter { matchesFilter(it, state.filter, state.types) }
         }
-        val q = state.query.trim()
-        if (q.isEmpty()) byKind else byKind.filter { matchesQuery(it, q, state.names) }
     }
     val dayRuns = remember(filteredItems) {
         buildList {
@@ -532,22 +532,6 @@ private fun DeleteSelectedDialog(
             }
         },
     )
-}
-
-/**
- * Free-text match for the search field: payee, note and the leaf name of
- * every posting's account (so "efectivo" finds every row touching that
- * account even when it never made it into the payee/note text).
- */
-private fun matchesQuery(
-    tx: Transaction,
-    query: String,
-    names: Map<String, String>,
-): Boolean {
-    val q = query.lowercase()
-    if (tx.payee.lowercase().contains(q)) return true
-    if (tx.note?.lowercase()?.contains(q) == true) return true
-    return tx.postings.any { names[it.accountId]?.lowercase()?.contains(q) == true }
 }
 
 private fun matchesFilter(

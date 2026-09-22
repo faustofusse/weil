@@ -7,7 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -44,16 +46,52 @@ class JournalState(
     }
 
     /**
-     * Free-text query over payee/note/leaf account names, same lens-not-query
-     * shape as [filter]: it narrows what's already on screen rather than
-     * changing what's fetched, so paging still walks the whole journal.
-     * Hoisted for the same reason as [filter] — opening a transaction from
-     * a search result and coming back shouldn't clear it.
+     * Free-text query over payee/note/account names. Unlike [filter] this is
+     * **not** a lens over the pages already loaded: it goes into the SQL
+     * ([TransactionsRepository.page]'s `query`), because matching in memory
+     * meant the search only ever saw rows the user had scrolled to, so "Coto"
+     * missed every Coto older than the first page and read as the app having
+     * forgotten the purchase. Hoisted for the same reason as [filter] —
+     * opening a transaction from a result and coming back shouldn't clear it.
      */
     var query by mutableStateOf("")
         private set
+
+    /** The term [items] were actually fetched with. */
+    private var appliedQuery = ""
+
+    /**
+     * Cancelled on every keystroke, which is the entire debounce: a slower
+     * in-flight page for "co" cannot land on top of the results for "coto",
+     * because its job is already dead by the time it returns.
+     */
+    private var searchJob: Job? = null
+
     fun updateQuery(next: String) {
+        if (next == query) return
         query = next
+        val wanted = next.trim()
+        searchJob?.cancel()
+        // Trimming means "coto" and "coto " are the same fetch.
+        if (wanted == appliedQuery) return
+        searchJob = scope.launch {
+            // Clearing the field restores the plain journal at once; typing
+            // waits, so a four-letter word costs one query and not four.
+            if (wanted.isNotEmpty()) delay(SEARCH_DEBOUNCE_MS)
+            appliedQuery = wanted
+            // Skeleton only for a cold search: re-querying with rows already
+            // on screen would flash it on every keystroke.
+            isInitialLoading = items.isEmpty()
+            error = null
+            try {
+                loadFirst()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                error = e.message ?: e.toString()
+            } finally {
+                isInitialLoading = false
+            }
+        }
     }
 
     /** True while the inline search field in the top bar is open. */
@@ -81,7 +119,7 @@ class JournalState(
     fun closeSearch() {
         searching = false
         pendingFocus = false
-        query = ""
+        updateQuery("")
     }
 
 
@@ -160,7 +198,9 @@ class JournalState(
 
     /** Home hands over its already-loaded recent transactions so the journal opens painted. */
     fun seed(recent: List<Transaction>) {
-        if (fetchedOwnPage || recent.isEmpty()) return
+        // Home's rows are the unfiltered journal: seeding them under an open
+        // search would paint non-matching transactions as results.
+        if (fetchedOwnPage || recent.isEmpty() || appliedQuery.isNotEmpty()) return
         items = recent
         cursor = recent.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
         loaded = true
@@ -231,7 +271,7 @@ class JournalState(
         accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons; colors = it.colors }
         val after = cursor
         if (after != null) {
-            val page = ledger.page(before = after)
+            val page = ledger.page(before = after, query = appliedQuery.ifEmpty { null })
             cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) } ?: after
             hasMore = page.size == LIST_PAGE_SIZE
             append(page)
@@ -253,7 +293,7 @@ class JournalState(
     }
 
     private suspend fun loadFirst() {
-        val page = ledger.page()
+        val page = ledger.page(query = appliedQuery.ifEmpty { null })
         cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
         hasMore = page.size == LIST_PAGE_SIZE
         accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons; colors = it.colors }
@@ -314,13 +354,23 @@ class JournalState(
         )
     }
 
+    private companion object {
+        /**
+         * Long enough that a typed word is one query rather than one per
+         * letter, short enough that the list is already right by the time the
+         * thumb leaves the keyboard. The query is local SQL, so this is about
+         * doing less work, not about latency.
+         */
+        const val SEARCH_DEBOUNCE_MS = 200L
+    }
+
     fun loadMore() {
         val current = cursor ?: return
         if (isLoadingMore || !hasMore) return
         isLoadingMore = true
         scope.launch {
             try {
-                val page = ledger.page(before = current)
+                val page = ledger.page(before = current, query = appliedQuery.ifEmpty { null })
                 cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
                 hasMore = page.size == LIST_PAGE_SIZE
                 append(page)

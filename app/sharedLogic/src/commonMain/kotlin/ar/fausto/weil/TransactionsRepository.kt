@@ -494,27 +494,38 @@ class TransactionsRepository(private val db: DatabaseProvider) {
      * accounts (a category and its children, say). Whole transactions, not
      * postings: the row shows origin → destination, so the other leg has to
      * come along even though it isn't in the filter.
+     *
+     * [query] is the journal's search field, and it is a **predicate on the
+     * query, not a filter on the page**: matching in memory over the pages
+     * already fetched means "Coto" finds nothing older than what the user
+     * happened to scroll, which reads as "the app forgot that purchase".
+     * Keyset pagination composes with it unchanged — the cursor still walks
+     * `date desc, id desc`, only over a smaller set.
      */
     suspend fun page(
         limit: Int = LIST_PAGE_SIZE,
         before: LedgerCursor? = null,
         accountIds: List<String>? = null,
+        query: String? = null,
     ): List<Transaction> =
         db.useForRead { d ->
             if (accountIds != null && accountIds.isEmpty()) return@useForRead emptyList()
             val scope = accountIds?.let {
                 " t.id in (select transaction_id from postings where account_id in (${quoteList(it)}))"
             }
+            val text = query?.trim()?.takeIf { it.isNotEmpty() }
+            val search = if (text == null) null else TX_SEARCH_FILTER
             val where = listOfNotNull(
                 if (before == null) null else TX_CURSOR_FILTER,
                 scope,
+                search,
             )
             val txs = d.query(
                 "select t.id, t.date, t.payee, t.note, t.created_at, t.time_known" +
                     " from transactions t" +
                     (if (where.isEmpty()) "" else where.joinToString(" and ", prefix = " where ")) +
                     " order by t.date desc, t.id desc limit $limit",
-                cursorParams(before),
+                pageParams(before, text),
             ) { rows ->
                 rows.filter { it.size >= 6 }.map { row ->
                     Transaction(
@@ -861,6 +872,41 @@ class TransactionsRepository(private val db: DatabaseProvider) {
 
     private companion object {
         const val TX_CURSOR_FILTER = "(t.date < :date or (t.date = :date and t.id < :tid))"
+
+        /**
+         * Payee, note and the name of any posted account — the same three
+         * fields the row on screen shows, so a hit is always visible in the
+         * result rather than hiding in data the card doesn't render.
+         *
+         * `like` is case-insensitive for ASCII only in SQLite, which is why
+         * the caller lowercases and why "PANADERÍA" won't fold onto
+         * "panadería" (the accented char is outside that rule). Matching
+         * accents properly needs a normalized shadow column; it isn't worth
+         * one until someone hits it.
+         */
+        const val TX_SEARCH_FILTER =
+            "(lower(t.payee) like :q escape '\\'" +
+                " or lower(coalesce(t.note, '')) like :q escape '\\'" +
+                " or t.id in (select p.transaction_id from postings p" +
+                " join accounts a on a.id = p.account_id" +
+                " where lower(a.name) like :q escape '\\'))"
+
+        /** Cursor params plus the search term, when there is one. */
+        fun pageParams(before: LedgerCursor?, query: String?): Map<String, Any>? {
+            val params = buildMap<String, Any> {
+                cursorParams(before)?.let { putAll(it) }
+                if (query != null) put(":q", "%" + likeEscape(query.lowercase()) + "%")
+            }
+            return params.ifEmpty { null }
+        }
+
+        /** `%`, `_` and the escape char itself are literals in a user's query. */
+        private fun likeEscape(text: String): String = buildString {
+            for (c in text) {
+                if (c == '%' || c == '_' || c == '\\') append('\\')
+                append(c)
+            }
+        }
 
         /** Null (a row written before the column existed) means a real time. */
         fun isTimeKnown(value: Any?): Boolean = ((value as? Number)?.toLong() ?: 1L) != 0L
