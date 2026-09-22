@@ -1,6 +1,7 @@
 package ar.fausto.weil
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,13 +47,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
+import androidx.navigationevent.NavigationEventTransitionState
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -82,6 +91,28 @@ import weil.app.sharedui.generated.resources.qr_pay_no_wallet
 /** Transition specs copied from the old finance app's NavDisplay setup. */
 private val slideIn = { full: Int -> (full * 0.4f).toInt() }
 private val slideOut = { full: Int -> (full * -0.2f).toInt() }
+
+/**
+ * The bottom bar's own exit/entry, played while a detail screen is pushed
+ * over the tabs.
+ *
+ * It drops straight down past its own bottom edge instead of riding the
+ * shell sideways: the bar is not part of the page that is leaving, it is the
+ * app's furniture, and furniture that slides off to the left reads as if the
+ * whole app had moved. Leaving is quick and linear-ish (it should be gone
+ * before the incoming screen has settled, so it never hangs over a screen
+ * that has no tabs); coming back is slower and decelerated, arriving a beat
+ * after the tabs it belongs to are already on screen.
+ */
+private val BarExit = tween<Float>(180, easing = FastOutSlowInEasing)
+private val BarEnter = tween<Float>(300, delayMillis = 40, easing = FastOutSlowInEasing)
+
+/**
+ * Extra travel beyond the bar's own height, to clear the create button that
+ * straddles its top edge: translating by the height alone leaves the disc's
+ * bottom sliver stuck to the bottom of the screen.
+ */
+private val BarFabClearance = 34.dp
 
 @Composable
 fun RootScreen(
@@ -223,6 +254,13 @@ fun RootScreen(
                     // of the back stack means dismissing a form never also
                     // pops the tab you were on.
                     var creating by remember(loggedIn) { mutableStateOf(openCreate && loggedIn) }
+
+                    // Measured once the bar is laid out and handed down to
+                    // the shell, which reserves exactly this much at the
+                    // bottom of every tab. Guessing it would be wrong on any
+                    // device whose navigation-bar inset isn't the one guessed.
+                    val density = LocalDensity.current
+                    var barHeight by remember { mutableStateOf(0.dp) }
 
                     fun navigate(route: Any) {
                         backStack.add(route)
@@ -415,7 +453,7 @@ fun RootScreen(
                                         current = currentTab,
                                         stack = tabStack,
                                         onSelect = { selectTab(it) },
-                                        onNew = { creating = true },
+                                        barHeight = barHeight,
                                         coveredByOverlay = creating,
                                     ) { bar ->
                                         entry<HomeRoute> { homeTab(bar) }
@@ -624,6 +662,80 @@ fun RootScreen(
                                     (slideOutHorizontally(targetOffsetX = slideIn) + fadeOut())
                             },
                         )
+                        // The bar lives here, over the nav host rather than
+                        // inside the tab shell, so a push slides the page
+                        // away underneath it while the bar itself drops out
+                        // the bottom — and comes back up when you return.
+                        // Only the tabs own it: three levels into a stack it
+                        // would be promising a "you are here" it can't keep.
+                        if (loggedIn) {
+                            // Translated rather than added and removed: kept
+                            // in the composition it stays measured (the
+                            // shell's spacer depends on that height) and
+                            // nothing clips the create button, which is drawn
+                            // outside the bar's own bounds.
+                            val barShown = backStack.lastOrNull() is TabsRoute
+
+                            // Predictive back moves the content by *seeking*
+                            // NavDisplay's transition with the finger, so a
+                            // bar animated on its own timer would sit still
+                            // through the drag and then jump when the pop
+                            // lands. The gesture is readable without stealing
+                            // it: the dispatcher publishes progress on a
+                            // shared flow (NavDisplay still owns the handler —
+                            // registering one here would take the gesture away
+                            // from it and the content would stop animating).
+                            val dispatcher =
+                                LocalNavigationEventDispatcherOwner.current?.navigationEventDispatcher
+                            val gestureState: StateFlow<NavigationEventTransitionState> =
+                                remember(dispatcher) {
+                                    dispatcher?.transitionState
+                                        ?: MutableStateFlow(NavigationEventTransitionState.Idle)
+                                }
+                            val gesture by gestureState.collectAsState()
+                            // Only a drag that would uncover the tabs moves
+                            // the bar: deeper in a stack the pop reveals
+                            // another barless screen, and on a tab the
+                            // gesture goes to the shell's own handler.
+                            val uncoversTabs = !barShown &&
+                                backStack.getOrNull(backStack.lastIndex - 1) is TabsRoute
+                            val dragged = gesture as? NavigationEventTransitionState.InProgress
+                            val dragging = dragged != null && uncoversTabs
+                            val progress = dragged?.latestEvent?.progress ?: 0f
+                            // One Animatable for both paths, so the release
+                            // continues from wherever the finger left the bar
+                            // instead of restarting from off-screen.
+                            val shown = remember { Animatable(if (barShown) 1f else 0f) }
+                            LaunchedEffect(barShown, dragging, progress) {
+                                if (dragging) {
+                                    // Eased, not raw: NavDisplay seeks its
+                                    // transition with the same progress and
+                                    // the spec's easing is applied inside, so
+                                    // a linear bar would drift ahead of the
+                                    // page it belongs to.
+                                    shown.snapTo(FastOutSlowInEasing.transform(progress))
+                                } else {
+                                    shown.animateTo(
+                                        if (barShown) 1f else 0f,
+                                        if (barShown) BarEnter else BarExit,
+                                    )
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .offset(y = (barHeight + BarFabClearance) * (1f - shown.value))
+                                    .onSizeChanged {
+                                        barHeight = with(density) { it.height.toDp() }
+                                    },
+                            ) {
+                                AppBottomBar(
+                                    current = currentTab,
+                                    onSelect = { selectTab(it) },
+                                    onNew = { creating = true },
+                                )
+                            }
+                        }
                         if (loggedIn) {
                             TransactionSheet(
                                 visible = creating,

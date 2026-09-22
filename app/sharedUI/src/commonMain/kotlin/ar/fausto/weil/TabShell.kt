@@ -14,16 +14,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.EntryProviderScope
 import androidx.navigation3.runtime.entryProvider
@@ -32,23 +29,28 @@ import androidx.navigation3.ui.NavDisplay
 /**
  * The four tabs and the bar that commands them.
  *
- * The bar is drawn *here*, above a nested [NavDisplay], instead of by each
- * screen: when the tabs were four roots of the one back stack, switching one
- * animated the bar along with the content — the thing you just pressed
- * flickered out and back in, which reads as a page load. Nested, the swap is
- * confined to the content and the bar simply stays.
+ * The bar is **not** drawn here: it is drawn by [RootScreen], above the
+ * outer nav host, so that it survives both moves. When the tabs were four
+ * roots of the one back stack, switching one animated the bar along with the
+ * content — the thing you just pressed flickered out and back in, which reads
+ * as a page load. And when the bar belonged to this shell, pushing a detail
+ * screen slid it sideways off the edge with the rest of the shell, when what
+ * a bar should do on a push is drop out the bottom and come back up on the
+ * way home.
  *
  * Screens still receive a `bar` slot, but it is only a spacer as tall as the
- * real bar (measured, not guessed, since the bar's height depends on the
- * navigation-bar inset): a Scaffold has to reserve the space, and the thing
- * reserving it must not be the thing that has to survive the transition.
+ * real bar ([barHeight], measured by the caller rather than guessed, since
+ * the bar's height depends on the navigation-bar inset): a Scaffold has to
+ * reserve the space, and the thing reserving it must not be the thing that
+ * has to survive the transition.
  */
 @Composable
 fun TabShell(
     current: AppTab,
     stack: SnapshotStateList<Any>,
     onSelect: (AppTab) -> Unit,
-    onNew: () -> Unit,
+    /** Height of the real bar, so each screen can reserve exactly that much. */
+    barHeight: Dp,
     /**
      * True while something is layered over the shell (the create panel): back
      * belongs to that layer, not to the tabs. Without this, both handlers are
@@ -63,7 +65,6 @@ fun TabShell(
     // tabs' stack is one deep on purpose, so this is the only way that
     // expectation can be met.
     BackHandler(enabled = current != AppTab.Home && !coveredByOverlay) { onSelect(AppTab.Home) }
-    var barHeight by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
     // Which way along the bar the move went. Latched the moment `current`
     // changes and then left alone: it has to stay put for the whole
@@ -79,6 +80,7 @@ fun TabShell(
     val spacer: @Composable () -> Unit = { Spacer(Modifier.height(barHeight)) }
     Box(modifier = Modifier.fillMaxSize()) {
         NavDisplay(
+            modifier = Modifier.fillMaxSize(),
             backStack = stack,
             // Nothing to pop: the stack is always one entry deep. Leaving a
             // tab is the bar's job, and leaving the shell is the outer
@@ -89,13 +91,6 @@ fun TabShell(
             popTransitionSpec = { tabTransform(forward.value, drift) },
             predictivePopTransitionSpec = { tabTransform(forward.value, drift) },
         )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .onSizeChanged { barHeight = with(density) { it.height.toDp() } },
-        ) {
-            AppBottomBar(current = current, onSelect = onSelect, onNew = onNew)
-        }
     }
 }
 
