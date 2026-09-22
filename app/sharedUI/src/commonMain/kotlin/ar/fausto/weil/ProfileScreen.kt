@@ -189,7 +189,7 @@ fun ProfileScreen(
         ) {
             DisplayNameSection(userState)
             Spacer(Modifier.height(16.dp))
-            AccountEmailSection(chain)
+            AccountEmailSection(userState)
             Spacer(Modifier.height(16.dp))
             ChainSection(chainState)
             Spacer(Modifier.height(16.dp))
@@ -1204,27 +1204,14 @@ private fun DisplayNameSection(state: UserState) {
 }
 
 /** Contact email the finance worker routes wallet mail from. Lives on the auth
- * server (users.email), so only signed-in authenticated calls are involved. */
+ * server (users.email), so only signed-in authenticated calls are involved.
+ * Cached the same way as the display name in [UserState], so it doesn't
+ * refetch every time Profile is opened. */
 @Composable
-private fun AccountEmailSection(chain: ChainRepository) {
-    var email by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
+private fun AccountEmailSection(state: UserState) {
     var editing by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(Unit) {
-        busy = true
-        try {
-            email = chain.getEmail()
-        } catch (e: Throwable) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            error = e.message ?: e.toString()
-        } finally {
-            busy = false
-        }
-    }
+    LaunchedEffect(Unit) { state.loadEmail() }
 
     SectionCard(
         title = stringResource(Res.string.profile_contact_email_title),
@@ -1232,17 +1219,18 @@ private fun AccountEmailSection(chain: ChainRepository) {
         subtitle = stringResource(Res.string.profile_contact_email_subtitle),
     ) {
         when {
-            busy -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            error != null -> ErrorBanner(error ?: "")
+            state.emailBusy && state.email == null ->
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            state.emailError != null -> ErrorBanner(state.emailError ?: "")
             else -> {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        email ?: stringResource(Res.string.profile_email_not_set),
+                        state.email ?: stringResource(Res.string.profile_email_not_set),
                         style = MaterialTheme.typography.bodyLarge,
-                        color = if (email == null) {
+                        color = if (state.email == null) {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         } else {
                             MaterialTheme.colorScheme.onSurface
@@ -1253,7 +1241,7 @@ private fun AccountEmailSection(chain: ChainRepository) {
                     )
                     IconButton(
                         onClick = {
-                            draft = email ?: ""
+                            draft = state.email ?: ""
                             editing = true
                         },
                     ) {
@@ -1286,19 +1274,7 @@ private fun AccountEmailSection(chain: ChainRepository) {
                         val value = draft.trim()
                         editing = false
                         if (!value.contains('@')) return@TextButton
-                        busy = true
-                        error = null
-                        scope.launch {
-                            try {
-                                chain.setEmail(value)
-                                email = chain.getEmail()
-                            } catch (e: Throwable) {
-                                if (e is kotlinx.coroutines.CancellationException) throw e
-                                error = e.message ?: e.toString()
-                            } finally {
-                                busy = false
-                            }
-                        }
+                        state.setEmail(value)
                     },
                 ) { Text(stringResource(Res.string.action_save)) }
             },

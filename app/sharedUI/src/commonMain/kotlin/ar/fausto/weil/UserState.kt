@@ -25,13 +25,20 @@ class UserState(
 ) {
     var name by mutableStateOf<String?>(null)
         private set
+    var email by mutableStateOf<String?>(null)
+        private set
     var busy by mutableStateOf(false)
         private set
+    var emailBusy by mutableStateOf(false)
+        private set
     var error by mutableStateOf<String?>(null)
+        private set
+    var emailError by mutableStateOf<String?>(null)
         private set
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     private var loaded = false
+    private var emailLoaded = false
 
     /** Cache first, then the worker; a failed fetch leaves the cached name up. */
     fun load() {
@@ -49,6 +56,46 @@ class UserState(
                 // Offline is not an error worth showing next to a greeting.
             } finally {
                 busy = false
+            }
+        }
+    }
+
+    /** Same cache-first shape as [load], kept separate: the email has its own
+     * error banner in Profile and no greeting depends on it. */
+    fun loadEmail() {
+        if (emailLoaded) return
+        emailLoaded = true
+        scope.launch {
+            runCatching { settings.all()[EMAIL_KEY] }.getOrNull()?.let { email = it }
+            emailBusy = true
+            try {
+                val remote = chain.getEmail()
+                email = remote
+                remote?.let { settings.set(EMAIL_KEY, it) }
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                emailError = e.message ?: e.toString()
+            } finally {
+                emailBusy = false
+            }
+        }
+    }
+
+    fun setEmail(value: String, onDone: () -> Unit = {}) {
+        scope.launch {
+            emailBusy = true
+            emailError = null
+            try {
+                chain.setEmail(value)
+                val stored = chain.getEmail()
+                email = stored
+                stored?.let { settings.set(EMAIL_KEY, it) }
+                onDone()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                emailError = e.message ?: e.toString()
+            } finally {
+                emailBusy = false
             }
         }
     }
@@ -80,5 +127,6 @@ class UserState(
     companion object {
         /** Local mirror of the worker's value; the worker stays the source of truth. */
         const val NAME_KEY = "profile.name"
+        const val EMAIL_KEY = "profile.email"
     }
 }
