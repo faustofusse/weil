@@ -67,10 +67,12 @@ fun AccountDetailScreen(
     val accounts = ledgerState.accounts
     val node = findNode(ledgerState.tree, accountId)
     // Leaf names + types, same derivation Home uses, so this register's rows
-    // draw with the identical TransactionRow the journal and Home show.
+    // draw with the identical MovementRow the journal and Home show.
     val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
     val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
     val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
+    val icons = remember(nodes) { nodes.associate { it.account.id to it.account.icon } }
+    val colors = remember(nodes) { nodes.associate { it.account.id to it.account.color } }
     var includeSubtree by remember { mutableStateOf(false) }
     var entries by remember { mutableStateOf(emptyList<RegisterEntry>()) }
     var transactions by remember { mutableStateOf(emptyMap<String, Transaction>()) }
@@ -211,8 +213,11 @@ fun AccountDetailScreen(
                             BalanceText(
                                 totals = ledgerState.totals[accountId].orEmpty(),
                                 style = MaterialTheme.typography.displaySmall,
-                                signalNegative = node?.account?.type == AccountType.Asset ||
-                                    node?.account?.type == AccountType.Expense,
+                                // The account's own total, not a movement in a
+                                // list: a minus sign says "negative" as plainly
+                                // as red does, without recruiting a color that
+                                // elsewhere means "money left my pocket".
+                                signalNegative = false,
                                 modifier = Modifier.align(Alignment.CenterStart),
                             )
                         }
@@ -252,15 +257,18 @@ fun AccountDetailScreen(
                         postings = listOf(entry.posting),
                         timeKnown = entry.timeKnown,
                     )
-                    TransactionRow(
+                    MovementRow(
                         tx = tx,
                         names = names,
                         types = types,
+                        icons = icons,
+                        colors = colors,
+                        hidden = false,
                         onOpen = { onOpenTransaction(entry.posting.transactionId) },
                         // The running balance after this row, in the same dim
-                        // bodySmall slot the journal/Home use for a per-row
-                        // date — here it's the number this screen exists to show.
-                        dateLabel = formatMoney(entry.balanceAfter.minorUnits, entry.balanceAfter.commodity, signed = true),
+                        // bodySmall caption slot other lists leave empty —
+                        // here it's the number this screen exists to show.
+                        caption = formatMoney(entry.balanceAfter.minorUnits, entry.balanceAfter.commodity, signed = true),
                     )
                 }
             }

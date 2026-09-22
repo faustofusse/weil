@@ -1,8 +1,10 @@
 package ar.fausto.weil
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +40,13 @@ internal fun MovementRow(
     selected: Boolean = false,
     /** Long-press starts (or toggles) a selection run; null leaves the plain row. */
     onLongClick: (() -> Unit)? = null,
+    /**
+     * Extra line under the amount, right-aligned. The account register is
+     * the one list where a per-row number *other* than the movement itself
+     * (the running balance) belongs, so it rides in the same dim caption
+     * slot instead of growing a bespoke row design.
+     */
+    caption: String? = null,
 ) {
     val flow = flowOf(tx, types)
     val from = flow?.fromId?.let { names[it] }
@@ -81,17 +90,29 @@ internal fun MovementRow(
         onLongClick = onLongClick,
         modifier = modifier,
     ) {
-        if (flow != null) {
-            Text(
-                // Unsigned: this is a list of rows, and color already says
-                // which way the money moved. A minus here would be the same
-                // fact printed twice.
-                maskedAmount(flow.amountMinor, flow.commodity, hidden, signed = false),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = flowColor(flow.direction),
-                maxLines = 1,
-            )
+        if (flow != null || caption != null) {
+            Column(horizontalAlignment = Alignment.End) {
+                if (flow != null) {
+                    Text(
+                        // Unsigned: this is a list of rows, and color already says
+                        // which way the money moved. A minus here would be the same
+                        // fact printed twice.
+                        maskedAmount(flow.amountMinor, flow.commodity, hidden, signed = false),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = flowColor(flow.direction),
+                        maxLines = 1,
+                    )
+                }
+                if (caption != null) {
+                    Text(
+                        caption,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        maxLines = 1,
+                    )
+                }
+            }
         }
     }
 }
