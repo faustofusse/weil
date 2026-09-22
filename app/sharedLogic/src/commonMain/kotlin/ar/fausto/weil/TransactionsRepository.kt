@@ -507,6 +507,8 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         before: LedgerCursor? = null,
         accountIds: List<String>? = null,
         query: String? = null,
+        fromDate: Long? = null,
+        toDate: Long? = null,
     ): List<Transaction> =
         db.useForRead { d ->
             if (accountIds != null && accountIds.isEmpty()) return@useForRead emptyList()
@@ -519,13 +521,15 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 if (before == null) null else TX_CURSOR_FILTER,
                 scope,
                 search,
+                if (fromDate == null) null else "t.date >= :fromDate",
+                if (toDate == null) null else "t.date <= :toDate",
             )
             val txs = d.query(
                 "select t.id, t.date, t.payee, t.note, t.created_at, t.time_known" +
                     " from transactions t" +
                     (if (where.isEmpty()) "" else where.joinToString(" and ", prefix = " where ")) +
                     " order by t.date desc, t.id desc limit $limit",
-                pageParams(before, text),
+                pageParams(before, text, fromDate, toDate),
             ) { rows ->
                 rows.filter { it.size >= 6 }.map { row ->
                     Transaction(
@@ -891,11 +895,13 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 " join accounts a on a.id = p.account_id" +
                 " where lower(a.name) like :q escape '\\'))"
 
-        /** Cursor params plus the search term, when there is one. */
-        fun pageParams(before: LedgerCursor?, query: String?): Map<String, Any>? {
+        /** Cursor params plus the search term and date range, when present. */
+        fun pageParams(before: LedgerCursor?, query: String?, fromDate: Long? = null, toDate: Long? = null): Map<String, Any>? {
             val params = buildMap<String, Any> {
                 cursorParams(before)?.let { putAll(it) }
                 if (query != null) put(":q", "%" + likeEscape(query.lowercase()) + "%")
+                if (fromDate != null) put(":fromDate", fromDate)
+                if (toDate != null) put(":toDate", toDate)
             }
             return params.ifEmpty { null }
         }

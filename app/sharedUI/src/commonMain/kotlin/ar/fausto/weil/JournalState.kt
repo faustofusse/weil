@@ -61,6 +61,42 @@ class JournalState(
     private var appliedQuery = ""
 
     /**
+     * Inclusive date range narrowing the journal, from the overflow menu's
+     * «Filtrar por rango de fechas». Unlike [filter] this goes into the SQL
+     * ([TransactionsRepository.page]'s `fromDate`/`toDate`) for the same
+     * reason [query] does: a lens over pages already fetched would miss
+     * everything older than what happened to be on screen.
+     */
+    var dateFrom by mutableStateOf<Long?>(null)
+        private set
+    var dateTo by mutableStateOf<Long?>(null)
+        private set
+
+    /** True once a range has been applied — drives the clear affordance. */
+    val hasDateRange: Boolean get() = dateFrom != null || dateTo != null
+
+    /** Sets the range and reloads the first page with it applied. */
+    fun setDateRange(from: Long?, to: Long?) {
+        if (from == dateFrom && to == dateTo) return
+        dateFrom = from
+        dateTo = to
+        scope.launch {
+            isInitialLoading = items.isEmpty()
+            error = null
+            try {
+                loadFirst()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                error = e.message ?: e.toString()
+            } finally {
+                isInitialLoading = false
+            }
+        }
+    }
+
+    fun clearDateRange() = setDateRange(null, null)
+
+    /**
      * Cancelled on every keystroke, which is the entire debounce: a slower
      * in-flight page for "co" cannot land on top of the results for "coto",
      * because its job is already dead by the time it returns.
@@ -200,7 +236,7 @@ class JournalState(
     fun seed(recent: List<Transaction>) {
         // Home's rows are the unfiltered journal: seeding them under an open
         // search would paint non-matching transactions as results.
-        if (fetchedOwnPage || recent.isEmpty() || appliedQuery.isNotEmpty()) return
+        if (fetchedOwnPage || recent.isEmpty() || appliedQuery.isNotEmpty() || hasDateRange) return
         items = recent
         cursor = recent.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
         loaded = true
@@ -271,7 +307,7 @@ class JournalState(
         accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons; colors = it.colors }
         val after = cursor
         if (after != null) {
-            val page = ledger.page(before = after, query = appliedQuery.ifEmpty { null })
+            val page = ledger.page(before = after, query = appliedQuery.ifEmpty { null }, fromDate = dateFrom, toDate = dateTo)
             cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) } ?: after
             hasMore = page.size == LIST_PAGE_SIZE
             append(page)
@@ -293,7 +329,7 @@ class JournalState(
     }
 
     private suspend fun loadFirst() {
-        val page = ledger.page(query = appliedQuery.ifEmpty { null })
+        val page = ledger.page(query = appliedQuery.ifEmpty { null }, fromDate = dateFrom, toDate = dateTo)
         cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
         hasMore = page.size == LIST_PAGE_SIZE
         accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons; colors = it.colors }
@@ -370,7 +406,7 @@ class JournalState(
         isLoadingMore = true
         scope.launch {
             try {
-                val page = ledger.page(before = current, query = appliedQuery.ifEmpty { null })
+                val page = ledger.page(before = current, query = appliedQuery.ifEmpty { null }, fromDate = dateFrom, toDate = dateTo)
                 cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
                 hasMore = page.size == LIST_PAGE_SIZE
                 append(page)

@@ -268,6 +268,16 @@ object Icons {
             "M17 16h6",
         )
 
+        val DateRange: ImageVector = lineIcon(
+            "DateRange",
+            "M4 5h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z",
+            "M8 3v4",
+            "M16 3v4",
+            "M3 10h18",
+            "M7 14h3",
+            "M14 14h3",
+        )
+
         val AccountTree: ImageVector = lineIcon(
             "AccountTree",
             "M6 4.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",

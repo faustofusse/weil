@@ -92,6 +92,15 @@ import weil.app.sharedui.generated.resources.journal_dev_delete_range_from
 import weil.app.sharedui.generated.resources.journal_dev_delete_range_invalid
 import weil.app.sharedui.generated.resources.journal_dev_delete_range_title
 import weil.app.sharedui.generated.resources.journal_dev_delete_range_to
+import weil.app.sharedui.generated.resources.journal_date_range_filter
+import weil.app.sharedui.generated.resources.journal_date_range_filter_active
+import weil.app.sharedui.generated.resources.journal_date_range_filter_apply
+import weil.app.sharedui.generated.resources.journal_date_range_filter_body
+import weil.app.sharedui.generated.resources.journal_date_range_filter_clear
+import weil.app.sharedui.generated.resources.journal_date_range_filter_from
+import weil.app.sharedui.generated.resources.journal_date_range_filter_invalid
+import weil.app.sharedui.generated.resources.journal_date_range_filter_title
+import weil.app.sharedui.generated.resources.journal_date_range_filter_to
 import weil.app.sharedui.generated.resources.journal_empty
 import weil.app.sharedui.generated.resources.journal_filter_all
 import weil.app.sharedui.generated.resources.journal_more_postings
@@ -132,6 +141,7 @@ fun JournalScreen(
 ) {
     val listState = rememberLazyListState()
     var showDeleteRangeDialog by remember { mutableStateOf(false) }
+    var showDateRangeFilterDialog by remember { mutableStateOf(false) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val selecting = state.isSelecting
@@ -237,6 +247,14 @@ fun JournalScreen(
                                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.more_options))
                             }
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(Res.string.journal_date_range_filter)) },
+                                    leadingIcon = { Icon(Icons.Filled.DateRange, contentDescription = null) },
+                                    onClick = {
+                                        menuOpen = false
+                                        showDateRangeFilterDialog = true
+                                    },
+                                )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(Res.string.journal_dev_delete_range)) },
                                     leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
@@ -355,6 +373,16 @@ fun JournalScreen(
                 onSelect = { state.pickFilter(it) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
+            if (state.hasDateRange) {
+                val from = state.dateFrom?.let { dateInputOf(it) } ?: ""
+                val to = state.dateTo?.let { dateInputOf(it) } ?: ""
+                androidx.compose.material3.AssistChip(
+                    onClick = { state.clearDateRange() },
+                    label = { Text(stringResource(Res.string.journal_date_range_filter_active, from, to)) },
+                    trailingIcon = { Icon(Icons.Filled.Close, contentDescription = stringResource(Res.string.journal_date_range_filter_clear)) },
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
+                )
+            }
             PullToRefreshBox(
                 isRefreshing = state.pullRefreshing,
                 onRefresh = { state.refresh(userInitiated = true) },
@@ -464,6 +492,10 @@ fun JournalScreen(
 
     if (showDeleteRangeDialog) {
         DeleteRangeDialog(state = state, onDismiss = { showDeleteRangeDialog = false })
+    }
+
+    if (showDateRangeFilterDialog) {
+        DateRangeFilterDialog(state = state, onDismiss = { showDateRangeFilterDialog = false })
     }
 
     if (showDeleteSelectedDialog) {
@@ -657,6 +689,112 @@ private fun DeleteRangeDialog(state: JournalState, onDismiss: () -> Unit) {
         dismissButton = {
             TextButton(onClick = onDismiss, enabled = !deleting) {
                 Text(stringResource(Res.string.action_cancel))
+            }
+        },
+    )
+
+    if (pickingFrom) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = fromText?.let { parseDateInput(it) } ?: epochMillis(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickingFrom = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { fromText = dateInputOf(it) }
+                    pickingFrom = false
+                }) { Text(stringResource(Res.string.action_ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickingFrom = false }) { Text(stringResource(Res.string.action_cancel)) }
+            },
+        ) { DatePicker(state = pickerState) }
+    }
+
+    if (pickingTo) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = toText?.let { parseDateInput(it) } ?: epochMillis(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickingTo = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { toText = dateInputOf(it) }
+                    pickingTo = false
+                }) { Text(stringResource(Res.string.action_ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickingTo = false }) { Text(stringResource(Res.string.action_cancel)) }
+            },
+        ) { DatePicker(state = pickerState) }
+    }
+}
+
+/**
+ * From the overflow menu: narrow the journal (and its search, when both are
+ * active at once) to an inclusive from/to range. [JournalState.setDateRange]
+ * folds it into the same SQL query as the free-text search, so it composes
+ * with whatever the user already typed rather than filtering rows already on
+ * screen.
+ */
+@Composable
+private fun DateRangeFilterDialog(state: JournalState, onDismiss: () -> Unit) {
+    var fromText by remember { mutableStateOf(state.dateFrom?.let { dateInputOf(it) }) }
+    var toText by remember { mutableStateOf(state.dateTo?.let { dateInputOf(it) }) }
+    var pickingFrom by remember { mutableStateOf(false) }
+    var pickingTo by remember { mutableStateOf(false) }
+
+    val invalidMessage = stringResource(Res.string.journal_date_range_filter_invalid)
+
+    fun apply() {
+        val from = fromText?.let { parseDateInput(it) }
+        // Inclusive of the whole "to" day, same as the delete-range dialog.
+        val toStart = toText?.let { parseDateInput(it) }
+        val to = toStart?.plus(DAY_MILLIS - 1)
+        if (from == null || to == null || from > to) {
+            Feedback.show(invalidMessage)
+            return
+        }
+        state.setDateRange(from, to)
+        onDismiss()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(Res.string.journal_date_range_filter_title)) },
+        text = {
+            Column {
+                Text(
+                    stringResource(Res.string.journal_date_range_filter_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { pickingFrom = true }) {
+                        Text(fromText ?: stringResource(Res.string.journal_date_range_filter_from))
+                    }
+                    TextButton(onClick = { pickingTo = true }) {
+                        Text(toText ?: stringResource(Res.string.journal_date_range_filter_to))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { apply() },
+                enabled = fromText != null && toText != null,
+            ) { Text(stringResource(Res.string.journal_date_range_filter_apply)) }
+        },
+        dismissButton = {
+            Row {
+                if (state.hasDateRange) {
+                    TextButton(onClick = {
+                        state.clearDateRange()
+                        onDismiss()
+                    }) { Text(stringResource(Res.string.journal_date_range_filter_clear)) }
+                }
+                TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
             }
         },
     )
