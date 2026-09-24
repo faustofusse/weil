@@ -139,6 +139,16 @@ same commodity:
   transaction's dangling expense/income leg to this event's own account, which
   turns two half-wrong rows into one correct transfer.
 
+*Same* own account with the *opposite* sign is none of these, and `matchEvent`
+drops it. The auto-recorder asks about it separately (`findReversal`): the
+exact opposite amount, within an hour, against an expense/income row with the
+same counterparty. That is what one cash withdrawal looked like as two bank
+mails («solicitud de envío de efectivo» read as −300.000 and «tenés un envío
+para vos», minutes later, read as +300.000): the second row does not duplicate
+the first, it cancels it, and the balance looks untouched. The auto-recorder
+skips such a run (`AutoRecordSkip.PossibleReversal`). The review screens
+still offer it, because there a human decides.
+
 **Tiers** — `MatchOutcome`:
 
 - `Confident(match)` — score ≥ `autoScore` **and** at least `decisiveMargin`

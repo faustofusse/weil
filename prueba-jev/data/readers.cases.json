@@ -175,5 +175,93 @@
     "expect": {
       "isMovement": false
     }
+  },
+  {
+    "id": "cash-order-self",
+    "origin": "mensajesyavisos@mails.santander.com.ar",
+    "title": "Aviso de solicitud de Envio de Efectivo",
+    "text": "Envío de efectivo Envío de efectivo Hola, Generaste un envío de efectivo. FAUSTO recibirá un email en wallet@fausto.ar con un código único para retirar el dinero desde un cajero automático de la red Banelco , ¡sin necesidad de usar tarjeta de débito! El mismo será válido hasta 4 días después de tu solicitud de envío. Cuenta de origen XXXX-XXX0000 Importe $300000 Comprobante 000000000000 Para cancelar tu envío, ingresá a la App Santander en Transacciones > Envío efectivo > Envíos realizados > Cancelar envío. ¡Operá seguro! Nunca te vamos a pedir que nos digas tus claves, tu token de seguridad, ni los datos de tu tarjeta de coordenadas por mail, teléfono o redes sociales! Tus claves, datos personales y números de cuentas bancarias son privados. ¡No los compartas! Conocé más. No respondas a este mensaje.",
+    "when": 1790177989823,
+    "kind": "email",
+    "userName": "Fausto",
+    "expect": {
+      "isMovement": true,
+      "direction": "transfer",
+      "amountMinor": 30000000,
+      "account": "Santander Pesos",
+      "destination": "Efectivo"
+    }
+  },
+  {
+    "id": "cash-order-self-other-names",
+    "origin": "mensajesyavisos@mails.santander.com.ar",
+    "title": "Aviso de solicitud de Envio de Efectivo",
+    "text": "Envío de efectivo Envío de efectivo Hola, Generaste un envío de efectivo. FAUSTO recibirá un email en wallet@fausto.ar con un código único para retirar el dinero desde un cajero automático de la red Banelco , ¡sin necesidad de usar tarjeta de débito! El mismo será válido hasta 4 días después de tu solicitud de envío. Cuenta de origen XXXX-XXX0000 Importe $300000 Comprobante 000000000000 Para cancelar tu envío, ingresá a la App Santander en Transacciones > Envío efectivo > Envíos realizados > Cancelar envío. ¡Operá seguro! Nunca te vamos a pedir que nos digas tus claves, tu token de seguridad, ni los datos de tu tarjeta de coordenadas por mail, teléfono o redes sociales! Tus claves, datos personales y números de cuentas bancarias son privados. ¡No los compartas! Conocé más. No respondas a este mensaje.",
+    "when": 1790177989823,
+    "kind": "email",
+    "userName": "Fausto",
+    "accounts": [
+      "ARQ",
+      "Chase",
+      "Bolsillo",
+      "Galicia Dolares",
+      "Galicia Pesos",
+      "Interactive Brokers",
+      "Invertironline",
+      "Mercado Pago",
+      "Por Cobrar",
+      "Santander Dolares",
+      "Santander Pesos",
+      "Santander Crédito"
+    ],
+    "expect": {
+      "isMovement": true,
+      "direction": "transfer",
+      "amountMinor": 30000000,
+      "account": "Santander Pesos",
+      "destination": "Bolsillo"
+    }
+  },
+  {
+    "id": "cash-order-third-party",
+    "origin": "mensajesyavisos@mails.santander.com.ar",
+    "title": "Aviso de solicitud de Envio de Efectivo",
+    "text": "Envío de efectivo Envío de efectivo Hola, Generaste un envío de efectivo. MARIA GOMEZ recibirá un email en wallet@fausto.ar con un código único para retirar el dinero desde un cajero automático de la red Banelco , ¡sin necesidad de usar tarjeta de débito! El mismo será válido hasta 4 días después de tu solicitud de envío. Cuenta de origen XXXX-XXX0000 Importe $300000 Comprobante 000000000000 Para cancelar tu envío, ingresá a la App Santander en Transacciones > Envío efectivo > Envíos realizados > Cancelar envío. ¡Operá seguro! Nunca te vamos a pedir que nos digas tus claves, tu token de seguridad, ni los datos de tu tarjeta de coordenadas por mail, teléfono o redes sociales! Tus claves, datos personales y números de cuentas bancarias son privados. ¡No los compartas! Conocé más. No respondas a este mensaje.",
+    "when": 1790177989823,
+    "kind": "email",
+    "userName": "Fausto",
+    "expect": {
+      "isMovement": true,
+      "direction": "expense",
+      "amountMinor": 30000000,
+      "payee": "maria",
+      "account": "Santander Pesos",
+      "destination": null
+    }
+  },
+  {
+    "id": "cash-order-no-name",
+    "origin": "mensajesyavisos@mails.santander.com.ar",
+    "title": "Aviso de solicitud de Envio de Efectivo",
+    "text": "Envío de efectivo Envío de efectivo Hola, Generaste un envío de efectivo. FAUSTO recibirá un email en wallet@fausto.ar con un código único para retirar el dinero desde un cajero automático de la red Banelco , ¡sin necesidad de usar tarjeta de débito! El mismo será válido hasta 4 días después de tu solicitud de envío. Cuenta de origen XXXX-XXX0000 Importe $300000 Comprobante 000000000000 Para cancelar tu envío, ingresá a la App Santander en Transacciones > Envío efectivo > Envíos realizados > Cancelar envío. ¡Operá seguro! Nunca te vamos a pedir que nos digas tus claves, tu token de seguridad, ni los datos de tu tarjeta de coordenadas por mail, teléfono o redes sociales! Tus claves, datos personales y números de cuentas bancarias son privados. ¡No los compartas! Conocé más. No respondas a este mensaje.",
+    "when": 1790177989823,
+    "kind": "email",
+    "expect": {
+      "isMovement": true,
+      "amountMinor": 30000000,
+      "account": "Santander Pesos"
+    }
+  },
+  {
+    "id": "cash-code-self",
+    "origin": "mensajesyavisos@mails.santander.com.ar",
+    "title": "Tenés un Envío de Efectivo para vos",
+    "text": "Extracción de efectivo sin tarjeta Extracción de efectivo sin tarjeta FAUSTO FUSSE , Guardá esta información para retirar tu efectivo sin tarjeta. 1. Acercate a cualquier cajero Banelco. 2. Buscá la opción \"Orden de extracción\". 3. Ingresá estos datos: Tipo y número de documento XXXXX000 Importe que vas a retirar $300000 Código de extracción 000000 Tené en cuenta que el código será válido hasta 4 días después que te hicieron el envío. ¡Operá seguro! Nunca te vamos a pedir que nos digas tus claves, tu token de seguridad, ni los datos de tu tarjeta de coordenadas por mail, teléfono o redes sociales! Tus claves, datos personales y números de cuentas bancarias son privados. ¡No los compartas! No respondas a este mensaje.",
+    "when": 1790177989852,
+    "kind": "email",
+    "userName": "Fausto",
+    "expect": {
+      "isMovement": false
+    }
   }
 ]

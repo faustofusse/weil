@@ -44,6 +44,14 @@ class AutoRecordRepository(
      * down with it (the message row is already saved by then).
      */
     suspend fun apply(source: EventSource, ref: String, trace: SuggestTrace): AutoRecordOutcome {
+        val outcome = decide(source, ref, trace)
+        // stdout reaches logcat on Android and the console elsewhere; there
+        // is no other record of why a silent run wrote what it wrote.
+        println("auto-record ${source.db} $ref: $outcome \u00b7 ${trace.logLine()}")
+        return outcome
+    }
+
+    private suspend fun decide(source: EventSource, ref: String, trace: SuggestTrace): AutoRecordOutcome {
         // The same message can be read twice (a reposted alert, a second
         // device sweeping the same mailbox): if the ref is already attached to
         // a transaction, the movement is recorded and there is nothing to do.
@@ -168,6 +176,14 @@ enum class AutoRecordSkip {
 
     /** No category and no fallback: the ledger has no expense/income account. */
     NoCategory,
+
+    /**
+     * The movement would exactly cancel a row recorded minutes ago on the same
+     * account with the same counterparty (see [findReversal]): far more often
+     * a second message about one operation read the wrong way round than a
+     * real reversal.
+     */
+    PossibleReversal,
 }
 
 /**
@@ -208,7 +224,8 @@ internal fun planAutoRecord(
         ?: resolveDefault(tree, AccountType.Asset, defaults[AccountType.Asset])
         ?: return AutoRecordPlan.Skip(AutoRecordSkip.NoOwnAccount)
 
-    val eventKey = candidate.toEvent(ref, asset).eventKey
+    val event = candidate.toEvent(ref, asset)
+    val eventKey = event.eventKey
     val sources = listOf(TransactionSource(source, ref, eventKey))
 
     // The movement is already in the ledger (the bot wrote it, a statement was
@@ -228,6 +245,13 @@ internal fun planAutoRecord(
                 retargetAccountId = if (mirror) asset else null,
             ),
         )
+    }
+
+    // Written after the attach check on purpose: a same-sign copy of an
+    // existing row is attached above, and only what is left — a movement
+    // that would cancel one recorded minutes ago — is refused here.
+    if (findReversal(event.copy(ownAccountId = asset), trace.facts) != null) {
+        return AutoRecordPlan.Skip(AutoRecordSkip.PossibleReversal)
     }
 
     // Expense and transfer both take money out of the account; only the far

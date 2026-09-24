@@ -24,24 +24,33 @@ class AutoRecordTest {
 
     private val tree = listOf(
         node("bank", "Banco", AccountType.Asset),
+        node("cash", "Billetera", AccountType.Asset),
         node("food", "Comida", AccountType.Expense),
         node("salary", "Sueldo", AccountType.Income),
     )
 
-    private val paths = mapOf("bank" to "Banco", "food" to "Comida", "salary" to "Sueldo")
+    private val paths = mapOf(
+        "bank" to "Banco",
+        "cash" to "Billetera",
+        "food" to "Comida",
+        "salary" to "Sueldo",
+    )
 
     private fun read(
         movement: Boolean = true,
         direction: String = "expense",
         amount: String = "21389.00",
         account: String? = "Banco",
+        destination: String? = null,
+        payee: String = "Rappi",
     ) = ReadResponse(
         isMovement = movement,
         direction = direction,
-        payee = "Rappi",
+        payee = payee,
         amount = amount,
         commodity = "ARS",
         account = account,
+        destination = destination,
     )
 
     /** A run as the pipeline hands it over: a reading, Jev's picks, a match. */
@@ -49,6 +58,7 @@ class AutoRecordTest {
         read: ReadResponse? = read(),
         match: MatchOutcome? = MatchOutcome.None,
         category: String? = "Comida",
+        facts: List<LedgerFact> = emptyList(),
     ) = SuggestTrace(
         message = TracedMessage(
             source = EventSource.Notification,
@@ -60,6 +70,7 @@ class AutoRecordTest {
         ),
         read = read,
         match = match,
+        facts = facts,
         decision = AccountsResponse(
             expenseCategory = category?.let { PickedAccount(path = it, confidence = 0.9) },
             incomeCategory = category?.let { PickedAccount(path = it, confidence = 0.9) },
@@ -238,6 +249,104 @@ class AutoRecordTest {
             ),
         )
         assertEquals(AutoRecordSkip.NoOwnAccount, skip.reason)
+    }
+
+    @Test
+    fun aTransferPostsToTheDestinationTheReaderNamed() {
+        // A cash withdrawal: the money leaves the bank and lands in the
+        // user's own cash, not in a spending category.
+        val created = assertIs<AutoRecordPlan.Create>(
+            planAutoRecord(
+                EventSource.Email,
+                "mail-1",
+                trace(read = read(direction = "transfer", destination = "Billetera"), category = null),
+                tree,
+                emptyMap(),
+            ),
+        )
+        assertEquals(listOf("bank", "cash"), created.entry.drafts.map { it.accountId })
+        assertEquals("-21.389,00", created.entry.drafts[0].amountText)
+        assertEquals("21.389,00", created.entry.drafts[1].amountText)
+    }
+
+    /** A row recorded minutes ago: Banco paid Rappi 21.389. */
+    private fun recentExpense(payee: String = "Rappi", categoryType: AccountType = AccountType.Expense) =
+        LedgerFact(
+            transactionId = "tx-0",
+            date = at - 5 * 60 * 1000,
+            payee = payee,
+            legs = listOf(
+                FactLeg("p-0", "bank", AccountType.Asset, -2138900, "ARS"),
+                FactLeg("p-1", "food", categoryType, 2138900, "ARS"),
+            ),
+        )
+
+    @Test
+    fun aMovementThatWouldCancelARecentOneIsNotWritten() {
+        // The second of two bank mails about one operation, read the wrong
+        // way round: written, it would hide the first and leave the balance
+        // looking untouched.
+        val skip = assertIs<AutoRecordPlan.Skip>(
+            planAutoRecord(
+                EventSource.Email,
+                "mail-2",
+                trace(read = read(direction = "income"), category = "Sueldo", facts = listOf(recentExpense())),
+                tree,
+                emptyMap(),
+            ),
+        )
+        assertEquals(AutoRecordSkip.PossibleReversal, skip.reason)
+    }
+
+    @Test
+    fun theSameAmountFromSomeoneElseIsNotAReversal() {
+        // A friend pays back what was just spent at a restaurant: two
+        // movements, whatever the amounts say.
+        assertIs<AutoRecordPlan.Create>(
+            planAutoRecord(
+                EventSource.Notification,
+                "notif-2",
+                trace(
+                    read = read(direction = "income", payee = "Juan Pérez"),
+                    category = "Sueldo",
+                    facts = listOf(recentExpense()),
+                ),
+                tree,
+                emptyMap(),
+            ),
+        )
+    }
+
+    @Test
+    fun spendingWhatWasJustTransferredInIsNotAReversal() {
+        // Topping up with exactly what is then spent: the earlier row is a
+        // transfer (no category leg), so it is not something to cancel.
+        val topUp = LedgerFact(
+            transactionId = "tx-0",
+            date = at - 5 * 60 * 1000,
+            payee = "Rappi",
+            legs = listOf(
+                FactLeg("p-0", "cash", AccountType.Asset, -2138900, "ARS"),
+                FactLeg("p-1", "bank", AccountType.Asset, 2138900, "ARS"),
+            ),
+        )
+        assertIs<AutoRecordPlan.Create>(
+            planAutoRecord(EventSource.Notification, "notif-2", trace(facts = listOf(topUp)), tree, emptyMap()),
+        )
+    }
+
+    @Test
+    fun anOldRowIsNotAReversal() {
+        val yesterday = recentExpense().copy(date = at - 24 * 60 * 60 * 1000)
+        assertIs<AutoRecordPlan.Create>(
+            planAutoRecord(
+                EventSource.Notification,
+                "notif-2",
+                trace(read = read(direction = "income"), category = "Sueldo", facts = listOf(yesterday)),
+                tree,
+                emptyMap(),
+            ),
+        )
     }
 
     @Test

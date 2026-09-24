@@ -275,6 +275,48 @@ fun matchAll(
     return outcomes
 }
 
+/**
+ * An existing transaction that [event] would exactly cancel: the same own
+ * account and commodity, the exact opposite amount, within [windowMs] of it.
+ *
+ * [matchEvent] deliberately ignores this shape (it is neither a duplicate nor
+ * a transfer mirror), and that is how one cash withdrawal became two rows:
+ * the bank's "you ordered cash" mail was recorded as −300.000 and its "here
+ * is your withdrawal code" mail, minutes later, as +300.000 on the same
+ * account. The second row does not look like a duplicate, it hides the
+ * first: the balance nets to zero and nothing is visibly wrong. A genuine
+ * reversal this fast exists (a cancelled card charge) but is rare, and a
+ * missed one is recoverable from the journal, whereas a wrong one leaves the
+ * account balance silently off.
+ *
+ * Two conditions keep ordinary money flow out of it. The existing row must be
+ * an expense or an income (a category on the other side): topping a wallet up
+ * with exactly the amount then spent from it is a transfer followed by a
+ * purchase, not a reversal. And the counterparty must be the same one:
+ * receiving 5.000 from a friend and paying 5.000 at a restaurant an hour
+ * later are two movements.
+ */
+fun findReversal(
+    event: CandidateEvent,
+    facts: List<LedgerFact>,
+    windowMs: Long = REVERSAL_WINDOW_MS,
+): LedgerFact? {
+    val account = event.ownAccountId ?: return null
+    if (event.amountMinor == 0L) return null
+    return facts.firstOrNull { fact ->
+        abs(fact.date - event.date) <= windowMs &&
+            fact.legs.any { it.isCategory } &&
+            payeeAffinity(event.rawPayee, fact.payee) != PayeeAffinity.None &&
+            fact.legs.any {
+                it.isOwn && it.accountId == account && it.commodity == event.commodity &&
+                    it.amountMinor == -event.amountMinor
+            }
+    }
+}
+
+/** Bank messages about one operation arrive within minutes of each other. */
+const val REVERSAL_WINDOW_MS: Long = 60L * 60 * 1000
+
 /** Keeps the evidence, drops the automatic decision. */
 private fun demote(outcome: MatchOutcome): MatchOutcome = when (outcome) {
     is MatchOutcome.Confident -> MatchOutcome.Ambiguous(listOf(outcome.match))

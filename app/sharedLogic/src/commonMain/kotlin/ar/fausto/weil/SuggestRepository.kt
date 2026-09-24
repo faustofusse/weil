@@ -19,7 +19,9 @@ import kotlinx.serialization.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Turning one captured message into a proposed transaction.
@@ -69,6 +71,7 @@ class SuggestRepository(
     private val accounts: AccountsRepository,
     private val ledger: TransactionsRepository,
     private val embeddings: EmbeddingsRepository,
+    private val settings: SettingsRepository,
     private val store: SecureStore,
     private val baseUrl: String = AuthConfig.API_BASE_URL,
 ) : SuggestTracer {
@@ -137,6 +140,16 @@ class SuggestRepository(
         val tree = accounts.tree()
         val flat = tree.flatMap { it.selfAndDescendants }
         val options = flat.map { AccountOption(it.account.id, it.path, wireType(it.account.type), it.account.commodity) }
+        // Who the message was sent to. A cash order "for FAUSTO" is the user
+        // moving their own money only if the models know the user is Fausto;
+        // without a name set the line is simply left out.
+        val userName = try {
+            settings.all()[PROFILE_NAME_KEY]?.trim()?.takeIf { it.isNotEmpty() }
+        } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            null
+        }
+        val kind = message.source.db
 
         // ---- 1. what the message says ------------------------------------
         val readStarted = epochMillis()
@@ -156,6 +169,8 @@ class SuggestRepository(
                     text = message.text,
                     `when` = message.at,
                     accounts = options,
+                    kind = kind,
+                    userName = userName,
                 ),
             )
         } catch (e: Throwable) {
@@ -163,6 +178,9 @@ class SuggestRepository(
             return SuggestTrace(message = message, error = "lectura: ${e.message ?: e.toString()}")
         }
         val read = decodeBody<ReadResponse>(lenient, readWire)
+        val readerModel = runCatching {
+            readWire["debug"]?.jsonObject?.get("model")?.jsonPrimitive?.contentOrNull
+        }.getOrNull()
         // The comparison is an observation and must never take the run with
         // it: a second model answers in whatever shape it feels like (this one
         // sent `amount` as a number and the strict decoder threw), and the
@@ -242,17 +260,42 @@ class SuggestRepository(
         // Only the three closest neighbours that were actually recorded reach
         // the model: past that they start contradicting each other when the
         // same app sends alerts about different things.
-        val wirePrecedents = precedents
+        val recordedPrecedents = precedents
             .filter { it.recordedIn.isNotEmpty() }
             .take(MAX_PRECEDENTS)
-            .map { p ->
-                val fact = p.recordedIn.firstNotNullOfOrNull { txId -> facts.firstOrNull { it.transactionId == txId } }
-                WirePrecedent(
-                    text = "${p.item.title} — ${p.item.subtitle.take(160)}",
-                    payee = fact?.payee,
-                    `when` = relativeDay(message.at, p.item.date),
-                )
+        // How each one was recorded, read from the ledger itself: a precedent
+        // is usually days old, far outside the ±20 h window of `facts`, and
+        // "how was this recorded" is the accounts, not only the payee — a
+        // withdrawal fixed by hand to land in cash has to say so to the next
+        // run.
+        val recordedAs = recordedPrecedents
+            .mapNotNull { it.recordedIn.firstOrNull() }
+            .distinct()
+            .associateWith { txId ->
+                try {
+                    ledger.get(txId)
+                } catch (e: Throwable) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    null
+                }
             }
+        val pathOf = flat.associate { it.account.id to it.path }
+        val wirePrecedents = recordedPrecedents.map { p ->
+            val tx = p.recordedIn.firstOrNull()?.let { recordedAs[it] }
+            fun side(negative: Boolean) = tx?.postings
+                ?.filter { it.amountMinor != 0L && (it.amountMinor < 0) == negative }
+                ?.mapNotNull { pathOf[it.accountId] }
+                ?.distinct()
+                ?.takeIf { it.isNotEmpty() }
+                ?.joinToString(", ")
+            WirePrecedent(
+                text = "${p.item.title} — ${p.item.subtitle.take(160)}",
+                payee = tx?.payee,
+                from = side(negative = true),
+                to = side(negative = false),
+                `when` = relativeDay(message.at, p.item.date),
+            )
+        }
 
         // ---- 3. which accounts -------------------------------------------
         val nearby = facts.map {
@@ -267,7 +310,8 @@ class SuggestRepository(
             postJson(
                 "$baseUrl/suggest/accounts?debug=1",
                 AccountsRequest(
-                    message = MessageWire(message.origin, message.title, message.text, message.at),
+                    message = MessageWire(message.origin, message.title, message.text, message.at, kind),
+                    userName = userName,
                     extracted = ExtractedWire(
                         amount = read.amount,
                         commodity = read.commodity,
@@ -302,6 +346,7 @@ class SuggestRepository(
             return SuggestTrace(
                 message = message,
                 read = read,
+                readerModel = readerModel,
                 readDebug = readWire.debugBlock(json),
                 readMs = readMs,
                 retrievalMs = retrievalMs,
@@ -309,6 +354,7 @@ class SuggestRepository(
                 similarTransactions = similarTransactions,
                 match = outcome,
                 event = event,
+                facts = facts,
                 error = "cuentas: ${e.message ?: e.toString()}",
             )
         }
@@ -317,6 +363,7 @@ class SuggestRepository(
         return SuggestTrace(
             message = message,
             read = read,
+            readerModel = readerModel,
             readDebug = readWire.debugBlock(json),
             alt = alt,
             readMs = readMs,
@@ -325,6 +372,7 @@ class SuggestRepository(
             similarTransactions = similarTransactions,
             match = outcome,
             event = event,
+            facts = facts,
             decision = decision,
             decisionDebug = accountsWire.debugBlock(json),
             decisionMs = epochMillis() - jevStarted,
@@ -380,6 +428,8 @@ data class ReadResponse(
     val amount: String = "",
     val commodity: String = "ARS",
     val account: String? = null,
+    /** For a transfer, the own account the money landed in (a path), else null. */
+    val destination: String? = null,
     val note: String? = null,
     val normalized: String = "",
     /** What the reader itself took, without the trip to the worker. */
@@ -433,6 +483,12 @@ data class SuggestTrace(
     /** The message this run read, whichever door it came through. */
     val message: TracedMessage? = null,
     val read: ReadResponse? = null,
+    /**
+     * Which model produced [read]. The reader falls back across models, and
+     * they do not answer alike: without this a wrong reading cannot be traced
+     * to the model that made it.
+     */
+    val readerModel: String? = null,
     /** Prompt, model, raw JSON and token usage of the reader call. */
     val readDebug: String? = null,
     /** The same message read by a second model, for comparison. */
@@ -443,6 +499,12 @@ data class SuggestTrace(
     val similarTransactions: List<SimilarItem> = emptyList(),
     val match: MatchOutcome? = null,
     val event: CandidateEvent? = null,
+    /**
+     * The ledger rows around the message that [match] was computed against.
+     * Kept because the auto-record rule needs one more question of them (see
+     * [findReversal]) once it knows which account it will post to.
+     */
+    val facts: List<LedgerFact> = emptyList(),
     val decision: AccountsResponse? = null,
     /** The `state` and `questions` posted to Jev, plus its raw answers. */
     val decisionDebug: String? = null,
@@ -451,6 +513,29 @@ data class SuggestTrace(
     val error: String? = null,
 ) {
     val totalMs: Long get() = readMs + retrievalMs + decisionMs
+
+    /**
+     * One line for the device log: who read the message and what each model
+     * answered. The silent auto-record path keeps no trace otherwise, and a
+     * row written wrong is only explainable with this at hand.
+     */
+    fun logLine(): String = buildString {
+        append("reader=").append(readerModel ?: "?")
+        read?.let {
+            append(" movement=").append(it.isMovement)
+            append(" dir=").append(it.direction)
+            append(" account=").append(it.account)
+            append(" dest=").append(it.destination)
+        }
+        decision?.let { d ->
+            append(" jev(dir=").append(d.direction?.path)
+            append(" own=").append(d.myAccount?.path)
+            append(" dest=").append(d.transferDestination?.path)
+            append(')')
+        }
+        append(" match=").append(match?.let { it::class.simpleName })
+        error?.let { append(" error=").append(it) }
+    }
 
     /**
      * The proposed transaction, or null when there is nothing to propose
@@ -482,7 +567,13 @@ data class SuggestTrace(
         val own = pick(decision?.myAccount) ?: read.account?.let { byPath[it] }
         val category = when (direction) {
             ImportDirection.Income -> pick(decision?.incomeCategory)
-            ImportDirection.Transfer -> pick(decision?.transferDestination)
+            // Jev's pick when it is sure, else the account the reader named
+            // as the destination (the worker only lets an own account
+            // through). Never the account the money left: a transfer to
+            // itself posts +X and −X on one account and records nothing.
+            ImportDirection.Transfer ->
+                (pick(decision?.transferDestination) ?: read.destination?.let { byPath[it] })
+                    ?.takeIf { it != own }
             ImportDirection.Expense -> pick(decision?.expenseCategory)
         }
         return ImportCandidate(
@@ -539,6 +630,9 @@ private data class ReadRequest(
     val text: String,
     val `when`: Long,
     val accounts: List<AccountOption>,
+    /** `notification` | `email`: only changes how the prompt describes it. */
+    val kind: String,
+    val userName: String? = null,
 )
 
 @Serializable
@@ -548,6 +642,7 @@ private data class MessageWire(
     val text: String,
     /** Epoch ms; the worker prints it, the model reads it as a timestamp. */
     val `when`: Long,
+    val kind: String,
 )
 
 @Serializable
@@ -563,6 +658,10 @@ private data class ExtractedWire(
 private data class WirePrecedent(
     val text: String,
     val payee: String? = null,
+    /** Where the money left, as account paths; null when unknown. */
+    val from: String? = null,
+    /** Where it landed: a category, or an own account for a transfer. */
+    val to: String? = null,
     val `when`: String? = null,
 )
 
@@ -572,6 +671,7 @@ private data class NearbyWire(val id: String, val label: String)
 @Serializable
 private data class AccountsRequest(
     val message: MessageWire,
+    val userName: String? = null,
     val extracted: ExtractedWire,
     val precedents: List<WirePrecedent>,
     val similar: List<WirePrecedent>,

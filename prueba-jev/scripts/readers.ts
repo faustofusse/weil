@@ -21,7 +21,7 @@
  */
 import { labClient, loadMessages } from '../lib/db';
 import { hasAmount } from '../lib/text';
-import { messagePrompt } from '../../app/worker/src/message';
+import { ANSWER_KEYS, messagePrompt } from '../../app/worker/src/message';
 
 const CASES_PATH = new URL('../data/readers.cases.json', import.meta.url).pathname;
 const REPORT = new URL('../data/readers.md', import.meta.url).pathname;
@@ -68,6 +68,15 @@ interface Case {
   title: string;
   text: string;
   when: number;
+  /** 'notification' (default) or 'email'; the prompt describes them differently. */
+  kind?: 'notification' | 'email';
+  /** The profile name the app would send, when the case depends on it. */
+  userName?: string;
+  /**
+   * Own account paths to use instead of [ACCOUNT_PATHS], to prove a rule does not
+   * lean on one user's names (a cash account called something else).
+   */
+  accounts?: string[];
   expect: {
     isMovement: boolean;
     direction?: 'expense' | 'income' | 'transfer';
@@ -78,20 +87,26 @@ interface Case {
     payee?: string;
     /** The user's own account, verbatim, or null when the alert implies none. */
     account?: string | null;
+    /** For a transfer, the own account the money landed in. */
+    destination?: string | null;
   };
 }
 
 /** The tree the reader is given. Real shape, from the dev device. */
-const ACCOUNTS = [
+const ACCOUNT_PATHS = [
   'ARQ', 'Chase', 'Efectivo', 'Galicia Dolares', 'Galicia Pesos',
   'Interactive Brokers', 'Invertironline', 'Mercado Pago', 'Por Cobrar',
   'Santander Dolares', 'Santander Pesos', 'Santander Crédito',
-].map((path, i) => ({
-  id: `acc-${i}`,
-  path,
-  type: (path === 'Santander Crédito' ? 'liability' : 'asset') as 'asset' | 'liability',
-  commodity: /Dolares|Chase|Interactive/.test(path) ? 'USD' : 'ARS',
-}));
+];
+
+function accountsFor(paths: string[]) {
+  return paths.map((path, i) => ({
+    id: `acc-${i}`,
+    path,
+    type: (path === 'Santander Crédito' ? 'liability' : 'asset') as 'asset' | 'liability',
+    commodity: /Dolares|Chase|Interactive/.test(path) ? 'USD' : 'ARS',
+  }));
+}
 
 // --------------------------------------------------------------- the cases
 
@@ -137,6 +152,7 @@ interface Reading {
   amount?: string | number;
   commodity?: string;
   account?: string | null;
+  destination?: string | null;
   normalized?: string;
 }
 
@@ -156,8 +172,10 @@ function promptFor(c: Case): string {
     title: c.title,
     text: c.text,
     when: c.when,
-    accounts: ACCOUNTS,
-  })}\n\nAnswer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount (a string like "21389.00"), commodity, account, note, normalized.`;
+    accounts: accountsFor(c.accounts ?? ACCOUNT_PATHS),
+    kind: c.kind ?? 'notification',
+    userName: c.userName,
+  })}\n\n${ANSWER_KEYS}`;
 }
 
 /** Outermost braces of whatever the model wrapped the object in. */
@@ -278,6 +296,7 @@ interface Score {
   amount: boolean;
   payee: boolean;
   account: boolean;
+  destination: boolean;
   /** The embedded sentence must carry no digits: an amount in it is noise. */
   cleanNormalized: boolean;
   parsed: boolean;
@@ -286,7 +305,7 @@ interface Score {
 function score(c: Case, reading: Reading | null): Score {
   const empty = {
     movement: false, direction: false, amount: false, payee: false,
-    account: false, cleanNormalized: false, parsed: false,
+    account: false, destination: false, cleanNormalized: false, parsed: false,
   };
   if (!reading) return empty;
   const e = c.expect;
@@ -297,6 +316,7 @@ function score(c: Case, reading: Reading | null): Score {
     amount: e.amountMinor == null ? true : toMinor(reading.amount) === e.amountMinor,
     payee: e.payee == null ? true : (reading.payee ?? '').toLowerCase().includes(e.payee),
     account: e.account === undefined ? true : (reading.account ?? null) === e.account,
+    destination: e.destination === undefined ? true : (reading.destination ?? null) === e.destination,
     cleanNormalized: !/[0-9]/.test(reading.normalized ?? ''),
   };
 }
@@ -313,7 +333,10 @@ async function main() {
   if (flag('cases')) return writeCases();
   if (flag('jev')) return measureJev();
 
-  const cases = (await Bun.file(CASES_PATH).json()) as Case[];
+  // --case <needle>: only the cases whose id contains it, to iterate on one
+  // rule without paying for the whole table.
+  const needle = arg('case', '');
+  const cases = ((await Bun.file(CASES_PATH).json()) as Case[]).filter((c) => !needle || c.id.includes(needle));
   const runs = Number(arg('runs', '2'));
   const only = arg('only', '');
   const models = only
@@ -324,12 +347,12 @@ async function main() {
   const rows: string[] = [];
   rows.push('# Lectores comparados\n');
   rows.push(`Generado: ${new Date().toISOString()} · ${cases.length} notificaciones × ${runs} corridas\n`);
-  rows.push('| modelo | p50 | p90 | ok | mov | dir | monto | payee | cuenta | normalized sin dígitos | USD/1k | pensamiento |');
-  rows.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+  rows.push('| modelo | p50 | p90 | ok | mov | dir | monto | payee | cuenta | destino | normalized sin dígitos | USD/1k | pensamiento |');
+  rows.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
 
   for (const model of models) {
     const latencies: number[] = [];
-    const totals = { movement: 0, direction: 0, amount: 0, payee: 0, account: 0, cleanNormalized: 0, parsed: 0 };
+    const totals = { movement: 0, direction: 0, amount: 0, payee: 0, account: 0, destination: 0, cleanNormalized: 0, parsed: 0 };
     let thoughts = 0;
     let inTokens = 0;
     let outTokens = 0;
@@ -354,6 +377,12 @@ async function main() {
         for (const key of Object.keys(totals) as Array<keyof typeof totals>) {
           if (s[key]) totals[key]++;
         }
+        // Which case missed what: a percentage says a rule is off, not where.
+        const missed = (Object.keys(totals) as Array<keyof typeof totals>)
+          .filter((key) => key !== 'cleanNormalized' && !s[key]);
+        if (missed.length > 0) {
+          console.log(`\n  ✗ ${c.id} [${missed.join(', ')}] ${JSON.stringify(answer.reading)}`);
+        }
         n++;
         process.stdout.write(`\r${model.label}: ${n}/${cases.length * runs}   `);
       }
@@ -368,7 +397,7 @@ async function main() {
     rows.push(
       `| ${model.label} | ${percentile(latencies, 0.5)} ms | ${percentile(latencies, 0.9)} ms | ` +
         `${pct(totals.parsed)} | ${pct(totals.movement)} | ${pct(totals.direction)} | ${pct(totals.amount)} | ` +
-        `${pct(totals.payee)} | ${pct(totals.account)} | ${pct(totals.cleanNormalized)} | ` +
+        `${pct(totals.payee)} | ${pct(totals.account)} | ${pct(totals.destination)} | ${pct(totals.cleanNormalized)} | ` +
         `$${usdPerThousand.toFixed(3)} | ${Math.round(thoughts / n)} |`
     );
   }
@@ -392,7 +421,7 @@ async function measureJev() {
   const { TypeSafeClient, choice } = await import('@typesafe-ai/sdk');
   const client = new TypeSafeClient();
   const criteria: Record<string, string | null> = {};
-  for (const account of ACCOUNTS) criteria[account.path] = null;
+  for (const account of accountsFor(ACCOUNT_PATHS)) criteria[account.path] = null;
   criteria['Ninguna de estas cuentas'] = 'No way to tell which one';
 
   const latencies: number[] = [];

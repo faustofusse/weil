@@ -126,7 +126,7 @@ class UserState(
 
     companion object {
         /** Local mirror of the worker's value; the worker stays the source of truth. */
-        const val NAME_KEY = "profile.name"
+        const val NAME_KEY = PROFILE_NAME_KEY
         const val EMAIL_KEY = "profile.email"
     }
 }

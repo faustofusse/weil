@@ -250,7 +250,20 @@ export interface NearbyTransaction {
 }
 
 export interface AccountsBody {
-  message: { origin?: string; title?: string; text?: string; when?: number | string };
+  message: {
+    origin?: string;
+    title?: string;
+    text?: string;
+    when?: number | string;
+    /** 'notification' | 'email'. */
+    kind?: string;
+  };
+  /**
+   * The user's display name, when set: how a message that names them as the
+   * one receiving money is told apart from the same template sent to someone
+   * else (see message.ts `userName`).
+   */
+  userName?: string;
   /** What the reader (message.ts) got out of the text. */
   extracted?: Record<string, unknown>;
   precedents?: MessagePrecedent[];
@@ -287,7 +300,7 @@ function describeOwn(option: OwnOption): string | null {
 }
 
 const MESSAGE_CONTEXT =
-  'A push notification an Argentine user received from a bank or wallet app, already read by another model: `extracted` holds the amount, the direction and the merchant it found. `precedents` shows how similar notifications were recorded in this ledger before, which is usually the answer; `similar_transactions` are ledger rows that merely read alike, which is weaker evidence but often enough to show the habit.';
+  'A message (a push notification or an email) an Argentine user received from a bank, wallet or shop, already read by another model: `extracted` holds the amount, the direction and the merchant it found. `precedents` shows how similar messages were recorded in this ledger before — `from` is where the money left, `to` where it landed — which is usually the answer; `similar_transactions` are ledger rows that merely read alike, which is weaker evidence but often enough to show the habit. `user_name`, when present, is the person the message was sent to.';
 
 function accountChoice(
   instructions: unknown,
@@ -342,7 +355,7 @@ export function messageQuestions(body: AccountsBody): Record<string, unknown> {
         income:
           'They were paid: salary, a refund, interest, a transfer somebody sent them ("Recibiste", "Te transfirieron", "Acreditamos")',
         transfer:
-          'Money moved between two accounts they own: topping up a wallet, paying their own credit card, buying foreign currency. Nothing was spent or earned',
+          'Money moved between two accounts they own: topping up a wallet, paying their own credit card, buying foreign currency, withdrawing cash when one of their accounts holds physical cash, sending money to themselves. Nothing was spent or earned',
       },
     },
   };
@@ -378,10 +391,16 @@ export function messageQuestions(body: AccountsBody): Record<string, unknown> {
     questions.transfer_destination = accountChoice(
       {
         question:
-          'Assuming this is a transfer between two accounts owned by the person who received this notification, which of their accounts did the money ARRIVE in?',
+          'Assuming this is a transfer between two accounts owned by the person who received this message, which of their accounts did the money ARRIVE in?',
         context: MESSAGE_CONTEXT,
+        // Without this, a cash withdrawal came back none-of-these at 0.71
+        // even with an account literally called "Efectivo" on the list: the
+        // model did not count cash in hand as an account of theirs. Worded
+        // by kind, never by name — every user calls theirs something else.
+        focus:
+          'Physical cash they withdrew or had sent to themselves counts as one of their accounts: it arrives in whichever of their accounts holds cash.',
         not_for:
-          'Most of these messages are not transfers at all — a purchase, a fee or a salary has no destination account of theirs. Answer none-of-these unless both sides are accounts they own.',
+          'Most of these messages are not transfers at all — a purchase, a fee or a salary has no destination account of theirs. Answer none-of-these unless the money stayed theirs.',
       },
       destinations,
       'This is not a transfer between their own accounts, or the destination is not one of these'
@@ -431,8 +450,10 @@ export function messageQuestions(body: AccountsBody): Record<string, unknown> {
 export const NO_MATCH_TX = 'Ninguna de estas transacciones';
 
 export function messageState(body: AccountsBody): Record<string, unknown> {
+  const userName = body.userName?.trim();
   return {
     message: body.message,
+    ...(userName ? { user_name: userName } : {}),
     extracted: body.extracted ?? {},
     precedents: body.precedents ?? [],
     similar_transactions: body.similar ?? [],

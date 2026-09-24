@@ -80,7 +80,7 @@ class AppGraph(
 
     /** One captured message → a proposed transaction (Gemini reads, Jev picks). */
     val suggestions: SuggestTracer =
-        suggester ?: SuggestRepository(notifications, emails, accounts, ledger, embeddings, store)
+        suggester ?: SuggestRepository(notifications, emails, accounts, ledger, embeddings, settings, store)
 
     /**
      * And what is done with them: every movement read out of a notification

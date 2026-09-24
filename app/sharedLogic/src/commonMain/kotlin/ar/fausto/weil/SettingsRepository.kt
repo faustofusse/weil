@@ -6,6 +6,14 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 fun defaultAccountKey(type: AccountType): String = "default_account.${type.db}"
 
 /**
+ * The user's display name, mirrored from the auth worker. Besides the profile
+ * screen, the message reader uses it to tell money the user sent to
+ * themselves (a cash withdrawal order in their own name) from the same
+ * template addressed to someone else.
+ */
+const val PROFILE_NAME_KEY = "profile.name"
+
+/**
  * User preferences stored in the user's own Turso database (the secure store
  * is device-local and holds tokens), so a default set on the phone is the
  * default on every paired device. One row per key: the sync engine resolves

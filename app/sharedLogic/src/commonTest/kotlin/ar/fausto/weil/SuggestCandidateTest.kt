@@ -2,6 +2,7 @@ package ar.fausto.weil
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class SuggestCandidateTest {
     @Test
@@ -57,5 +58,42 @@ class SuggestCandidateTest {
         val candidate = trace.candidate()!!
         assertEquals(ImportDirection.Expense, candidate.direction)
         assertEquals("food", candidate.splits.single().categoryAccountId)
+    }
+
+    private fun transfer(
+        destination: String?,
+        jevDestination: PickedAccount? = null,
+    ) = SuggestTrace(
+        read = ReadResponse(
+            isMovement = true,
+            direction = "transfer",
+            payee = "",
+            amount = "300000.00",
+            commodity = "ARS",
+            account = "Banco",
+            destination = destination,
+        ),
+        decision = AccountsResponse(transferDestination = jevDestination),
+        accountPaths = mapOf("bank" to "Banco", "cash" to "Billetera", "mp" to "Billetera Virtual"),
+    )
+
+    @Test
+    fun transferFallsBackToTheReadersDestination() {
+        val candidate = transfer("Billetera", PickedAccount(null, 0.8)).candidate()!!
+        assertEquals(ImportDirection.Transfer, candidate.direction)
+        assertEquals("bank", candidate.accountId)
+        assertEquals("cash", candidate.splits.single().categoryAccountId)
+    }
+
+    @Test
+    fun aConfidentJevDestinationWins() {
+        val candidate = transfer("Billetera", PickedAccount("Billetera Virtual", 0.9)).candidate()!!
+        assertEquals("mp", candidate.splits.single().categoryAccountId)
+    }
+
+    @Test
+    fun theSourceAccountIsNeverTheDestination() {
+        val candidate = transfer("Banco").candidate()!!
+        assertNull(candidate.splits.single().categoryAccountId)
     }
 }

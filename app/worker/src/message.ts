@@ -1,6 +1,6 @@
 /**
- * Reading a captured message (a bank push notification, tomorrow a receipt
- * email) as a movement: amount, direction, counterparty, which account it
+ * Reading a captured message (a bank push notification or a receipt email)
+ * as a movement: amount, direction, counterparty, which account it
  * moved through.
  *
  * This is the **language** half of the notification→transaction path, and it
@@ -33,6 +33,17 @@ export interface MessageBody {
   /** Epoch ms of the message itself; dates in the text are relative to it. */
   when?: number;
   accounts?: MessageAccount[];
+  /** Which door it came through; only changes how the prompt describes it. */
+  kind?: 'notification' | 'email';
+  /**
+   * The user's own display name, when they set one. It is what tells "FAUSTO
+   * recibirá un código para retirar el dinero" (cash they sent themselves: a
+   * transfer into their cash) from the same template addressed to someone
+   * else (money given away: an expense). Measured on a real cardless-cash
+   * mail: without it, cash sent to a third party was read as the user's own
+   * cash 6/6; with it, 6/6 correct.
+   */
+  userName?: string;
 }
 
 export interface ReadMessage {
@@ -45,6 +56,12 @@ export interface ReadMessage {
   commodity: string;
   /** The user's own account, verbatim from the list, or null. */
   account: string | null;
+  /**
+   * For a transfer, the user's own account the money arrived in, verbatim
+   * from the list; null otherwise. Checked against the own accounts before it
+   * leaves the worker.
+   */
+  destination: string | null;
   note: string | null;
   /**
    * The same movement said plainly, without the bank's template: "compra en
@@ -54,6 +71,16 @@ export interface ReadMessage {
    */
   normalized: string;
 }
+
+/**
+ * The answer keys, for the readers that get no schema (Workers AI through the
+ * unified endpoint). One string so the three call sites cannot drift.
+ */
+export const ANSWER_KEYS =
+  'Answer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount (a string like "21389.00"), commodity, account, destination, note, normalized.';
+
+const DESTINATION_HINT =
+  "Only for a transfer: the user's own account the money arrived in, verbatim from the list given. Null for an expense or an income, and null when none of their accounts fits.";
 
 const SCHEMA = {
   type: 'OBJECT',
@@ -80,6 +107,11 @@ const SCHEMA = {
       description:
         "The user's own account or payment method the money moved through, verbatim from the list given. Infer it: the sender names the bank or wallet and the currency picks between that sender's accounts. Null only when even that leaves it open.",
     },
+    destination: {
+      type: 'STRING',
+      nullable: true,
+      description: DESTINATION_HINT,
+    },
     note: { type: 'STRING', nullable: true, description: 'Extra detail worth keeping (instalments, card last digits), else null.' },
     normalized: {
       type: 'STRING',
@@ -90,22 +122,40 @@ const SCHEMA = {
   required: ['isMovement', 'direction', 'payee', 'amount', 'commodity', 'normalized'],
 } as const;
 
+/** What kind of message this is, in the prompt's words. */
+function describeKind(kind: MessageBody['kind']): string {
+  switch (kind) {
+    case 'email':
+      return 'It is an email from a bank, wallet or shop, in Spanish, usually written from a template.';
+    case 'notification':
+      return 'It is a push notification from a bank or wallet app, in Spanish, written from a template.';
+    default:
+      return 'It is typically a bank or wallet push notification or email, in Spanish, written from a template.';
+  }
+}
+
 export function messagePrompt(body: MessageBody): string {
   const accounts = body.accounts ?? [];
   const paths = (type: MessageAccount['type']) =>
     accounts.filter((a) => a.type === type).map((a) => a.label || a.path);
   const own = [...paths('asset'), ...paths('liability')];
   const when = new Date(body.when || Date.now()).toISOString().slice(0, 16).replace('T', ' ');
+  const userName = body.userName?.trim();
 
+  // No account, bank or person names in the instructions: every user's tree
+  // is named differently, so the rules speak of kinds of accounts ("one that
+  // holds physical cash") and the model maps them onto the list below.
   return [
     'You read one message an Argentine user received and decide whether it reports a movement of their own money.',
-    'It is typically a bank or wallet push notification, in Spanish, written from a template.',
+    describeKind(body.kind),
     `The message arrived at ${when} (UTC).`,
+    userName ? `The user is named ${userName}.` : '',
     'Amounts use Argentine conventions: "12.500" is twelve thousand five hundred, "1.234,56" has a decimal comma.',
     'Always return a positive decimal with "." as the decimal separator; the direction carries the sign.',
     'Direction is from the recipient point of view: "expense" when they paid or were charged, "income" when they',
     'received money, "transfer" only when BOTH sides are accounts they own (topping up a wallet, paying their own',
-    'card, buying dollars).',
+    'card, buying dollars, withdrawing cash when one of their accounts holds physical cash). Money they send to',
+    'themselves is a transfer, and destination is the account of theirs it lands in.',
     'Be strict with isMovement: most messages carrying a "$" are promotions ("¡15% OFF! Compra mínima: $15.000").',
     'A movement says money already left or entered an account: "Pagaste", "Se debitó", "Recibiste", "Compra aprobada".',
     own.length > 0
@@ -187,6 +237,7 @@ const JSON_SCHEMA = {
     amount: { type: 'string' },
     commodity: { type: 'string' },
     account: { type: ['string', 'null'] },
+    destination: { type: ['string', 'null'], description: DESTINATION_HINT },
     note: { type: ['string', 'null'] },
     normalized: {
       type: 'string',
@@ -261,7 +312,7 @@ export async function readMessageWithGlm(
   gateway?: string
 ): Promise<AltReading> {
   const started = Date.now();
-  const prompt = `${messagePrompt(body)}\n\nAnswer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount (a string, e.g. "21389.00"), commodity, account, note, normalized.`;
+  const prompt = `${messagePrompt(body)}\n\n${ANSWER_KEYS}`;
   // Through the gateway when there is one, straight at the binding when the
   // gateway answers that there is not. The id is a var, and a var can name
   // something that was never created — which is exactly what it did here, and
@@ -328,7 +379,7 @@ function usable(reading: ReadMessage | null): reading is ReadMessage {
  * the request and both broke the app, which decodes this strictly. Whatever
  * the model sends, what leaves this worker has the declared types.
  */
-function normalizeReading(reading: ReadMessage): ReadMessage {
+function normalizeReading(reading: ReadMessage, accounts: MessageAccount[] = []): ReadMessage {
   const text = (value: unknown): string =>
     value == null ? '' : typeof value === 'string' ? value : String(value);
   return {
@@ -340,9 +391,27 @@ function normalizeReading(reading: ReadMessage): ReadMessage {
     amount: text(reading.amount),
     commodity: text(reading.commodity) || 'ARS',
     account: reading.account == null ? null : text(reading.account),
+    destination: ownDestination(reading, accounts),
     note: reading.note == null ? null : text(reading.note),
     normalized: text(reading.normalized),
   };
+}
+
+/**
+ * The reader's destination, only when it is one of the user's own accounts
+ * and not the one the money left: a transfer lands on an asset or a card, and
+ * a category or the source account here would post a leg nobody meant. Given
+ * as the account's path, which is what the app looks accounts up by.
+ */
+function ownDestination(reading: ReadMessage, accounts: MessageAccount[]): string | null {
+  if (reading.direction !== 'transfer' || reading.destination == null) return null;
+  const named = String(reading.destination).trim();
+  const own = accounts.filter((a) => a.type === 'asset' || a.type === 'liability');
+  const hit = own.find((a) => a.path === named || a.label === named);
+  if (!hit) return null;
+  const from = reading.account == null ? '' : String(reading.account).trim();
+  if (hit.path === from || hit.label === from) return null;
+  return hit.path;
 }
 
 export async function readMessage(
@@ -351,7 +420,7 @@ export async function readMessage(
   debug?: GeminiDebug,
   ai?: Ai
 ): Promise<ReadMessage> {
-  const promptText = `${messagePrompt(body)}\n\nAnswer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount (a string like "21389.00"), commodity, account, note, normalized.`;
+  const promptText = `${messagePrompt(body)}\n\n${ANSWER_KEYS}`;
   if (debug) debug.request = { prompt: promptText };
 
   if (ai) {
@@ -375,7 +444,7 @@ export async function readMessage(
             debug.latencyMs = Date.now() - started;
             debug.viaGateway = env.AI_GATEWAY != null;
           }
-          return normalizeReading(reading);
+          return normalizeReading(reading, body.accounts);
         }
         console.log(`reader ${model}: unusable answer, trying next`);
       } catch (e) {
@@ -388,7 +457,8 @@ export async function readMessage(
   // the path this feature shipped on. Keeps the feature alive when the
   // binding or the gateway is the thing that is down.
   return normalizeReading(
-    await geminiJson<ReadMessage>(liteFirst(env), [{ text: messagePrompt(body) }], SCHEMA, debug)
+    await geminiJson<ReadMessage>(liteFirst(env), [{ text: messagePrompt(body) }], SCHEMA, debug),
+    body.accounts
   );
 }
 
