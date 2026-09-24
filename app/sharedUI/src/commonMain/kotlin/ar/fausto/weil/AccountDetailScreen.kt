@@ -197,7 +197,7 @@ fun AccountDetailScreen(
                         node?.let { n ->
                             if (n.path != n.account.name) {
                                 Text(
-                                    n.path.censored(),
+                                    n.path.censored().displayPath(),
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,

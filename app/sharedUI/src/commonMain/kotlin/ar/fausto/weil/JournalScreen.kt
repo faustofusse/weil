@@ -886,7 +886,7 @@ fun disambiguatedPaths(tree: List<AccountNode>): Map<String, String> {
     val shared = nodes.groupBy { it.path.lowercase() }.filterValues { it.size > 1 }.keys
     return nodes.associate { node ->
         val commodity = node.account.commodity
-        val path = node.path.censored()
+        val path = node.path.censored().displayPath()
         node.account.id to if (commodity != null && node.path.lowercase() in shared) {
             "$path ($commodity)"
         } else {
@@ -919,7 +919,7 @@ internal class AccountIndex(
 internal suspend fun accountIndex(accounts: AccountsRepository): AccountIndex {
     val nodes = accounts.tree().flatMap { it.selfAndDescendants }
     return AccountIndex(
-        paths = nodes.associate { it.account.id to it.path.censored() },
+        paths = nodes.associate { it.account.id to it.path.censored().displayPath() },
         types = nodes.associate { it.account.id to it.account.type },
         names = nodes.associate { it.account.id to it.account.name.censored() },
         icons = nodes.associate { it.account.id to it.account.icon },
@@ -989,6 +989,14 @@ internal fun flowColor(direction: Int): Color = when {
 // San Francisco on iOS). The chevron is designed to sit on the x-height like
 // regular punctuation, so it centers the same everywhere with no hacks.
 internal const val ROUTE_ARROW = "›"
+
+/**
+ * Account path for display: "Comida:Kiosko" -> "Comida › Kiosko". Storage,
+ * search and matching keep the colon (it's the stable, server-facing form);
+ * only the rendered text gets the chevron, so this belongs where a path is
+ * about to hit a [Text], never upstream of it.
+ */
+fun String.displayPath(): String = replace(":", " $ROUTE_ARROW ")
 
 /**
  * One movement on a single line — description first, the accounts it moved

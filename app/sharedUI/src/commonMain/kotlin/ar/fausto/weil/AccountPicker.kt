@@ -219,7 +219,7 @@ fun AccountPickerSheet(
                                 .padding(vertical = 12.dp, horizontal = 16.dp),
                         ) {
                             Text(
-                                node.path.censored(),
+                                node.path.censored().displayPath(),
                                 style = MaterialTheme.typography.bodyLarge,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,

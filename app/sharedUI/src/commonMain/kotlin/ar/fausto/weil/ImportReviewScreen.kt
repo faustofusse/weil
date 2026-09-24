@@ -304,7 +304,7 @@ fun ImportReviewScreen(
         defaults = settings.defaultAccounts()
         tree = accounts.tree()
         val nodes = tree.flatMap { it.selfAndDescendants }
-        paths = nodes.associate { it.account.id to it.path.censored() }
+        paths = nodes.associate { it.account.id to it.path.censored().displayPath() }
         names = nodes.associate { it.account.id to it.account.name.censored() }
     }
 

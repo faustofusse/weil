@@ -311,13 +311,6 @@ private const val SuggestDebounceMs = 450L
 /** The last guess, kept so the row can report what the model was sure of. */
 private data class GuessReadout(val path: String?, val confidence: Double)
 
-/**
- * "Comida:Supermercado" → "Comida › Supermercado": the same separator the
- * journal rows use for "origen › destino", so a path reads the same way
- * everywhere in the app.
- */
-private fun routePath(path: String?): String? = path?.replace(":", " $ROUTE_ARROW ")
-
 @Composable
 private fun TransactionSheetForm(
     state: LedgerState,
@@ -370,7 +363,7 @@ private fun TransactionSheetForm(
         defaults = settings.defaultAccounts()
         tree = accounts.tree()
         paths = tree.flatMap { it.selfAndDescendants }
-            .associate { it.account.id to it.path.censored() }
+            .associate { it.account.id to it.path.censored().displayPath() }
     }
 
     LaunchedEffect(Unit) {
@@ -694,7 +687,7 @@ private fun TransactionSheetForm(
                     )
                     Spacer(Modifier.weight(1f))
                     Text(
-                        toId?.let { routePath(paths[it]) } ?: chooseLabel,
+                        toId?.let { paths[it] } ?: chooseLabel,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.75f),
                         maxLines = 1,
