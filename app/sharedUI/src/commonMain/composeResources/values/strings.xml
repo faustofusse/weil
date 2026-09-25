@@ -130,6 +130,7 @@
     <string name="account_unset_default">Quitar como predeterminada</string>
     <string name="account_default_hint">Se preselecciona en movimientos nuevos (%1$s)</string>
     <string name="account_default_badge">Cuenta predeterminada</string>
+    <string name="account_default_short">predeterminada</string>
     <string name="account_commodity_label">Moneda</string>
     <string name="account_commodity_any">Cualquiera</string>
     <string name="account_commodity_hint">Los movimientos nuevos usan esta moneda. Dos cuentas pueden llamarse igual si su moneda es distinta.</string>
@@ -173,8 +174,8 @@
     <string name="editor_remove_posting">Quitar movimiento</string>
     <string name="editor_balanced">%1$s ✓</string>
     <string name="editor_off_by">%1$s difiere por %2$s</string>
-
     <string name="editor_cost">costo %1$s</string>
+
     <!-- Quick transaction -->
     <string name="journal_filter_all">Todos</string>
     <string name="journal_filter_expense">Gastos</string>
