@@ -146,7 +146,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 14L
+private const val SCHEMA_VERSION = 15L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -449,10 +449,58 @@ const val EXTERNAL_EXPENSE_ID = "seed-external-expense"
 const val EXTERNAL_INCOME_ID = "seed-external-income"
 const val EXTERNAL_ACCOUNT_NAME = "Otros"
 
+/** One account of the starter tree seeded by [seedDefaultAccounts]. */
+private class SeedAccount(
+    val id: String,
+    val name: String,
+    val type: AccountType,
+    val parent: String? = null,
+    val icon: String? = null,
+)
+
 /**
- * Seeds the default "Otros" income/expense accounts on a fresh database (only
- * when the accounts table is empty, so user deletions are never resurrected).
- * Fixed ids make two concurrently-seeded devices converge on the same rows.
+ * Starter tree so a new ledger doesn't open empty. Generic on purpose (no bank
+ * or wallet brands): the user renames rather than deletes, and every category
+ * here is also an option of the AI category guess, so overlapping names would
+ * make it worse. Colors are left null: roots get a color derived from the id.
+ * Parents are listed before their children.
+ */
+private val STARTER_ACCOUNTS = listOf(
+    SeedAccount("seed-asset-cash", "Efectivo", AccountType.Asset, icon = "wallet"),
+    SeedAccount("seed-asset-bank", "Cuenta bancaria", AccountType.Asset, icon = "bank"),
+    // Argentine banks open a peso and a dollar savings account side by side,
+    // with separate balances and separate alerts.
+    SeedAccount("seed-asset-bank-ars", "Pesos", AccountType.Asset, parent = "seed-asset-bank"),
+    SeedAccount("seed-asset-bank-usd", "Dólares", AccountType.Asset, parent = "seed-asset-bank"),
+    SeedAccount("seed-asset-wallet", "Billetera virtual", AccountType.Asset, icon = "phone"),
+    SeedAccount("seed-liability-card", "Tarjeta de crédito", AccountType.Liability, icon = "card"),
+    SeedAccount("seed-expense-groceries", "Supermercado", AccountType.Expense, icon = "groceries"),
+    SeedAccount("seed-expense-food", "Comida y salidas", AccountType.Expense, icon = "food"),
+    SeedAccount("seed-expense-transport", "Transporte", AccountType.Expense, icon = "car"),
+    SeedAccount("seed-expense-home", "Vivienda", AccountType.Expense, icon = "home"),
+    SeedAccount("seed-expense-home-rent", "Alquiler", AccountType.Expense, parent = "seed-expense-home"),
+    SeedAccount("seed-expense-home-fees", "Expensas", AccountType.Expense, parent = "seed-expense-home"),
+    SeedAccount("seed-expense-utilities", "Servicios", AccountType.Expense, icon = "utilities"),
+    SeedAccount("seed-expense-health", "Salud", AccountType.Expense, icon = "health"),
+    SeedAccount("seed-expense-subscriptions", "Suscripciones", AccountType.Expense, icon = "music"),
+    SeedAccount("seed-expense-clothing", "Ropa", AccountType.Expense, icon = "shopping"),
+    SeedAccount("seed-expense-education", "Educación", AccountType.Expense, icon = "education"),
+    SeedAccount("seed-expense-gifts", "Regalos", AccountType.Expense, icon = "gift"),
+    SeedAccount("seed-expense-taxes", "Impuestos y comisiones", AccountType.Expense, icon = "bills"),
+    SeedAccount(EXTERNAL_EXPENSE_ID, EXTERNAL_ACCOUNT_NAME, AccountType.Expense),
+    SeedAccount("seed-income-salary", "Sueldo", AccountType.Income, icon = "salary"),
+    SeedAccount("seed-income-freelance", "Trabajos independientes", AccountType.Income, icon = "work"),
+    SeedAccount("seed-income-interest", "Intereses y rendimientos", AccountType.Income, icon = "bank"),
+    SeedAccount(EXTERNAL_INCOME_ID, EXTERNAL_ACCOUNT_NAME, AccountType.Income),
+)
+
+/**
+ * Seeds the starter tree ([STARTER_ACCOUNTS], including the "Otros"
+ * income/expense fallbacks) on a fresh database — only when the accounts table
+ * is empty, so user deletions are never resurrected. A second device joining
+ * an existing account never gets here with an empty table: the sync engine
+ * opens with `bootstrap_if_empty`, which pulls the server copy first. Fixed
+ * ids make two concurrently-seeded devices converge on the same rows.
  */
 private fun Database.seedDefaultAccounts() {
     val count = query("select count(*) from accounts", null) { rows ->
@@ -470,11 +518,24 @@ private fun Database.seedDefaultAccounts() {
         )
         return
     }
-    execute(
-        "insert or ignore into accounts(id, name, parent_id, type) values" +
-            "('$EXTERNAL_EXPENSE_ID', '$EXTERNAL_ACCOUNT_NAME', null, 'expense')," +
-            "('$EXTERNAL_INCOME_ID', '$EXTERNAL_ACCOUNT_NAME', null, 'income')",
-    )
+    for (seed in STARTER_ACCOUNTS) {
+        // Params can't carry null, so absent values are inlined as `null`.
+        val optional = mapOf(
+            ":parent" to seed.parent,
+            ":icon" to seed.icon,
+        )
+        fun slot(name: String) = if (optional[name] == null) "null" else name
+        execute(
+            "insert or ignore into accounts(id, name, parent_id, type, icon) " +
+                "values (:id, :name, ${slot(":parent")}, :type, ${slot(":icon")})",
+            buildMap {
+                put(":id", seed.id)
+                put(":name", seed.name)
+                put(":type", seed.type.db)
+                optional.forEach { (k, v) -> if (v != null) put(k, v) }
+            },
+        )
+    }
     // The two seeds are also the starting per-type defaults, so quick entry
     // works before the user has set anything. `insert or ignore` keeps two
     // concurrently-seeded devices converging on the same rows.

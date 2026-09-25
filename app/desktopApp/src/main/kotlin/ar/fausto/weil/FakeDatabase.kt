@@ -83,6 +83,9 @@ class FakeDatabase(
         val bank = "seed-asset-bank"
         val food = "seed-expense-food"
         val salary = "seed-income-salary"
+        // `insert or replace`: migrateSchema() already seeded the starter tree
+        // under some of these ids, and the demo's shapes (two "Banco" roots,
+        // painted categories) have to win over it.
         fun account(
             id: String,
             name: String,
@@ -91,7 +94,7 @@ class FakeDatabase(
             icon: String? = null,
             color: String? = null,
         ) = execute(
-            "insert or ignore into accounts(id, name, parent_id, type, commodity, icon, color) " +
+            "insert or replace into accounts(id, name, parent_id, type, commodity, icon, color) " +
                 "values (:id, :name, null, :type, " +
                 "${if (commodity == null) "null" else ":commodity"}, " +
                 "${if (icon == null) "null" else ":icon"}, " +
@@ -123,7 +126,7 @@ class FakeDatabase(
         // Two inherit Comida's icon and color (null); Supermercado overrides
         // the icon, so the shots show both halves of the rule.
         fun child(id: String, name: String, parent: String, icon: String? = null) = execute(
-            "insert or ignore into accounts(id, name, parent_id, type, icon) " +
+            "insert or replace into accounts(id, name, parent_id, type, icon) " +
                 "values (:id, :name, :parent, 'expense', ${if (icon == null) "null" else ":icon"})",
             buildMap {
                 put(":id", id); put(":name", name); put(":parent", parent)
