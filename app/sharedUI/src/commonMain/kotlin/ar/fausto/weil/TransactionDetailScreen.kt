@@ -59,6 +59,7 @@ import weil.app.sharedui.generated.resources.txn_source_qr
 import weil.app.sharedui.generated.resources.txn_source_unlink
 import weil.app.sharedui.generated.resources.txn_source_unlinked
 import weil.app.sharedui.generated.resources.txn_similar_action
+import weil.app.sharedui.generated.resources.txn_source_broker
 import weil.app.sharedui.generated.resources.txn_source_whatsapp
 import weil.app.sharedui.generated.resources.txn_sources_title
 
@@ -72,6 +73,7 @@ private fun sourceLabel(kind: EventSource): String = stringResource(
         EventSource.WhatsApp -> Res.string.txn_source_whatsapp
         EventSource.Qr -> Res.string.txn_source_qr
         EventSource.Manual -> Res.string.txn_source_manual
+        EventSource.Broker -> Res.string.txn_source_broker
     },
 )
 

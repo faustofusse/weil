@@ -389,6 +389,7 @@
     <string name="txn_source_whatsapp">WhatsApp</string>
     <string name="txn_source_qr">QR escaneado</string>
     <string name="txn_source_manual">Carga manual</string>
+    <string name="txn_source_broker">Broker</string>
 
     <!-- Document import -->
     <string name="import_menu">Importar documento</string>

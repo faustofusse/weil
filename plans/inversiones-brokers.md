@@ -216,20 +216,29 @@ create index if not exists idx_prices on prices(commodity, quote_commodity, at d
   decimal exacta en commonMain (no hay `BigDecimal`): `Decimal` propio sobre el
   `BigInteger` de bignum (pregunta 2).
 
-### 4. Ganancia realizada: la del broker si la informa, si no costo promedio
+### 4. Comisiones capitalizadas; ganancia contra la base de costo
 
-- Sin lotes como ledger (`{precio de lote}`): la venta asienta la ganancia en
-  `Ingresos:Inversiones:Ganancias de capital` y la salida de la cartera a
-  costo = caja recibida − ganancia. Balancea en los dos casos.
-- **IBKR la informa** (`Realized P/L`, FIFO por lote): se usa ésa, y coincide con
-  lo que ve el broker. Chequeo gratis:
-  `Realized P/L ≈ proceeds + ibCommission − Cost Basis`; si no cierra, la fila
-  se marca en vez de importarse a ciegas.
-- **IOL y Galicia no la informan** en la venta (`ppc` de IOL sólo existe para
-  la tenencia actual): se calcula del ledger con **costo promedio**, con el
-  costo de los `cost_minor` de las compras anteriores. Es el criterio de `ppc`,
-  así el número se puede contrastar con el de IOL mientras la posición sigue
-  abierta (aserción blanda: `ppc` × cantidad ≈ costo en el ledger).
+**Revisada en la fase 2.** La versión anterior decía «la ganancia la pone el
+broker» y a la vez mandaba la comisión a `Gastos:Comisiones`: eso cuenta dos
+veces la comisión, porque el `Realized P/L` de IBKR ya la descuenta (su
+`Cost Basis` la incluye: ≈ 100,98 para la compra de TTWO). La regla
+consistente:
+
+- **La comisión se capitaliza**: la compra cuesta bruto + comisiones
+  (`+0,4939 TTWO @@ US$ 100,98`) y la venta ingresa bruto − comisiones. Es la
+  base que usan IBKR y AFIP. La comisión sigue visible en la nota de la
+  transacción («Comisión US$ 1,00»); lo que se pierde es la línea de gasto
+  aparte. Las comisiones de un cambio de moneda sí van a
+  `Gastos:Comisiones`, porque no son costo de ningún instrumento.
+- **La venta sale de la cartera a su base de costo**: la que informa el broker
+  si la informa (IBKR, FIFO por lote), si no el **costo promedio** del ledger
+  (IOL, resúmenes de custodia). La diferencia contra lo neto recibido es la
+  ganancia realizada, en `Ingresos:Inversiones:Ganancias de capital`. Con la
+  base de IBKR, la ganancia coincide exactamente con su `Realized P/L`.
+- Vender más de lo que el ledger tiene sin base del broker es un *issue*, no
+  una estimación: inventar la base sería inventar la ganancia.
+- Cambiar a «comisión como gasto» es tocar una sola función pura
+  (`planBrokerImport`), si alguna vez se prefiere.
 
 ### 5. Aserciones de saldo en vez de ajustes inventados
 
@@ -457,11 +466,34 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
   antes de este cambio («Unable to compile C bridges», por el cinterop de
   Turso), así que las pruebas multiplataforma corren en JVM y JS.
 
-### Fase 2 — núcleo puro
+### Fase 2 — núcleo puro (hecha)
 
-- `Brokerage.kt` (modelo) + `planBrokerImport` + `BrokerageTest.kt` con los
-  fixtures de las tres fuentes.
-- Aserciones y propuestas de ajuste; neteo de adelantos de IBKR; pares de IOL.
+- [x] `Brokerage.kt`: modelo (`BrokerEvent` Trade/Income/Principal/
+      CashTransfer/FxConversion/QuantityChange, `BrokerSnapshot`,
+      `BrokerBatch`, `InstrumentInfo`, `PriceQuote`, `BrokerAccounts`,
+      `BrokerLedgerView`) y `planBrokerImport` → `BrokerPlan` (transacciones,
+      commodities nuevos, precios, diferencias, issues, refs salteadas).
+- [x] `EventSource.Broker("broker")`, una sola para todos los brokers: el ref
+      lleva el proveedor de prefijo (`brokerRef`: «iol:185183784»,
+      «ibkr:42307900416»). Etiqueta «Broker» en el detalle de la transacción.
+- [x] Reglas: decisión 4 revisada (comisiones capitalizadas), apertura contra
+      `Patrimonio:Saldo inicial` cuando el ledger está vacío y hay snapshot
+      (snapshot − efecto del lote; costo de apertura: el del broker pro rata, o
+      la base de una venta posterior, o el primer precio del lote, o el precio
+      del snapshot respetando `price_per`), transferencias contra la cuenta en
+      tránsito marcadas `needsCounterpart`, diferencias como datos, y toda
+      transacción planeada pasa por `resolvePostings` (un bug del planner es un
+      issue, nunca una fila desbalanceada).
+- [x] `BrokerageTest` (16): depósito de IBKR, compra de TTWO con comisión
+      capitalizada, venta con base de IBKR, venta parcial a costo promedio,
+      venta sin tenencia, amortización de S14G6, dividendo con retención,
+      renta, MEP con comisión, split, refs conocidas, cuenta faltante,
+      diferencias, apertura de IOL (letra valuada cada 100 VN), apertura de
+      unidades vendidas en la ventana, apertura sin precio.
+- Queda para los conectores (fases 3 y 4): netear el adelanto de depósito de
+  IBKR por `clientReference`, emparejar las filas de renta/amortización de
+  IOL, y armar `BrokerLedgerView` desde la base (saldos por cuenta y posición
+  con costo de la cartera).
 
 ### Fase 3 — IBKR por archivo
 
