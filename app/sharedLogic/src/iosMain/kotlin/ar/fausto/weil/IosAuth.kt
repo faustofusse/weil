@@ -25,6 +25,12 @@ fun bridgedPasskeys(): PasskeyCeremony {
     return object : PasskeyCeremony {
         override suspend fun create(optionsJson: String): String = adapt { raw.create(optionsJson) }
         override suspend fun assert(optionsJson: String): String = adapt { raw.assert(optionsJson) }
+        override suspend fun signalUnknownCredential(rpId: String, credentialId: String) =
+            raw.signalUnknownCredential(rpId, credentialId)
+        override suspend fun signalAcceptedCredentials(rpId: String, userHandle: String, credentialIds: List<String>) =
+            raw.signalAcceptedCredentials(rpId, userHandle, credentialIds)
+        override suspend fun signalUserDetails(rpId: String, userHandle: String, name: String) =
+            raw.signalUserDetails(rpId, userHandle, name)
     }
 }
 

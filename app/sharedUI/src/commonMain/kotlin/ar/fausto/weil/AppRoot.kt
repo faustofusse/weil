@@ -73,6 +73,7 @@ import weil.app.sharedui.generated.resources.login_approved_creating
 import weil.app.sharedui.generated.resources.login_approve_hint
 import weil.app.sharedui.generated.resources.login_back
 import weil.app.sharedui.generated.resources.login_continue
+import weil.app.sharedui.generated.resources.login_passkey_rejected
 import weil.app.sharedui.generated.resources.login_continue_after_approval
 import weil.app.sharedui.generated.resources.login_expires_in
 import weil.app.sharedui.generated.resources.login_joining
@@ -851,6 +852,7 @@ fun LoginScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val rejectedMessage = stringResource(Res.string.login_passkey_rejected)
 
     fun launchAction(action: suspend () -> Unit) {
         scope.launch {
@@ -859,6 +861,8 @@ fun LoginScreen(
             try {
                 action()
             } catch (_: PasskeyCancelled) {
+            } catch (_: PasskeyRejected) {
+                error = rejectedMessage
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 error = e.message ?: e.toString()

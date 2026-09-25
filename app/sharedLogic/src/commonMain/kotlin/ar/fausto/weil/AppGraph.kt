@@ -6,6 +6,9 @@ object AuthConfig {
     const val BASE_URL = "https://auth.fausto.ar"
     const val SLUG = "finance"
 
+    /** What passkeys are called when the account has no display name. */
+    const val APP_NAME = "Weil"
+
     /** The app's own worker (document import, email ingest). Shares the
      * `.fausto.ar` session cookie with [BASE_URL]. */
     const val API_BASE_URL = "https://api.finance.fausto.ar"

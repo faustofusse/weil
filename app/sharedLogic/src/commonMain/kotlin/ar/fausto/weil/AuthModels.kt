@@ -20,6 +20,10 @@ data class AuthFinish(
     val verified: Boolean = false,
     @SerialName("user_id") val userId: String,
     @SerialName("credential_id") val credentialId: String? = null,
+    /** Every credential the account still accepts (login only). */
+    @SerialName("credential_ids") val credentialIds: List<String>? = null,
+    /** What the account's passkeys should be called in a password manager. */
+    @SerialName("passkey_name") val passkeyName: String? = null,
     val token: TokenInfo,
 )
 
@@ -35,6 +39,9 @@ sealed interface AuthState {
 class PasskeyCancelled(message: String = "passkey ceremony cancelled") : Exception(message)
 
 class PasskeyNotFound(message: String = "no passkey available") : Exception(message)
+
+/** Every passkey the user offered was unknown to the server (deleted account, revoked device). */
+class PasskeyRejected(message: String = "no passkey on this device belongs to an account") : Exception(message)
 
 class ApiException(val code: Int, message: String) : Exception("HTTP $code: $message")
 

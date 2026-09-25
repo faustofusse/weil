@@ -32,6 +32,14 @@ enum PasskeyError: LocalizedError {
 final class PasskeyManager: NSObject, PasskeyCeremony, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     private static let rpId = "finance.fausto.ar"
     private var continuation: CheckedContinuation<String, Error>?
+    /// When the current sign-in request was handed to the system. See `didCompleteWithError`.
+    private var assertionStartedAt: Date?
+
+    /// A cancellation this soon after `performRequests` cannot have come from a
+    /// person: no sheet was ever shown. With `.preferImmediatelyAvailableCredentials`
+    /// that is how iOS says "no passkey for this app on this device" (it reports
+    /// `.canceled`, not a dedicated code), and the caller must register then.
+    private static let silentCancelWindow: TimeInterval = 1.0
 
     func create(optionsJson: String, completionHandler: @escaping (String?, Error?) -> Void) {
         run(optionsJson: optionsJson, completionHandler: completionHandler, register: true)
@@ -67,7 +75,15 @@ final class PasskeyManager: NSObject, PasskeyCeremony, ASAuthorizationController
                     self.continuation = cont
                     controller.delegate = self
                     controller.presentationContextProvider = self
-                    controller.performRequests()
+                    if register {
+                        self.assertionStartedAt = nil
+                        controller.performRequests()
+                    } else {
+                        // Only passkeys already on this device (iCloud Keychain
+                        // included): no "use a nearby device" QR when there is none.
+                        self.assertionStartedAt = Date()
+                        controller.performRequests(options: .preferImmediatelyAvailableCredentials)
+                    }
                 }
                 completionHandler(result, nil)
             } catch {
@@ -125,7 +141,16 @@ final class PasskeyManager: NSObject, PasskeyCeremony, ASAuthorizationController
         let nsError = error as NSError
         if nsError.domain == ASAuthorizationError.errorDomain,
            let code = ASAuthorizationError.Code(rawValue: nsError.code) {
+            let startedAt = assertionStartedAt
+            assertionStartedAt = nil
+            let silent = startedAt.map { Date().timeIntervalSince($0) < Self.silentCancelWindow } ?? false
             switch code {
+            case .canceled where silent:
+                cont?.resume(throwing: NSError(
+                    domain: "ar.fausto.finance.passkey",
+                    code: 1002,
+                    userInfo: [NSLocalizedDescriptionKey: "passkey not found"],
+                ))
             case .canceled:
                 cont?.resume(throwing: NSError(
                     domain: "ar.fausto.finance.passkey",
@@ -143,6 +168,37 @@ final class PasskeyManager: NSObject, PasskeyCeremony, ASAuthorizationController
             }
         } else {
             cont?.resume(throwing: error)
+        }
+    }
+
+    // MARK: WebAuthn Signal API (iOS 26+; a no-op before)
+
+    func signalUnknownCredential(rpId: String, credentialId: String, completionHandler: @escaping (Error?) -> Void) {
+        guard #available(iOS 26.0, *), let id = Data(base64url: credentialId) else { return completionHandler(nil) }
+        Task {
+            try? await ASCredentialUpdater().reportUnknownPublicKeyCredential(relyingPartyIdentifier: rpId, credentialID: id)
+            completionHandler(nil)
+        }
+    }
+
+    func signalAcceptedCredentials(rpId: String, userHandle: String, credentialIds: [String], completionHandler: @escaping (Error?) -> Void) {
+        guard #available(iOS 26.0, *), let handle = Data(base64url: userHandle) else { return completionHandler(nil) }
+        let ids = credentialIds.compactMap { Data(base64url: $0) }
+        Task {
+            try? await ASCredentialUpdater().reportAllAcceptedPublicKeyCredentials(
+                relyingPartyIdentifier: rpId, userHandle: handle, acceptedCredentialIDs: ids,
+            )
+            completionHandler(nil)
+        }
+    }
+
+    func signalUserDetails(rpId: String, userHandle: String, name: String, completionHandler: @escaping (Error?) -> Void) {
+        guard #available(iOS 26.0, *), let handle = Data(base64url: userHandle) else { return completionHandler(nil) }
+        Task {
+            try? await ASCredentialUpdater().reportPublicKeyCredentialUpdate(
+                relyingPartyIdentifier: rpId, userHandle: handle, newName: name,
+            )
+            completionHandler(nil)
         }
     }
 

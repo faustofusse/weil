@@ -264,6 +264,7 @@
     <!-- Login -->
     <string name="login_subtitle">Tus cuentas, un solo lugar</string>
     <string name="login_continue">Continuar con passkey</string>
+    <string name="login_passkey_rejected">Ninguna de las passkeys de este dispositivo corresponde a una cuenta de Weil. Borralas del gestor de contraseñas o vinculá este dispositivo con una cuenta existente.</string>
     <string name="login_pair_entry">Vincular con una cuenta existente</string>
     <string name="login_joining">Conectando…</string>
     <string name="login_scan_invite">Escanear QR de invitación</string>

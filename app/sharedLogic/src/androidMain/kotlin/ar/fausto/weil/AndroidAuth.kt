@@ -9,6 +9,10 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetPublicKeyCredentialOption
 import androidx.credentials.PublicKeyCredential
+import androidx.credentials.SignalAllAcceptedCredentialIdsRequest
+import androidx.credentials.SignalCredentialStateRequest
+import androidx.credentials.SignalCurrentUserDetailsRequest
+import androidx.credentials.SignalUnknownCredentialRequest
 import androidx.credentials.exceptions.CreateCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
@@ -19,6 +23,8 @@ import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.HttpHeaders
+import org.json.JSONArray
+import org.json.JSONObject
 
 actual fun platformHttpClient(block: HttpClientConfig<*>.() -> Unit): HttpClient =
     HttpClient(OkHttp) { block() }
@@ -95,7 +101,13 @@ class AndroidPasskeys(private val activity: android.app.Activity) : PasskeyCerem
         return try {
             val result = manager.getCredential(
                 activity,
-                GetCredentialRequest(listOf(GetPublicKeyCredentialOption(optionsJson))),
+                GetCredentialRequest(
+                    credentialOptions = listOf(GetPublicKeyCredentialOption(optionsJson)),
+                    // Only passkeys already on the phone (synced ones included):
+                    // with none, this fails fast with NoCredentialException instead
+                    // of offering "use another device", and sign-in registers.
+                    preferImmediatelyAvailableCredentials = true,
+                ),
             )
             (result.credential as PublicKeyCredential).authenticationResponseJson
         } catch (e: GetCredentialCancellationException) {
@@ -105,6 +117,37 @@ class AndroidPasskeys(private val activity: android.app.Activity) : PasskeyCerem
         } catch (e: Throwable) {
             Log.e("AndroidPasskeys", "assert failed: ${e.javaClass.name}: ${e.message}", e)
             throw e
+        }
+    }
+
+    override suspend fun signalUnknownCredential(rpId: String, credentialId: String) =
+        signal(SignalUnknownCredentialRequest(JSONObject().put("rpId", rpId).put("credentialId", credentialId).toString()))
+
+    override suspend fun signalAcceptedCredentials(rpId: String, userHandle: String, credentialIds: List<String>) =
+        signal(
+            SignalAllAcceptedCredentialIdsRequest(
+                JSONObject()
+                    .put("rpId", rpId)
+                    .put("userId", userHandle)
+                    .put("allAcceptedCredentialIds", JSONArray(credentialIds))
+                    .toString(),
+            ),
+        )
+
+    override suspend fun signalUserDetails(rpId: String, userHandle: String, name: String) =
+        signal(
+            SignalCurrentUserDetailsRequest(
+                JSONObject().put("rpId", rpId).put("userId", userHandle)
+                    .put("name", name).put("displayName", name).toString(),
+            ),
+        )
+
+    private suspend fun signal(request: SignalCredentialStateRequest) {
+        try {
+            manager.signalCredentialState(request)
+        } catch (e: Throwable) {
+            // Older Play services / providers without Signal API support.
+            Log.w("AndroidPasskeys", "signal ${request.javaClass.simpleName} failed: ${e.message}")
         }
     }
 }

@@ -23,6 +23,7 @@ class ChainRepository(private val api: AuthApi, private val auth: AuthRepository
     /** Blank clears it; the greeting falls back to a plain "Hola". */
     suspend fun setName(name: String) {
         api.setName(name)
+        auth.renamePasskeys(name)
     }
 
     suspend fun setEmail(email: String) {
