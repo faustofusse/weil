@@ -16,7 +16,11 @@ saldo del broker se verifica con **aserciones**.
 
 ---
 
-## Lo que ya existe (revisado sobre el código)
+## Lo que ya existía (revisado sobre el código antes de la fase 1)
+
+Punto de partida, no estado actual: varias limitaciones de esta tabla (escala
+fija, cambio de moneda como excepción, `netWorth` sin valuación) son justo lo
+que resolvieron las fases 1 y 5; ver cada fase.
 
 | pieza | dónde | qué aporta / qué limita |
 | --- | --- | --- |
@@ -244,9 +248,17 @@ consistente:
 
 - Cada sync compara el ledger contra el snapshot del broker: caja por moneda
   (`estadocuenta` / `CashReport`) y cantidad por instrumento (`portafolio` /
-  `OpenPositions` / resumen). Diferencia cero → nada. Diferencia ≠ 0 →
-  se propone: primero buscar la pata en el banco (`Reconcile`, relación
-  `Mirror`), si no, un ajuste contra `Patrimonio:Ajustes` que el usuario ve.
+  `OpenPositions` / resumen). Diferencia cero → nada. Diferencia ≠ 0 → se
+  muestra en la revisión, **nunca se asienta sola**.
+- **Hecho**: botón «Ajustar» en cada diferencia **de caja**
+  (`BrokersRepository.adjustOpening`): una transacción aparte «Ajuste de saldo
+  inicial <broker>» entre la caja del broker y `Patrimonio:Saldo inicial`
+  (no `Ajustes`: lo que corrige es la historia previa a la importación),
+  fechada justo antes del movimiento más viejo de la caja, con deshacer. Una
+  diferencia de **cantidad** no tiene botón: un split, un traspaso entre
+  brokers o un trade faltante no se arreglan con plata.
+- **Pendiente**: antes de ofrecer el ajuste, buscar la pata en el banco
+  (`Reconcile`, relación `Mirror`) y proponer asociarla.
 - Es lo que tapa el agujero de IOL (no informa depósitos) y el de Galicia (no
   informa operaciones).
 
@@ -256,6 +268,27 @@ La historia de IOL arranca en 2025-08 y la de un resumen de Galicia es una
 foto: la primera importación abre con `Patrimonio:Saldo inicial` por la
 tenencia y la caja a la fecha más vieja disponible, y de ahí en adelante son
 eventos.
+
+Lo que aprendimos con la primera importación real: **la apertura es un
+remanente**, no un dato del broker. Es el saldo actual menos todo lo que el
+lote explica, así que absorbe cada depósito y extracción que el broker no
+informa. Consecuencias:
+
+- Toda transferencia banco ↔ broker que se cargue después la desplaza, y
+  «Sincronizar» la muestra como diferencia de caja (exactamente lo que la
+  apertura tiene que cambiar).
+- Se ajusta **una vez**, al terminar de cargar la historia de los bancos
+  («Ajustar», decisión 5); ajustar antes no rompe nada, sólo deja más
+  transacciones de ajuste.
+- Chequeo de completitud: si la cuenta del broker empezó con la historia que
+  devuelve la API (IOL: 2025-08-14), el saldo real antes de la primera
+  operación era cero, y con todas las transferencias cargadas la apertura +
+  sus ajustes tiene que dar ≈ 0. Lo que sobre son transferencias que faltan.
+- Una cuenta vieja armada desde notificaciones del banco para el mismo broker
+  (en el caso real, «Invertironline», −$ 1.056.293,72) duplica la plata: sus
+  movimientos son las transferencias que el broker no informa. Se mueven a la
+  caja del broker (`IOL:Pesos`) y la cuenta se borra; la diferencia que queda
+  se ajusta contra la apertura.
 
 ### 7. Cuentas que crea la conexión
 
@@ -415,12 +448,18 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
 ### Fase 0 — fixtures (en curso)
 
 - [x] IOL: estructura de todos los endpoints de lectura (en vivo).
+- [x] IOL: fixtures reales **scrubbeados** (números de cuenta reemplazados,
+      montos reales) en `app/sharedLogic/src/jvmTest/resources/iol/`
+      (estado de cuenta, portafolios, un año de operaciones, sus detalles y los
+      títulos). Van en `jvmTest` y no en `commonTest` porque leer archivos de
+      recursos en tests multiplataforma no es trivial; el código que prueban es
+      común.
 - [x] IBKR: backfill con cash transactions, cash report, conversion rates.
 - [ ] IBKR: XML con la compra de TTWO (`Trades`, `OpenPositions`,
       `SecuritiesInfo`). Correr `weil` con Last 30 Days el día hábil siguiente.
-- [ ] Guardar fixtures **scrubbeados** en `app/sharedLogic/src/commonTest/resources/brokers/`:
-      sin nombre, dirección, fecha de nacimiento, mail, DNI/CUIT; números de
-      cuenta reemplazados. Nunca el crudo en el repo.
+      Guardarlo scrubbeado (sin nombre, dirección, fecha de nacimiento, mail,
+      DNI/CUIT; números de cuenta reemplazados) en
+      `app/sharedLogic/src/jvmTest/resources/ibkr/`. Nunca el crudo en el repo.
 - [ ] Sacar los campos personales de *Account Information* de la query
       (dejar Account ID, Currency, Name, Account Type, Date Opened).
 
@@ -560,18 +599,40 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
 - Pendiente: sync automático al abrir la app / pull-to-refresh de la pestaña
   (hoy es el botón «Sincronizar»), y WorkManager en segundo plano.
 
-### Fase 5 — valuación en la UI
+### Fase 5 — valuación en la UI (en curso)
 
-- `netWorth` valorizado por moneda + línea «≈ US$ X al oficial (fecha)»
-  (setting `networth.currency`, default USD); fetch del oficial del BCRA al
-  sincronizar, a `prices`.
-- Vista de posiciones en `AccountDetailScreen` de cuentas multi-commodity
-  (pregunta 3).
-- `InvestmentsScreen` completa (hero, avisos, brokers, posiciones consolidadas,
-  movimientos) y detalle de instrumento; ver sección UI.
-- Pantalla de cartera por cuenta: instrumento, cantidad, último precio y
-  fecha, valor, costo, ganancia no realizada (calculada, no asentada).
-- Tiles de Home para las cuentas de broker.
+Adelantada por la primera importación real: con 20 instrumentos en el ledger,
+todo total listaba tickers con dos decimales («BCBA:MELI 0,13» por 13
+acciones) y las posiciones cerradas como «0,00».
+
+- [x] `Valuation` (`Valuation.kt`, puro): un total por commodity → plata por
+      moneda, cada instrumento a cantidad × último precio (respetando escala y
+      `price_per`) en su moneda de cotización, líneas en cero afuera, un
+      instrumento sin precio afuera (lo muestra la vista de posiciones).
+      `BrokersRepository.valuation()` lee commodities y el último precio.
+- [x] `LedgerState.displayLeafTotals` / `displayTotals` (recargadas con cada
+      `refresh`) en todo lugar que imprime un saldo: hero de Inicio, tiles,
+      árbol de cuentas y totales por tipo, encabezado de cuenta, categorías,
+      orden de Inicio. Los mapas crudos quedan para las cantidades.
+- [x] Filas de movimiento (`flowOf`): una transacción con costo se resume por
+      su pata de **plata** (el posting de activo sin costo), neutral, con la
+      ruta caja › Cartera; antes elegía el instrumento («FCI:IOLPORA
+      34.192.245,14»).
+- [x] Cantidades como cantidades (`formatAmount`, `formatQuantity`): saldo
+      corrido del registro de Cartera («13 MELI»), postings del detalle con su
+      `@@` («13 MELI @@ $ 319.256,83»); totales por moneda del detalle por peso.
+- [x] Arreglos de layout: `SectionHeader` ya no aplasta el título cuando lo de
+      la derecha es largo («Activos» en una columna de letras); encabezado de
+      cuenta con la moneda principal grande y las demás más chicas.
+- [ ] Línea «≈ US$ X al oficial (fecha)» (setting `networth.currency`, default
+      USD); fetch del oficial del BCRA al sincronizar, a `prices`.
+- [ ] Vista de posiciones en `AccountDetailScreen` de cuentas multi-commodity
+      (pregunta 3): instrumento, cantidad, último precio y fecha, valor, costo,
+      ganancia no realizada (calculada, no asentada); cerradas plegadas.
+- [ ] Escala por commodity al **mostrar y tipear** en el editor (movido desde
+      la fase 1): hoy una compra editada muestra «49,39» por 0,4939 TTWO.
+- [ ] `InvestmentsScreen` completa (hero, avisos, brokers, posiciones
+      consolidadas, movimientos) y detalle de instrumento; ver sección UI.
 
 ### Fase 6 — entradas automáticas
 
