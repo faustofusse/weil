@@ -3,7 +3,11 @@
 package ar.fausto.weil
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +26,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -37,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,38 +64,84 @@ import weil.app.sharedui.generated.resources.home_order_title
  *
  * The list is edited locally and saved once per drop: saving on every swap
  * would queue a synced write per row crossed.
+ *
+ * The drag is tracked in the *list's* coordinates, as an absolute position,
+ * not as deltas summed on the moving row: the row changes slot under the
+ * finger, and every swap booked against a measured height is a chance to
+ * drift. Here the row sits wherever the finger is, and its slot is simply
+ * the one whose natural top is closest — nothing accumulates.
  */
 @Composable
 internal fun HomeOrderSheet(state: LedgerState, onDismiss: () -> Unit) {
-    // Re-seeded whenever the stored order or the tree changes (a sync
-    // landing while the sheet is open, or the save of the last drop).
-    var items by remember(state.homeAccounts) { mutableStateOf(state.homeAccounts) }
+    var items by remember { mutableStateOf(state.homeAccounts) }
     var dragging by remember { mutableStateOf<String?>(null) }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
+    /** Finger, in the scrolled content's coordinates. */
+    var fingerY by remember { mutableFloatStateOf(0f) }
+    /** Finger's distance from the top of the row it grabbed. */
+    var grab by remember { mutableFloatStateOf(0f) }
     val heights = remember { mutableStateMapOf<String, Int>() }
+    val scroll = rememberScrollState()
+    val density = LocalDensity.current
+    val handleZone = with(density) { 72.dp.toPx() }
+    val edgeZone = with(density) { 56.dp.toPx() }
+
+    // Follows the stored order (a sync landing while the sheet is open, the
+    // save of the last drop) — but never mid-drag, where it would yank the
+    // row out from under the finger.
+    LaunchedEffect(state.homeAccounts, dragging == null) {
+        if (dragging == null) items = state.homeAccounts
+    }
+
+    fun heightOf(node: AccountNode) = (heights[node.account.id] ?: 0).toFloat()
+    fun topOf(index: Int) = items.take(index).sumOf { heightOf(it).toDouble() }.toFloat()
+
+    fun moveTo(y: Float) {
+        fingerY = y
+        val id = dragging ?: return
+        val i = items.indexOfFirst { it.account.id == id }
+        if (i < 0) return
+        val dragged = items[i]
+        val others = items.filterIndexed { j, _ -> j != i }
+        val top = (y - grab).coerceIn(0f, (others.sumOf { heightOf(it).toDouble() }).toFloat())
+        // Natural top of slot k is the height of the k rows above it.
+        var best = 0
+        var acc = 0f
+        var bestDistance = abs(top)
+        others.forEachIndexed { k, node ->
+            acc += heightOf(node)
+            val d = abs(top - acc)
+            if (d < bestDistance) {
+                bestDistance = d
+                best = k + 1
+            }
+        }
+        if (best != i) items = others.toMutableList().apply { add(best, dragged) }
+    }
 
     fun drop() {
         dragging = null
-        dragOffset = 0f
         val ids = items.map { it.account.id }
         if (ids != state.homeAccounts.map { it.account.id }) state.saveHomeOrder(ids)
     }
 
-    // Swaps with a neighbour once the row has travelled past half of it, and
-    // hands the travelled distance back so the row stays under the finger.
-    fun drag(id: String, dy: Float) {
-        dragOffset += dy
-        val i = items.indexOfFirst { it.account.id == id }
-        if (i < 0) return
-        val target = when {
-            dragOffset > 0 && i < items.lastIndex -> i + 1
-            dragOffset < 0 && i > 0 -> i - 1
-            else -> return
+    // Scrolls while the finger rests near an edge, so a long list can still
+    // be reordered end to end.
+    LaunchedEffect(dragging) {
+        if (dragging == null) return@LaunchedEffect
+        while (true) {
+            withFrameMillis { }
+            val y = fingerY - scroll.value
+            val viewport = scroll.viewportSize.toFloat()
+            val speed = when {
+                y < edgeZone -> -(edgeZone - y) / edgeZone * 18f
+                y > viewport - edgeZone -> (y - (viewport - edgeZone)) / edgeZone * 18f
+                else -> 0f
+            }
+            if (speed != 0f) {
+                val used = scroll.scrollBy(speed)
+                if (used != 0f) moveTo(fingerY + used)
+            }
         }
-        val h = heights[items[target].account.id] ?: return
-        if (abs(dragOffset) < h / 2f) return
-        items = items.toMutableList().apply { add(target, removeAt(i)) }
-        dragOffset -= if (target > i) h else -h
     }
 
     ModalBottomSheet(
@@ -109,7 +162,34 @@ internal fun HomeOrderSheet(state: LedgerState, onDismiss: () -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scroll)
+                    // After verticalScroll, so positions are content
+                    // coordinates: stable while rows swap and while scrolling.
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            // Only the handle drags; the rest of the row
+                            // scrolls the list like any other.
+                            if (down.position.x < size.width - handleZone) return@awaitEachGesture
+                            var acc = 0f
+                            val index = items.indexOfFirst { node ->
+                                val h = heightOf(node)
+                                (down.position.y < acc + h).also { if (!it) acc += h }
+                            }
+                            if (index < 0) return@awaitEachGesture
+                            val start = awaitVerticalTouchSlopOrCancellation(down.id) { change, _ ->
+                                change.consume()
+                            } ?: return@awaitEachGesture
+                            grab = down.position.y - acc
+                            dragging = items[index].account.id
+                            moveTo(start.position.y)
+                            verticalDrag(start.id) { change ->
+                                change.consume()
+                                moveTo(change.position.y)
+                            }
+                            drop()
+                        }
+                    }
                     .padding(horizontal = 12.dp),
             ) {
                 items.forEachIndexed { index, node ->
@@ -122,21 +202,20 @@ internal fun HomeOrderSheet(state: LedgerState, onDismiss: () -> Unit) {
                             totals = state.totals[id].orEmpty(),
                             hidden = state.amountsHidden,
                             lifted = lifted,
-                            handle = Modifier.pointerInput(id) {
-                                detectVerticalDragGestures(
-                                    onDragStart = { dragging = id; dragOffset = 0f },
-                                    onDragEnd = { drop() },
-                                    onDragCancel = { drop() },
-                                    onVerticalDrag = { change, dy ->
-                                        change.consume()
-                                        drag(id, dy)
-                                    },
-                                )
-                            },
                             modifier = Modifier
                                 .onSizeChanged { heights[id] = it.height }
                                 .zIndex(if (lifted) 1f else 0f)
-                                .graphicsLayer { translationY = if (lifted) dragOffset else 0f },
+                                .graphicsLayer {
+                                    // Read here, not in composition: a
+                                    // finger move repaints one layer.
+                                    translationY = if (lifted) {
+                                        val i = items.indexOfFirst { it.account.id == id }
+                                        val bottom = topOf(items.size) - heightOf(node)
+                                        (fingerY - grab).coerceIn(0f, bottom) - topOf(i)
+                                    } else {
+                                        0f
+                                    }
+                                },
                         )
                     }
                 }
@@ -152,7 +231,6 @@ private fun HomeOrderRow(
     totals: Map<String, Long>,
     hidden: Boolean,
     lifted: Boolean,
-    handle: Modifier,
     modifier: Modifier = Modifier,
 ) {
     val entry = totals.entries.maxByOrNull { abs(it.value) }
@@ -199,7 +277,7 @@ private fun HomeOrderRow(
             Icons.Filled.DragHandle,
             contentDescription = stringResource(Res.string.home_order_drag),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = handle.padding(12.dp).size(24.dp),
+            modifier = Modifier.padding(12.dp).size(24.dp),
         )
     }
 }

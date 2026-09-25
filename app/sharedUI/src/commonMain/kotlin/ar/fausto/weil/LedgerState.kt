@@ -138,7 +138,7 @@ class LedgerState(
         scope.launch {
             settings.changes.collect {
                 defaultAccounts = settings.defaultAccounts()
-                homeOrder = settings.homeAccountOrder()
+                reloadHomeOrder()
             }
         }
     }
@@ -177,7 +177,7 @@ class LedgerState(
         tree = newTree
         storedLeafTotals = leafs
         defaultAccounts = settings.defaultAccounts()
-        homeOrder = settings.homeAccountOrder()
+        reloadHomeOrder()
         storedRecent = ledger.page(limit = RECENT_COUNT)
     }
 
@@ -304,17 +304,33 @@ class LedgerState(
      */
     fun saveHomeOrder(ids: List<String>) {
         homeOrder = ids
+        homeOrderWrites++
         scope.launch {
             try {
                 settings.setHomeAccountOrder(ids)
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                // The write is local and the sync after it is what usually
-                // fails (offline), so show whatever the file actually holds
-                // rather than assume the edit was lost.
-                homeOrder = runCatching { settings.homeAccountOrder() }.getOrDefault(homeOrder)
+            } finally {
+                homeOrderWrites--
             }
+            // The write is local and the sync after it is what usually fails
+            // (offline), so show whatever the file actually holds rather than
+            // assume the edit was lost.
+            runCatching { reloadHomeOrder() }
         }
+    }
+
+    /**
+     * Saves still queued behind the database thread. While any is, a read
+     * would return the order from *before* the drop and snap the tiles back
+     * until the write lands, so reads leave [homeOrder] alone.
+     */
+    private var homeOrderWrites = 0
+
+    private suspend fun reloadHomeOrder() {
+        if (homeOrderWrites > 0) return
+        val stored = settings.homeAccountOrder()
+        if (homeOrderWrites == 0) homeOrder = stored
     }
 
     fun toggleAmountsHidden() {
