@@ -42,7 +42,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -68,7 +67,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
-import weil.app.sharedui.generated.resources.action_back
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.action_save
 import weil.app.sharedui.generated.resources.login_expires_in
@@ -121,7 +119,6 @@ import weil.app.sharedui.generated.resources.profile_theme_roles_title
 import weil.app.sharedui.generated.resources.profile_theme_selected
 import weil.app.sharedui.generated.resources.profile_theme_subtitle
 import weil.app.sharedui.generated.resources.profile_theme_title
-import weil.app.sharedui.generated.resources.profile_title
 import weil.app.sharedui.generated.resources.profile_wa_code_hint
 import weil.app.sharedui.generated.resources.profile_wa_expired
 import weil.app.sharedui.generated.resources.profile_wa_hide_qr
@@ -153,30 +150,16 @@ fun ProfileScreen(
     settings: SettingsRepository,
     onNavigateBack: () -> Unit,
     onSignOut: () -> Unit,
-    /** Non-null when the profile is a bottom-bar root (no back arrow then). */
-    bottomBar: (@Composable () -> Unit)? = null,
 ) {
     var confirmSignOut by remember { mutableStateOf(false) }
     Scaffold(
-        bottomBar = bottomBar ?: {},
         topBar = {
-            // Shared header as a tab root, stock bar (with back arrow) when
-            // pushed; see JournalScreen for the same split.
-            if (bottomBar != null) {
-                AppTopBar(title = stringResource(Res.string.nav_profile))
-            } else {
-                TopAppBar(
-                    title = { Text(stringResource(Res.string.profile_title)) },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                Icons.Filled.ArrowBack,
-                                contentDescription = stringResource(Res.string.action_back),
-                            )
-                        }
-                    },
-                )
-            }
+            // Always pushed now (from the account icon in Inicio's top bar),
+            // so always the shared header with its back arrow.
+            AppTopBar(
+                title = stringResource(Res.string.nav_profile),
+                onNavigateBack = onNavigateBack,
+            )
         },
     ) { innerPadding ->
         Column(

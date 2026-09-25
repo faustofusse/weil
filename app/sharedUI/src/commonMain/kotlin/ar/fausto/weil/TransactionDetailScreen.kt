@@ -59,6 +59,7 @@ import weil.app.sharedui.generated.resources.txn_source_qr
 import weil.app.sharedui.generated.resources.txn_source_unlink
 import weil.app.sharedui.generated.resources.txn_source_unlinked
 import weil.app.sharedui.generated.resources.txn_similar_action
+import weil.app.sharedui.generated.resources.txn_source_broker
 import weil.app.sharedui.generated.resources.txn_source_whatsapp
 import weil.app.sharedui.generated.resources.txn_sources_title
 
@@ -72,6 +73,7 @@ private fun sourceLabel(kind: EventSource): String = stringResource(
         EventSource.WhatsApp -> Res.string.txn_source_whatsapp
         EventSource.Qr -> Res.string.txn_source_qr
         EventSource.Manual -> Res.string.txn_source_manual
+        EventSource.Broker -> Res.string.txn_source_broker
     },
 )
 
@@ -91,6 +93,8 @@ fun TransactionDetailScreen(
     onOpenDocument: (docId: String) -> Unit = {},
     /** Opens the vector-neighbour lab for this transaction. */
     onTrySuggestion: (() -> Unit)? = null,
+    /** Instrument descriptions, so a MELI leg reads "13 MELI" and not as money. */
+    valuation: Valuation = Valuation(),
 ) {
     var tx by remember { mutableStateOf<Transaction?>(null) }
     // Where this transaction came from. A single purchase legitimately has a
@@ -166,13 +170,7 @@ fun TransactionDetailScreen(
                             scope.launch {
                                 try {
                                     val stored = ledger.get(id)
-                                    val draftsBackup = stored?.postings?.map {
-                                        DraftPosting(
-                                            it.accountId,
-                                            formatMinorUnits(it.amountMinor),
-                                            it.commodity,
-                                        )
-                                    }.orEmpty()
+                                    val draftsBackup = stored?.postings?.map { it.toDraft() }.orEmpty()
                                     ledger.delete(id)
                                     onNavigateBack()
                                     Feedback.undoable(deletedMessage, undoLabel) {
@@ -330,7 +328,9 @@ fun TransactionDetailScreen(
                                         // double-entry view, where which side
                                         // of the book a leg sits on is the
                                         // whole point: signed, always.
-                                        formatMoney(posting.amountMinor, posting.commodity, signed = true),
+                                        formatAmount(posting.amountMinor, posting.commodity, valuation, signed = true) +
+                                            // Ledger's @: the price per unit, when it's an exchange.
+                                            (unitPriceText(posting, valuation)?.let { " @ $it" } ?: ""),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = postingColor(types[posting.accountId], posting.amountMinor),
                                         modifier = Modifier.padding(start = 12.dp),
@@ -340,9 +340,13 @@ fun TransactionDetailScreen(
                         }
                     }
 
-                    // Totales por moneda (solo si hay más de una).
-                    val totals = transaction.postings.groupBy({ it.commodity }, { it.amountMinor })
+                    // Totales por moneda, por *peso* (el costo cuando lo hay):
+                    // una compra con costo cierra en cero y no muestra nada;
+                    // sólo queda lo que de verdad no cancela, como un cambio
+                    // de moneda viejo cargado sin costo.
+                    val totals = transaction.postings.groupBy({ it.weight().commodity }, { it.weight().minorUnits })
                         .mapValues { (_, amounts) -> amounts.sum() }
+                        .filterValues { it != 0L }
                     if (totals.size > 1) {
                         Spacer(Modifier.height(12.dp))
                         Row(
@@ -494,4 +498,31 @@ fun TransactionDetailScreen(
             }
         }
     }
+}
+
+/**
+ * Ledger's `@`: what one unit of [posting] cost ("13 MELI @ $ 24.558,91"),
+ * from the stored total (`cost_minor`) over the quantity. At least 2
+ * decimals, more the smaller the price: a letra's unit is a fraction of a
+ * peso and rounding it to cents would say nothing.
+ */
+internal fun unitPriceText(posting: Posting, valuation: Valuation): String? {
+    val cost = posting.costMinor ?: return null
+    val costCommodity = posting.costCommodity ?: return null
+    if (posting.amountMinor == 0L) return null
+    val scale = valuation.commodities[posting.commodity]?.scale ?: 2
+    val exact = Decimal.ofMinorUnits(kotlin.math.abs(cost), 2)
+        .divide(Decimal.ofMinorUnits(kotlin.math.abs(posting.amountMinor), scale), 6)
+    // Decimals by size: cents on a share, more on a letra's fraction of a peso.
+    val decimals = when {
+        exact >= Decimal.parse("100")!! -> 2
+        exact >= Decimal.parse("1")!! -> 4
+        else -> 6
+    }
+    val unit = exact.rescale(decimals).stripTrailingZeros()
+    val plain = unit.toPlainString()
+    val whole = plain.substringBefore('.')
+    val frac = plain.substringAfter('.', "").padEnd(2, '0')
+    val grouped = whole.reversed().chunked(3).joinToString(".").reversed()
+    return "${currencySymbol(costCommodity)} $grouped,$frac"
 }

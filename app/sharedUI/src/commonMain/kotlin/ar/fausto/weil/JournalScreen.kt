@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +29,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -81,6 +89,7 @@ import weil.app.sharedui.generated.resources.day_date_year
 import weil.app.sharedui.generated.resources.day_today
 import weil.app.sharedui.generated.resources.day_yesterday
 import weil.app.sharedui.generated.resources.journal_delete_failed
+import weil.app.sharedui.generated.resources.journal_scroll_top
 import weil.app.sharedui.generated.resources.journal_delete_selected
 import weil.app.sharedui.generated.resources.journal_delete_selected_body
 import weil.app.sharedui.generated.resources.journal_delete_selected_title
@@ -123,6 +132,9 @@ import weil.app.sharedui.generated.resources.new_transaction_hint
 // lazy, so declaring more than fit on screen costs nothing.
 private const val JOURNAL_SKELETON_COUNT = 16
 
+/** Rows scrolled past before the scroll-to-top button appears. */
+private const val SCROLL_TOP_THRESHOLD = 8
+
 private const val DAY_MILLIS = 24L * 60 * 60 * 1000
 
 /** Journal of transactions, newest first, grouped under day headers. */
@@ -139,7 +151,14 @@ fun JournalScreen(
      */
     bottomBar: (@Composable () -> Unit)? = null,
 ) {
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(state.scrollIndex, state.scrollOffset)
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                state.scrollIndex = index
+                state.scrollOffset = offset
+            }
+    }
     var showDeleteRangeDialog by remember { mutableStateOf(false) }
     var showDateRangeFilterDialog by remember { mutableStateOf(false) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
@@ -356,13 +375,46 @@ fun JournalScreen(
             // second one in the corner would be the same action twice. Hidden
             // mid-selection: registering a movement is the last thing the
             // gesture is reaching for, and the FAB overlaps the bottom rows.
-            if (bottomBar == null && !selecting) {
-                FloatingActionButton(
-                    onClick = onNavigateToNew,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+            val showCreate = bottomBar == null && !selecting
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Only once the top is out of reach of a flick: a few rows
+                // down, the button would cover a row to save one swipe.
+                val scrolledAway by remember {
+                    derivedStateOf { listState.firstVisibleItemIndex > SCROLL_TOP_THRESHOLD }
+                }
+                AnimatedVisibility(
+                    visible = scrolledAway,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut(),
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.new_transaction))
+                    SmallFloatingActionButton(
+                        onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        // Alone in the corner (tab root) it drops into
+                        // the Scaffold's 16 dp FAB margin, closer to the
+                        // bar; above the create FAB it keeps a gap.
+                        modifier = if (showCreate) {
+                            Modifier.padding(bottom = 12.dp)
+                        } else {
+                            Modifier.offset(y = 10.dp)
+                        },
+                    ) {
+                        Icon(
+                            Icons.Filled.ArrowUpward,
+                            contentDescription = stringResource(Res.string.journal_scroll_top),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+                if (showCreate) {
+                    FloatingActionButton(
+                        onClick = onNavigateToNew,
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.new_transaction))
+                    }
                 }
             }
         },
@@ -463,8 +515,7 @@ fun JournalScreen(
                             tx = tx,
                             names = state.names,
                             types = state.types,
-                            icons = state.icons,
-                            colors = state.colors,
+                            looks = state.looks,
                             hidden = false,
                             selected = selected,
                             // The long-press that starts a run also ticks its
@@ -500,70 +551,12 @@ fun JournalScreen(
 
     if (showDeleteSelectedDialog) {
         DeleteSelectedDialog(
-            state = state,
-            scope = scope,
+            count = state.selected.size,
+            delete = { state.deleteSelected() },
+            restore = { state.restore(it) },
             onDismiss = { showDeleteSelectedDialog = false },
         )
     }
-}
-
-/**
- * Confirm-and-delete for the multi-select run: one transaction for the whole
- * batch ([JournalState.deleteSelected]), then the Snackbar carries every
- * removed row back ([JournalState.restore]) — the same undoable-delete shape
- * the editor and the detail screen use, extended to N rows.
- */
-@Composable
-private fun DeleteSelectedDialog(
-    state: JournalState,
-    scope: CoroutineScope,
-    onDismiss: () -> Unit,
-) {
-    var deleting by remember { mutableStateOf(false) }
-    val count = state.selected.size
-    val undoLabel = stringResource(Res.string.action_undo)
-    val deletedMessage = stringResource(Res.string.journal_selected_count, count)
-    val failedMessage = stringResource(Res.string.journal_delete_failed)
-
-    AlertDialog(
-        onDismissRequest = { if (!deleting) onDismiss() },
-        title = { Text(stringResource(Res.string.journal_delete_selected_title, count)) },
-        text = {
-            Text(
-                stringResource(Res.string.journal_delete_selected_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    deleting = true
-                    scope.launch {
-                        try {
-                            val backups = state.deleteSelected()
-                            onDismiss()
-                            if (backups.isNotEmpty()) {
-                                Feedback.undoable(deletedMessage, undoLabel) {
-                                    state.restore(backups)
-                                }
-                            }
-                        } catch (e: Throwable) {
-                            if (e is kotlinx.coroutines.CancellationException) throw e
-                            Feedback.show(failedMessage)
-                            deleting = false
-                        }
-                    }
-                },
-                enabled = !deleting && count > 0,
-            ) { Text(stringResource(Res.string.action_delete)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !deleting) {
-                Text(stringResource(Res.string.action_cancel))
-            }
-        },
-    )
 }
 
 private fun matchesFilter(
@@ -695,13 +688,13 @@ private fun DeleteRangeDialog(state: JournalState, onDismiss: () -> Unit) {
 
     if (pickingFrom) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = fromText?.let { parseDateInput(it) } ?: epochMillis(),
+            initialSelectedDateMillis = pickerMillisOf(fromText),
         )
         DatePickerDialog(
             onDismissRequest = { pickingFrom = false },
             confirmButton = {
                 TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { fromText = dateInputOf(it) }
+                    pickerState.selectedDateMillis?.let { fromText = dateInputOfPicker(it) }
                     pickingFrom = false
                 }) { Text(stringResource(Res.string.action_ok)) }
             },
@@ -713,13 +706,13 @@ private fun DeleteRangeDialog(state: JournalState, onDismiss: () -> Unit) {
 
     if (pickingTo) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = toText?.let { parseDateInput(it) } ?: epochMillis(),
+            initialSelectedDateMillis = pickerMillisOf(toText),
         )
         DatePickerDialog(
             onDismissRequest = { pickingTo = false },
             confirmButton = {
                 TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { toText = dateInputOf(it) }
+                    pickerState.selectedDateMillis?.let { toText = dateInputOfPicker(it) }
                     pickingTo = false
                 }) { Text(stringResource(Res.string.action_ok)) }
             },
@@ -801,13 +794,13 @@ private fun DateRangeFilterDialog(state: JournalState, onDismiss: () -> Unit) {
 
     if (pickingFrom) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = fromText?.let { parseDateInput(it) } ?: epochMillis(),
+            initialSelectedDateMillis = pickerMillisOf(fromText),
         )
         DatePickerDialog(
             onDismissRequest = { pickingFrom = false },
             confirmButton = {
                 TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { fromText = dateInputOf(it) }
+                    pickerState.selectedDateMillis?.let { fromText = dateInputOfPicker(it) }
                     pickingFrom = false
                 }) { Text(stringResource(Res.string.action_ok)) }
             },
@@ -819,13 +812,13 @@ private fun DateRangeFilterDialog(state: JournalState, onDismiss: () -> Unit) {
 
     if (pickingTo) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = toText?.let { parseDateInput(it) } ?: epochMillis(),
+            initialSelectedDateMillis = pickerMillisOf(toText),
         )
         DatePickerDialog(
             onDismissRequest = { pickingTo = false },
             confirmButton = {
                 TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { toText = dateInputOf(it) }
+                    pickerState.selectedDateMillis?.let { toText = dateInputOfPicker(it) }
                     pickingTo = false
                 }) { Text(stringResource(Res.string.action_ok)) }
             },
@@ -912,18 +905,17 @@ internal class AccountIndex(
     val paths: Map<String, String>,
     val types: Map<String, AccountType>,
     val names: Map<String, String>,
-    val icons: Map<String, String?>,
-    val colors: Map<String, String?>,
+    val looks: Map<String, AccountLook>,
 )
 
 internal suspend fun accountIndex(accounts: AccountsRepository): AccountIndex {
-    val nodes = accounts.tree().flatMap { it.selfAndDescendants }
+    val tree = accounts.tree()
+    val nodes = tree.flatMap { it.selfAndDescendants }
     return AccountIndex(
         paths = nodes.associate { it.account.id to it.path.censored().displayPath() },
         types = nodes.associate { it.account.id to it.account.type },
         names = nodes.associate { it.account.id to it.account.name.censored() },
-        icons = nodes.associate { it.account.id to it.account.icon },
-        colors = nodes.associate { it.account.id to it.account.color },
+        looks = tree.accountLooks(),
     )
 }
 
@@ -946,6 +938,7 @@ internal data class TxnFlow(
 
 internal fun flowOf(tx: Transaction, types: Map<String, AccountType>): TxnFlow? {
     if (tx.postings.isEmpty()) return null
+    exchangeFlowOf(tx, types)?.let { return it }
     // A mixed-commodity transaction (an FX trade) is summarised by its biggest
     // leg; the editor is where the full split lives.
     val commodity = tx.postings
@@ -965,6 +958,35 @@ internal fun flowOf(tx: Transaction, types: Map<String, AccountType>): TxnFlow? 
         amountMinor = if (net != 0L) net else size,
         commodity = commodity,
         direction = if (net > 0L) 1 else if (net < 0L) -1 else 0,
+    )
+}
+
+/**
+ * A transaction that states a cost (a trade, dollars bought through MEP) read
+ * as money: the asset leg *without* a cost is the money that moved, the leg
+ * with the cost is what it bought. Without this, [flowOf]'s "biggest
+ * commodity" pick chose the instrument — a fund's units in minor units dwarf
+ * any amount — and a rescue of IOLPORA printed "FCI:IOLPORA 34.192.245,14".
+ *
+ * Neutral on purpose: buying or selling moves value between the user's own
+ * accounts, it doesn't make them richer or poorer (the gain, if any, is a
+ * separate posting the detail screen shows).
+ */
+private fun exchangeFlowOf(tx: Transaction, types: Map<String, AccountType>): TxnFlow? {
+    val priced = tx.postings.filter { it.costMinor != null }
+    if (priced.isEmpty()) return null
+    fun own(p: Posting) = types[p.accountId] == AccountType.Asset || types[p.accountId] == AccountType.Liability
+    val money = tx.postings.filter { it.costMinor == null && own(it) }
+        .maxByOrNull { abs(it.amountMinor) }
+        ?: return null
+    val bought = priced.maxByOrNull { abs(it.costMinor ?: 0L) }!!
+    val out = money.amountMinor < 0
+    return TxnFlow(
+        fromId = if (out) money.accountId else bought.accountId,
+        toId = if (out) bought.accountId else money.accountId,
+        amountMinor = abs(money.amountMinor),
+        commodity = money.commodity,
+        direction = 0,
     )
 }
 

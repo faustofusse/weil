@@ -213,12 +213,8 @@ class JournalState(
     var names by mutableStateOf<Map<String, String>>(emptyMap())
         private set
 
-    /** Leaf icon keys, same row. */
-    var icons by mutableStateOf<Map<String, String?>>(emptyMap())
-        private set
-
-    /** Leaf palette keys, same row. */
-    var colors by mutableStateOf<Map<String, String?>>(emptyMap())
+    /** Icon/palette keys with inheritance applied, same row. */
+    var looks by mutableStateOf<Map<String, AccountLook>>(emptyMap())
         private set
 
     /** Set once a real fetch (not a Home seed) has populated [items]. */
@@ -228,8 +224,21 @@ class JournalState(
     private var loadStarted = false
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
 
+    /**
+     * Scroll position, hoisted for the same reason as [filter]: the screen's
+     * own `rememberLazyListState` does not reliably survive the Movimientos
+     * tab leaving composition (a push onto the outer stack disposes the whole
+     * tab shell), so opening a transaction and coming back landed the list
+     * somewhere above where it was.
+     */
+    var scrollIndex = 0
+    var scrollOffset = 0
+
     init {
-        scope.launch { ledger.changes.collect { loadFirst() } }
+        // Reload as deep as the user has scrolled: a plain first page would
+        // cut the list short under someone past row [LIST_PAGE_SIZE], and the
+        // LazyColumn would clamp them upwards after every edit.
+        scope.launch { ledger.changes.collect { loadFirst(limit = maxOf(LIST_PAGE_SIZE, items.size)) } }
     }
 
     /** Home hands over its already-loaded recent transactions so the journal opens painted. */
@@ -304,7 +313,7 @@ class JournalState(
 
     /** Appends whatever comes after the seeded rows, using them as the starting cursor. */
     private suspend fun extendSeed() {
-        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons; colors = it.colors }
+        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; looks = it.looks }
         val after = cursor
         if (after != null) {
             val page = ledger.page(before = after, query = appliedQuery.ifEmpty { null }, fromDate = dateFrom, toDate = dateTo)
@@ -328,11 +337,11 @@ class JournalState(
         items = items + page.filter { seen.add(it.id) }
     }
 
-    private suspend fun loadFirst() {
-        val page = ledger.page(query = appliedQuery.ifEmpty { null }, fromDate = dateFrom, toDate = dateTo)
+    private suspend fun loadFirst(limit: Int = LIST_PAGE_SIZE) {
+        val page = ledger.page(limit = limit, query = appliedQuery.ifEmpty { null }, fromDate = dateFrom, toDate = dateTo)
         cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
-        hasMore = page.size == LIST_PAGE_SIZE
-        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons; colors = it.colors }
+        hasMore = page.size == limit
+        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; looks = it.looks }
         items = page
         loaded = true
         fetchedOwnPage = true
@@ -357,38 +366,17 @@ class JournalState(
      * payee, note, postings, provenance), so undo is a true inverse rather
      * than the single-row approximation the editor can get away with.
      */
-    suspend fun deleteSelected(): List<Backup> {
+    suspend fun deleteSelected(): List<TransactionBackup> {
         val ids = selection.toList()
         if (ids.isEmpty()) return emptyList()
-        val backup = ids.mapNotNull { ledger.get(it) }
-        val sources = ledger.sourcesFor(ids)
-        ledger.deleteAll(ids)
+        val backups = ledger.deleteWithBackup(ids)
         selection.clear()
         loadFirst()
-        return backup.map { Backup(it, sources[it.id].orEmpty().map { s -> TransactionSource(s.kind, s.ref, s.eventKey) }) }
+        return backups
     }
-
-    /** Everything needed to re-create a deleted transaction. */
-    data class Backup(val tx: Transaction, val sources: List<TransactionSource>)
 
     /** Re-creates rows deleted by [deleteSelected]; the Deshacer half. */
-    suspend fun restore(backups: List<Backup>) {
-        if (backups.isEmpty()) return
-        ledger.addAll(
-            backups.map { b ->
-                NewTransaction(
-                    date = b.tx.date,
-                    payee = b.tx.payee,
-                    note = b.tx.note,
-                    drafts = b.tx.postings.map { p ->
-                        DraftPosting(p.accountId, formatMinorUnits(p.amountMinor), p.commodity)
-                    },
-                    timeKnown = b.tx.timeKnown,
-                    sources = b.sources,
-                )
-            },
-        )
-    }
+    suspend fun restore(backups: List<TransactionBackup>) = ledger.restoreBackups(backups)
 
     private companion object {
         /**

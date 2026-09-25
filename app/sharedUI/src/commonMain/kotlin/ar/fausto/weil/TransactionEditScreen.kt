@@ -58,6 +58,7 @@ import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.account_add_title
 import weil.app.sharedui.generated.resources.account_commodity_mismatch
+import weil.app.sharedui.generated.resources.editor_cost
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.action_delete
 import weil.app.sharedui.generated.resources.action_ok
@@ -100,9 +101,23 @@ fun TransactionEditScreen(
     accounts: AccountsRepository,
     editId: String?,
     prefillAccountId: String? = null,
+    /** Commodity descriptions: an instrument's amount is typed at its own scale. */
+    valuation: Valuation = Valuation(),
     onSaved: () -> Unit,
     onNavigateBack: () -> Unit,
 ) {
+    fun scaleOf(commodity: String): Int = valuation.commodities[commodity]?.scale ?: 2
+
+    /** The row in another commodity, its text re-cut to that commodity's decimals. */
+    fun DraftPosting.inCommodity(ccy: String): DraftPosting {
+        val newScale = scaleOf(ccy)
+        return copy(
+            commodity = ccy,
+            scale = newScale,
+            amountText = sanitizeAmountInput(amountText, maxDecimals = newScale),
+        )
+    }
+
     var dateText by remember { mutableStateOf(todayInput()) }
     var timeText by remember { mutableStateOf(nowTimeInput()) }
     var payee by remember { mutableStateOf("") }
@@ -132,6 +147,22 @@ fun TransactionEditScreen(
 
     LaunchedEffect(Unit) { reloadTree() }
 
+    // Commodity descriptions can land after the transaction did (a cold
+    // start straight into the editor): re-cut every row whose text is at the
+    // wrong scale. Parse at the old scale, write at the new one — the value
+    // never changes, only how many decimals it is shown with.
+    LaunchedEffect(valuation) {
+        drafts = drafts.map { draft ->
+            val scale = scaleOf(draft.commodity)
+            if (draft.scale == scale) return@map draft
+            val minor = Money.parse(draft.amountText, draft.commodity, draft.scale)?.minorUnits
+            draft.copy(
+                scale = scale,
+                amountText = minor?.let { rawAmountText(it, scale) } ?: sanitizeAmountInput(draft.amountText, maxDecimals = scale),
+            )
+        }
+    }
+
     LaunchedEffect(editId) {
         if (editId != null) {
             try {
@@ -143,8 +174,13 @@ fun TransactionEditScreen(
                 timeText = if (stored.timeKnown) timeInputOf(stored.date) else ""
                 payee = stored.payee
                 note = stored.note.orEmpty()
+                // toDraft carries the posting's cost (a buy's price): an edit
+                // that only touched the payee must save the same postings.
+                // At the commodity's own scale: a buy of 0,4939 TTWO reads
+                // "0,4939", not the "49,39" of its minor units at 2 decimals.
                 drafts = stored.postings.map {
-                    DraftPosting(it.accountId, rawAmountText(it.amountMinor), it.commodity)
+                    val scale = scaleOf(it.commodity)
+                    it.toDraft(scale).copy(amountText = rawAmountText(it.amountMinor, scale))
                 }
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -158,9 +194,7 @@ fun TransactionEditScreen(
         scope.launch {
             try {
                 val stored = ledger.get(id)
-                val draftsBackup = stored?.postings?.map {
-                    DraftPosting(it.accountId, formatMinorUnits(it.amountMinor), it.commodity)
-                }.orEmpty()
+                val draftsBackup = stored?.postings?.map { it.toDraft() }.orEmpty()
                 ledger.delete(id)
                 onSaved()
                 Feedback.undoable(deletedMessage, undoLabel) {
@@ -255,8 +289,8 @@ fun TransactionEditScreen(
                             Text(
                                 stringResource(
                                     Res.string.editor_off_by,
-                                    commodity,
-                                    formatMinorUnits(residual),
+                                    valuation.commodities[commodity]?.symbol ?: commodity,
+                                    formatQuantity(residual, scaleOf(commodity)),
                                 ),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.error,
@@ -269,7 +303,7 @@ fun TransactionEditScreen(
                     // a multi-commodity entry is the one case where "it adds
                     // up" isn't obvious by looking.
                     val balancedLine = residuals.keys.map {
-                        stringResource(Res.string.editor_balanced, it)
+                        stringResource(Res.string.editor_balanced, valuation.commodities[it]?.symbol ?: it)
                     }.joinToString("  ")
                     Text(
                         balancedLine,
@@ -380,12 +414,13 @@ fun TransactionEditScreen(
                 PostingSlab(
                     draft = draft,
                     path = paths[draft.accountId],
+                    instrument = valuation.commodities[draft.commodity],
                     accountCommodity = accountTree.flatMap { it.selfAndDescendants }
                         .firstOrNull { it.account.id == draft.accountId }
                         ?.account?.commodity,
                     onAccount = { pickingFor = index },
                     onAmount = { amount -> drafts = drafts.copyAt(index) { copy(amountText = amount) } },
-                    onCommodity = { ccy -> drafts = drafts.copyAt(index) { copy(commodity = ccy) } },
+                    onCommodity = { ccy -> drafts = drafts.copyAt(index) { inCommodity(ccy) } },
                     onRemove = { if (drafts.size > 2) drafts = drafts.minusAt(index) },
                     canRemove = drafts.size > 2,
                 )
@@ -395,14 +430,14 @@ fun TransactionEditScreen(
 
     if (pickingDate) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = parseDateInput(dateText) ?: epochMillis(),
+            initialSelectedDateMillis = pickerMillisOf(dateText),
         )
         DatePickerDialog(
             onDismissRequest = { pickingDate = false },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        pickerState.selectedDateMillis?.let { dateText = dateInputOf(it) }
+                        pickerState.selectedDateMillis?.let { dateText = dateInputOfPicker(it) }
                         pickingDate = false
                     },
                 ) { Text(stringResource(Res.string.action_ok)) }
@@ -469,10 +504,8 @@ fun TransactionEditScreen(
                 // An account that declares a currency sets the row's; one
                 // that doesn't leaves whatever was there, so picking an
                 // account never silently rewrites an amount's meaning.
-                copy(
-                    accountId = picked.account.id,
-                    commodity = picked.account.commodity ?: commodity,
-                )
+                copy(accountId = picked.account.id)
+                    .inCommodity(picked.account.commodity ?: commodity)
             }
             pickingFor = null
         }
@@ -582,6 +615,8 @@ private fun SlabValue(
 private fun PostingSlab(
     draft: DraftPosting,
     path: String?,
+    /** Set when the row holds an instrument: a quantity, not money. */
+    instrument: InstrumentInfo?,
     /**
      * The currency the row's account declares, if any. Only ever a warning:
      * an FX transfer is legitimately one transaction touching two
@@ -623,7 +658,7 @@ private fun PostingSlab(
             }
             TextField(
                 value = draft.amountText,
-                onValueChange = { onAmount(sanitizeAmountInput(it)) },
+                onValueChange = { onAmount(sanitizeAmountInput(it, maxDecimals = draft.scale)) },
                 placeholder = {
                     Text(
                         // Blank is the "auto" leg, so the placeholder says so
@@ -635,7 +670,12 @@ private fun PostingSlab(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 },
-                visualTransformation = AmountWithSymbol,
+                // A quantity gets its ticker under the row, not a "$" glued to it.
+                visualTransformation = if (instrument != null) {
+                    AmountVisualTransformation
+                } else {
+                    remember(draft.commodity) { amountWithSymbol(currencySymbol(draft.commodity)) }
+                },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.titleMedium.copy(textAlign = TextAlign.End),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -685,6 +725,28 @@ private fun PostingSlab(
                     modifier = Modifier
                         .fadeOnPress { onCommodity(chip) }
                         .padding(horizontal = 6.dp, vertical = 4.dp),
+                )
+            }
+            // An instrument isn't one of the quick picks; it shows as the
+            // selected code so the row still says what it holds.
+            if (QUICK_COMMODITIES.none { it.equals(draft.commodity, ignoreCase = true) }) {
+                Text(
+                    instrument?.symbol ?: draft.commodity,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                )
+            }
+            // The price of a buy or sale travels with the row (toDraft); it is
+            // shown so an edit to the quantity doesn't silently mismatch it.
+            val cost = draft.costCommodity?.let { ccy -> Money.parse(draft.costText, ccy) }
+            if (cost != null) {
+                Text(
+                    stringResource(Res.string.editor_cost, formatMoney(cost.minorUnits, cost.commodity, signed = true)),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
                 )
             }
             if (mismatch) {

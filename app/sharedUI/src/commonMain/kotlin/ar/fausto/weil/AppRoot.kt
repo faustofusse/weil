@@ -65,6 +65,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.broker_adjust_payee
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.app_title
 import weil.app.sharedui.generated.resources.login_approved
@@ -190,7 +191,7 @@ fun RootScreen(
                     // animates that replace with the shared transition specs.
                     val loggedIn = authState is AuthState.LoggedIn
                     val ledgerState = remember(loggedIn) {
-                        LedgerState(graph.accounts, graph.ledger, graph.settings)
+                        LedgerState(graph.accounts, graph.ledger, graph.settings, graph.brokers)
                     }
                     // Hoisted above the nav host, same reasoning as [ledgerState]: the
                     // journal keeps its loaded page across a visit to a transaction and
@@ -237,14 +238,14 @@ fun RootScreen(
                                 AppTab.Home -> HomeRoute
                                 AppTab.Movements -> JournalRoute
                                 AppTab.Categories -> CategoriesRoute
-                                AppTab.Profile -> ProfileRoute
+                                AppTab.Investments -> InvestmentsRoute
                             },
                         )
                     }
                     val currentTab = when (tabStack.lastOrNull()) {
                         JournalRoute -> AppTab.Movements
                         CategoriesRoute -> AppTab.Categories
-                        ProfileRoute -> AppTab.Profile
+                        InvestmentsRoute -> AppTab.Investments
                         else -> AppTab.Home
                     }
 
@@ -280,7 +281,7 @@ fun RootScreen(
                             AppTab.Home -> HomeRoute
                             AppTab.Movements -> JournalRoute
                             AppTab.Categories -> CategoriesRoute
-                            AppTab.Profile -> ProfileRoute
+                            AppTab.Investments -> InvestmentsRoute
                         }
                         if (tabStack.lastOrNull() == route) return
                         tabStack.clear()
@@ -374,11 +375,12 @@ fun RootScreen(
                         onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                         onNavigateToAddAccount = { navigate(AccountAddRoute(AccountType.Asset)) },
+                        onNavigateToProfile = { navigate(ProfileRoute) },
                         bottomBar = bar,
                     )
                     }
 
-                    // Journal, Categorías and Profile are each both a tab and
+                    // Journal and Categorías are each both a tab and
                     // a pushable destination, so each is written once here:
                     // `bar` is the shell's reserved strip when it renders as
                     // a tab and null when pushed (which is what makes the
@@ -399,19 +401,6 @@ fun RootScreen(
                             // chips + movements), not the asset register.
                             onNavigateToAccount = { navigate(CategoryDetailRoute(it)) },
                             bottomBar = bar,
-                        )
-                    }
-                    val profileScreen: @Composable ((@Composable () -> Unit)?) -> Unit = { bar ->
-                        ProfileScreen(
-                            chain = graph.chain,
-                            chainState = chainState,
-                            whatsappState = whatsappState,
-                            embeddings = graph.embeddings,
-                            userState = userState,
-                            settings = graph.settings,
-                            onNavigateBack = { pop() },
-                            bottomBar = bar,
-                            onSignOut = { scope.launch { graph.auth.signOut() } },
                         )
                     }
 
@@ -459,7 +448,14 @@ fun RootScreen(
                                         entry<HomeRoute> { homeTab(bar) }
                                         entry<JournalRoute> { journalScreen(bar) }
                                         entry<CategoriesRoute> { categoriesScreen(bar) }
-                                        entry<ProfileRoute> { profileScreen(bar) }
+                                        entry<InvestmentsRoute> {
+                                            InvestmentsScreen(
+                                                iol = graph.iol,
+                                                brokers = graph.brokers,
+                                                onReviewImport = { navigate(it) },
+                                                bottomBar = bar,
+                                            )
+                                        }
                                     }
                                 }
                                 entry<CategoriesRoute> { categoriesScreen {} }
@@ -500,16 +496,24 @@ fun RootScreen(
                                 }
                                 entry<JournalRoute> { journalScreen(null) }
                                 entry<TransactionNewRoute> { route ->
+                                    // The editor types an instrument at its scale, which
+                                    // comes with the valuation; a cold start straight
+                                    // here (no Home underneath) hasn't loaded it yet.
+                                    LaunchedEffect(Unit) { if (!ledgerState.loaded) ledgerState.refresh() }
                                     TransactionEditScreen(
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
                                         editId = null,
                                         prefillAccountId = route.accountId,
+                                        valuation = ledgerState.valuation,
                                         onSaved = { pop() },
                                         onNavigateBack = { pop() },
                                     )
                                 }
                                 entry<TransactionDetailRoute> { route ->
+                                    // Quantities and the @ price need the valuation (scales);
+                                    // a cold start straight here hasn't loaded it.
+                                    LaunchedEffect(Unit) { if (!ledgerState.loaded) ledgerState.refresh() }
                                     TransactionDetailScreen(
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
@@ -521,6 +525,7 @@ fun RootScreen(
                                         onOpenEmail = { navigate(EmailDetailRoute(it)) },
                                         onOpenDocument = { navigate(DocumentRoute(it)) },
                                         onTrySuggestion = { navigate(TransactionSimilarRoute(route.id)) },
+                                        valuation = ledgerState.valuation,
                                     )
                                 }
                                 entry<TransactionSimilarRoute> { route ->
@@ -542,10 +547,15 @@ fun RootScreen(
                                     )
                                 }
                                 entry<TransactionEditRoute> { route ->
+                                    // The editor types an instrument at its scale, which
+                                    // comes with the valuation; a cold start straight
+                                    // here (no Home underneath) hasn't loaded it yet.
+                                    LaunchedEffect(Unit) { if (!ledgerState.loaded) ledgerState.refresh() }
                                     TransactionEditScreen(
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
                                         editId = route.id,
+                                        valuation = ledgerState.valuation,
                                         onSaved = { pop() },
                                         onNavigateBack = { pop() },
                                     )
@@ -654,7 +664,40 @@ fun RootScreen(
                                         onNavigateBack = { pop() },
                                     )
                                 }
-                                entry<ProfileRoute> { profileScreen(null) }
+                                // Pushed from the account icon in Inicio's top
+                                // bar; no longer a tab, so it always wears the
+                                // back arrow (bottomBar = null).
+                                entry<BrokerImportRoute> { route ->
+                                    val adjustPayee = stringResource(Res.string.broker_adjust_payee, route.brokerName)
+                                    BrokerImportScreen(
+                                        route = route,
+                                        ledger = graph.ledger,
+                                        apply = { plan ->
+                                            when (route.provider) {
+                                                IOL_PROVIDER -> graph.iol.apply(plan)
+                                                else -> graph.brokers.apply(plan)
+                                            }.also { ledgerState.refresh() }
+                                        },
+                                        adjust = { difference ->
+                                            graph.brokers.adjustOpening(route.accounts, difference, adjustPayee)
+                                                .also { ledgerState.refresh() }
+                                        },
+                                        onDone = { pop() },
+                                        onNavigateBack = { pop() },
+                                    )
+                                }
+                                entry<ProfileRoute> {
+                                    ProfileScreen(
+                                        chain = graph.chain,
+                                        chainState = chainState,
+                                        whatsappState = whatsappState,
+                                        embeddings = graph.embeddings,
+                                        userState = userState,
+                                        settings = graph.settings,
+                                        onNavigateBack = { pop() },
+                                        onSignOut = { scope.launch { graph.auth.signOut() } },
+                                    )
+                                }
                             },
                             // Every move on *this* stack is a step into
                             // something; sideways moves happen a level down,

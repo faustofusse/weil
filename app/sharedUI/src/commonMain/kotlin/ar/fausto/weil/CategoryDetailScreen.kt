@@ -95,12 +95,14 @@ fun CategoryDetailScreen(
     var editingChild by remember { mutableStateOf<Account?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val selection = remember(categoryId) { TransactionSelection() }
+    var confirmDelete by remember { mutableStateOf(false) }
+    SelectionBackHandler(selection)
 
     val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
     val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
     val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
-    val icons = remember(nodes) { nodes.associate { it.account.id to it.account.icon } }
-    val colors = remember(nodes) { nodes.associate { it.account.id to it.account.color } }
+    val looks = ledgerState.looks
 
     // A chip means "only this child"; no chip means the whole subtree, which
     // is what the parent's own total already claims.
@@ -113,6 +115,7 @@ fun CategoryDetailScreen(
         items = page
         hasMore = page.size >= LIST_PAGE_SIZE
         loaded = true
+        selection.retain(page.mapTo(HashSet()) { it.id })
     }
 
     LaunchedEffect(selectedChild, ledgerState.tree) { load() }
@@ -147,10 +150,13 @@ fun CategoryDetailScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
+            val selecting = selection.isSelecting
             TopAppBar(
-                title = { Text(node?.account?.name?.censored().orEmpty()) },
+                title = {
+                    Text(if (selecting) selectionTitle(selection) else node?.account?.name?.censored().orEmpty())
+                },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = { if (selecting) selection.clear() else onNavigateBack() }) {
                         Icon(
                             Icons.Filled.ArrowBack,
                             contentDescription = stringResource(Res.string.action_back),
@@ -158,7 +164,9 @@ fun CategoryDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { editing = true }) {
+                    if (selecting) {
+                        DeleteSelectionAction(selection.size) { confirmDelete = true }
+                    } else IconButton(onClick = { editing = true }) {
                         Icon(
                             Icons.Filled.Edit,
                             contentDescription = stringResource(Res.string.category_edit_title),
@@ -186,7 +194,7 @@ fun CategoryDetailScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     pair.forEach { child ->
                         val selected = selectedChild == child.account.id
-                        val childTotal = ledgerState.totals[child.account.id].orEmpty()
+                        val childTotal = ledgerState.displayTotals[child.account.id].orEmpty()
                         AppListRow(
                             icon = null,
                             paint = accountPaint(null),
@@ -251,10 +259,13 @@ fun CategoryDetailScreen(
                     tx = tx,
                     names = names,
                     types = types,
-                    icons = icons,
-                    colors = colors,
+                    looks = looks,
                     hidden = false,
-                    onOpen = { onOpenTransaction(tx.id) },
+                    selected = tx.id in selection,
+                    onLongClick = { selection.toggle(tx.id) },
+                    onOpen = {
+                        if (selection.isSelecting) selection.toggle(tx.id) else onOpenTransaction(tx.id)
+                    },
                     // Every row here belongs to this category by definition.
                     plain = true,
                 )
@@ -263,6 +274,17 @@ fun CategoryDetailScreen(
                 item(key = "loading") { TransactionCardSkeleton() }
             }
         }
+    }
+
+    if (confirmDelete) {
+        DeleteSelectedDialog(
+            count = selection.size,
+            delete = {
+                ledger.deleteWithBackup(selection.selected).also { selection.clear() }
+            },
+            restore = { ledger.restoreBackups(it) },
+            onDismiss = { confirmDelete = false },
+        )
     }
 
     if (editing) {

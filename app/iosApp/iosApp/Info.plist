@@ -20,5 +20,42 @@
 		<string>mercadopago</string>
 		<string>meli</string>
 	</array>
+	<!-- weil://import is how the Share Extension wakes the app after
+	     parking a document in the App Group (SharedImportHandoff). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>ar.fausto.finance</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>weil</string>
+			</array>
+		</dict>
+	</array>
+	<!-- "Open in Weil" / AirDrop for the same types the importer takes. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Importable document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.adobe.pdf</string>
+				<string>public.jpeg</string>
+				<string>public.png</string>
+				<string>org.webmproject.webp</string>
+				<string>public.heic</string>
+				<string>public.heif</string>
+				<string>public.comma-separated-values-text</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
 </dict>
 </plist>

@@ -74,6 +74,7 @@ import weil.app.sharedui.generated.resources.import_menu
 import weil.app.sharedui.generated.resources.import_no_picker
 import weil.app.sharedui.generated.resources.import_unsupported
 import weil.app.sharedui.generated.resources.more_options
+import weil.app.sharedui.generated.resources.nav_profile
 import weil.app.sharedui.generated.resources.new_transaction
 import weil.app.sharedui.generated.resources.open_account_tree
 import weil.app.sharedui.generated.resources.open_emails
@@ -105,6 +106,8 @@ fun HomeDashboardScreen(
     onNavigateToAccount: (id: String) -> Unit,
     onOpenTransaction: (id: String) -> Unit,
     onNavigateToAddAccount: () -> Unit,
+    /** The account icon in the top bar: the profile left the bottom bar. */
+    onNavigateToProfile: () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
 ) {
     if (!ledgerState.loaded) {
@@ -167,6 +170,16 @@ fun HomeDashboardScreen(
                     stringResource(Res.string.home_greeting_named, userState.name!!)
                 },
                 actions = {
+                    // The profile's only door since it gave its bar slot to
+                    // Inversiones. Here and not on every tab: it sits beside
+                    // the greeting that already names the user, and the other
+                    // tabs' headers carry their own actions.
+                    IconButton(onClick = onNavigateToProfile) {
+                        Icon(
+                            Icons.Filled.AccountCircle,
+                            contentDescription = stringResource(Res.string.nav_profile),
+                        )
+                    }
                     HomeOverflow(
                         onNavigateToNotifications = onNavigateToNotifications,
                         onNavigateToEmails = onNavigateToEmails,
@@ -192,8 +205,7 @@ fun HomeDashboardScreen(
             val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
             val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
             val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
-            val icons = remember(nodes) { nodes.associate { it.account.id to it.account.icon } }
-            val colors = remember(nodes) { nodes.associate { it.account.id to it.account.color } }
+            val looks = ledgerState.looks
             // Computed in composition, not inside the LazyListScope builder
             // (which isn't composable and would redo the work on every pass).
             // Four at most: Home is a glance, and a fifth tile pushes the
@@ -239,7 +251,7 @@ fun HomeDashboardScreen(
                             pair.forEachIndexed { column, node ->
                                 AccountTile(
                                     node = node,
-                                    totals = ledgerState.totals[node.account.id].orEmpty(),
+                                    totals = ledgerState.displayTotals[node.account.id].orEmpty(),
                                     hidden = ledgerState.amountsHidden,
                                     // Checkerboard of the two slates: a grid
                                     // of four identical dark rectangles reads
@@ -281,8 +293,7 @@ fun HomeDashboardScreen(
                         tx = tx,
                         names = names,
                         types = types,
-                        icons = icons,
-                        colors = colors,
+                        looks = looks,
                         hidden = ledgerState.amountsHidden,
                         onOpen = { onOpenTransaction(tx.id) },
                     )
@@ -365,8 +376,8 @@ private fun MenuRow(
  */
 @Composable
 private fun BalanceHero(state: LedgerState) {
-    val lines = remember(state.tree, state.leafTotals) {
-        LedgerState.netWorth(state.tree, state.leafTotals).entries.sortedByDescending { abs(it.value) }
+    val lines = remember(state.tree, state.displayLeafTotals) {
+        LedgerState.netWorth(state.tree, state.displayLeafTotals).entries.sortedByDescending { abs(it.value) }
     }
     val primary = lines.firstOrNull()
     val rest = lines.drop(1)

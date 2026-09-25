@@ -18,6 +18,12 @@ dependencies {
     // Dev-only fake Database backing the desktop UI harness (Phase 1). Not
     // used on Android/iOS — those talk to the real Turso sync engine.
     implementation("org.xerial:sqlite-jdbc:3.47.1.0")
+
+    // Repository round trips against the same SQLite FakeDatabase the shot
+    // harness uses: the SQL half of the ledger, which commonTest can't reach.
+    testImplementation(libs.kotlin.test)
+    // Decoding recorded broker responses (IolImportTest).
+    testImplementation(libs.kotlinx.serialization.json)
 }
 
 /**

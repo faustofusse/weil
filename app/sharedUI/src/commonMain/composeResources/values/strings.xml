@@ -42,6 +42,44 @@
     <string name="nav_movements">Movimientos</string>
     <string name="nav_categories">Categorías</string>
     <string name="nav_profile">Mi perfil</string>
+    <string name="nav_investments">Inversiones</string>
+
+    <!-- Investments tab -->
+    <string name="investments_title">Inversiones</string>
+    <string name="investments_empty_title">Conectá tus inversiones</string>
+    <string name="investments_empty_body">Traé tus compras, ventas, rentas y tenencias al mismo lugar que el resto de tu plata. Elegí de dónde:</string>
+    <string name="investments_source_iol">InvertirOnline</string>
+    <string name="investments_source_iol_hint">Con tu usuario y contraseña</string>
+    <string name="investments_source_ibkr">Interactive Brokers</string>
+    <string name="investments_source_ibkr_hint">Importando el reporte Flex de tu cuenta</string>
+    <string name="investments_source_statement">Resumen de otro banco</string>
+    <string name="investments_source_statement_hint">El PDF de tu cuenta comitente</string>
+    <string name="investments_soon">Pronto</string>
+    <string name="investments_soon_message">Todavía no está disponible</string>
+    <string name="iol_connect_title">Conectar InvertirOnline</string>
+    <string name="iol_connect_body">Tu usuario y contraseña se guardan sólo en este dispositivo y se usan únicamente para leer tu cuenta: Weil no puede operar en IOL.</string>
+    <string name="iol_username">Usuario</string>
+    <string name="iol_password">Contraseña</string>
+    <string name="iol_connect_action">Conectar</string>
+    <string name="iol_wrong_credentials">IOL rechazó el usuario o la contraseña</string>
+    <string name="iol_sync">Sincronizar</string>
+    <string name="iol_up_to_date">InvertirOnline está al día</string>
+    <string name="iol_disconnect_title">Desconectar InvertirOnline</string>
+    <string name="iol_disconnect_body">Se borra la contraseña de este dispositivo. Lo que ya importaste queda en tus cuentas.</string>
+    <string name="iol_disconnect_action">Desconectar</string>
+    <string name="broker_import_title">Importar de %1$s</string>
+    <string name="broker_import_count">%1$d movimientos para importar</string>
+    <string name="broker_import_nothing">No hay movimientos nuevos</string>
+    <string name="broker_import_action">Importar %1$d movimientos</string>
+    <string name="broker_import_done">%1$d movimientos importados</string>
+    <string name="broker_differences_title">Diferencias con el broker</string>
+    <string name="broker_differences_body">Después de importar, esto no coincidiría con lo que informa el broker. Suele ser un depósito o una extracción que el broker no reporta.</string>
+    <string name="broker_difference_row">%1$s: el broker dice %2$s, tus cuentas %3$s</string>
+    <string name="broker_issues_title">No se pudieron importar</string>
+    <string name="broker_adjust">Ajustar</string>
+    <string name="broker_adjusted">Saldo inicial ajustado</string>
+    <string name="broker_adjust_payee">Ajuste de saldo inicial %1$s</string>
+    <string name="broker_all_match">Todo coincide con el broker</string>
 
     <!-- Categories (expense accounts) -->
     <string name="categories_title">Categorías</string>
@@ -53,6 +91,9 @@
     <string name="category_parent_none">Ninguna</string>
     <string name="category_pick_parent">Elegir categoría padre</string>
     <string name="icon_pick_title">Elegir ícono</string>
+    <string name="icon_inherit">Heredar</string>
+    <string name="category_icon_inherited">Usa el ícono de %1$s</string>
+    <string name="category_icon_own">Ícono propio</string>
 
     <!-- Top bar destinations -->
     <string name="open_journal">Ver diario</string>
@@ -92,6 +133,7 @@
     <string name="account_unset_default">Quitar como predeterminada</string>
     <string name="account_default_hint">Se preselecciona en movimientos nuevos (%1$s)</string>
     <string name="account_default_badge">Cuenta predeterminada</string>
+    <string name="account_default_short">predeterminada</string>
     <string name="account_commodity_label">Moneda</string>
     <string name="account_commodity_any">Cualquiera</string>
     <string name="account_commodity_hint">Los movimientos nuevos usan esta moneda. Dos cuentas pueden llamarse igual si su moneda es distinta.</string>
@@ -135,6 +177,7 @@
     <string name="editor_remove_posting">Quitar movimiento</string>
     <string name="editor_balanced">%1$s ✓</string>
     <string name="editor_off_by">%1$s difiere por %2$s</string>
+    <string name="editor_cost">costo %1$s</string>
 
     <!-- Quick transaction -->
     <string name="journal_filter_all">Todos</string>
@@ -168,6 +211,7 @@
     <string name="picker_create">Nueva categoría</string>
 
     <!-- Journal -->
+    <string name="journal_scroll_top">Volver arriba</string>
     <string name="journal_title">Transacciones</string>
     <string name="journal_empty">Todavía no hay transacciones</string>
     <string name="journal_more_postings">+%1$d más</string>
@@ -226,7 +270,6 @@
     <string name="login_qr_not_invite_but_request">Ese código QR es una solicitud de vinculación, no una invitación</string>
 
     <!-- Profile -->
-    <string name="profile_title">Perfil</string>
     <string name="profile_sign_out">Cerrar sesión</string>
     <string name="profile_sync_chain_title">Cadena de sincronización</string>
     <string name="profile_sync_chain_subtitle">Tus dispositivos comparten una cuenta y su base de datos. Cada dispositivo inicia sesión con su propio passkey.</string>
@@ -376,6 +419,7 @@
     <string name="txn_source_whatsapp">WhatsApp</string>
     <string name="txn_source_qr">QR escaneado</string>
     <string name="txn_source_manual">Carga manual</string>
+    <string name="txn_source_broker">Broker</string>
 
     <!-- Document import -->
     <string name="import_menu">Importar documento</string>

@@ -63,6 +63,10 @@ kotlin {
             implementation(libs.ktor.clientCore)
             implementation(libs.ktor.clientContentNegotiation)
             implementation(libs.ktor.serializationKotlinxJson)
+            // Arbitrary-precision integers for Decimal (see Decimal.kt): only
+            // its BigInteger is used, never its BigDecimal (open rounding bugs,
+            // plans/inversiones-brokers.md, question 2).
+            implementation(libs.bignum)
         }
         androidMain.dependencies {
             // JNA on Android: the "jna" artifact ships both a desktop .jar and

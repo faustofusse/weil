@@ -27,7 +27,15 @@ enum class EventSource(val db: String) {
      * QR doesn't carry one), so it is the wallet's push that completes it.
      */
     Qr("qr"),
-    Manual("manual");
+    Manual("manual"),
+
+    /**
+     * A broker's own record of the movement (plans/inversiones-brokers.md).
+     * One kind for every broker: the ref carries the provider as a prefix
+     * ("iol:185183784", "ibkr:42307900416", see brokerRef), so adding a broker
+     * never adds an enum entry or a label.
+     */
+    Broker("broker");
 
     companion object {
         fun fromDb(value: String?): EventSource? =

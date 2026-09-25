@@ -22,6 +22,8 @@ class LedgerState(
     val accounts: AccountsRepository,
     val ledger: TransactionsRepository,
     val settings: SettingsRepository,
+    /** Commodities and prices for [displayTotals]; null prints raw balances. */
+    private val brokers: BrokersRepository? = null,
 ) {
     /**
      * Per-type default account ids as stored (not resolved): the account a
@@ -41,6 +43,9 @@ class LedgerState(
     val homeAccounts: List<AccountNode> by derivedStateOf {
         applyHomeOrder(tree.filter { it.account.type == AccountType.Asset }, homeOrder)
     }
+    /** Icon/color per account, subaccounts inheriting their parent's; see [accountLooks]. */
+    val looks: Map<String, AccountLook> by derivedStateOf { tree.accountLooks() }
+
     /** Survives navigation because the state lives above the nav host. */
     var expandedIds by mutableStateOf<Set<String>>(emptySet())
         private set
@@ -112,6 +117,26 @@ class LedgerState(
         rollupSubtrees(tree, leafTotals)
     }
 
+    /** Prices and commodity descriptions, reloaded with every [refresh]. */
+    var valuation by mutableStateOf(Valuation())
+        private set
+
+    /**
+     * [leafTotals] as money: instruments valued at their latest price into
+     * their quote currency, zero lines dropped (see [Valuation.value]). What
+     * every balance on screen prints; the raw per-commodity maps stay for the
+     * positions view, which is the one place that wants quantities.
+     */
+    val displayLeafTotals: Map<String, Map<String, Long>> by derivedStateOf {
+        val v = valuation
+        leafTotals.mapValues { (_, byCommodity) -> v.value(byCommodity) }
+    }
+
+    /** Subtree rollups of [displayLeafTotals]; valuing is linear, so rollup-then-value is the same. */
+    val displayTotals: Map<String, Map<String, Long>> by derivedStateOf {
+        rollupSubtrees(tree, displayLeafTotals)
+    }
+
     /**
      * Latest [RECENT_COUNT] transactions for Home's "recent" section. Lives
      * here, not in a screen-local `remember`, so it survives navigating away
@@ -176,6 +201,7 @@ class LedgerState(
         val leafs = ledger.leafBalances()
         tree = newTree
         storedLeafTotals = leafs
+        brokers?.let { b -> runCatching { b.valuation() }.getOrNull()?.let { valuation = it } }
         defaultAccounts = settings.defaultAccounts()
         reloadHomeOrder()
         storedRecent = ledger.page(limit = RECENT_COUNT)
@@ -260,11 +286,11 @@ class LedgerState(
     fun rename(id: String, name: String) =
         mutate { accounts.rename(id, name) }
 
-    /** Icon key from the [AccountIcons] catalog; null clears it back to the type default. */
+    /** Icon key from the [AccountIcons] catalog; null inherits the parent's (the type default for a root). */
     fun setIcon(id: String, icon: String?) =
         mutate { accounts.setIcon(id, icon) }
 
-    /** Palette key from [AccountColor]; null paints the account neutral. */
+    /** Palette key from [AccountColor]; null inherits the parent's (neutral/derived for a root). */
     fun setColor(id: String, color: String?) =
         mutate { accounts.setColor(id, color) }
 

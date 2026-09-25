@@ -1,0 +1,1991 @@
+[
+ {
+  "numero": 140630990,
+  "mercado": "bcba",
+  "simbolo": "S29G5",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-08-18T15:47:16.18",
+  "validez": "2025-08-18T17:00:00",
+  "fechaOperado": "2025-08-18T15:47:21",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 640000 T\u00edtulo/s",
+    "fecha": "2025-08-18T15:47:21"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-18T15:47:22.17"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 9.95,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 1990.94,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-18T15:47:21",
+    "cantidad": 640000.0,
+    "precio": 155.542
+   }
+  ],
+  "precio": 156.25,
+  "cantidad": 640000.0,
+  "monto": 1000000.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 995468.8,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 2000.89,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 140633678,
+  "mercado": "bcba",
+  "simbolo": "AL30",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-08-18T15:56:45.453",
+  "validez": "2025-08-18T00:00:00",
+  "fechaOperado": "2025-08-18T15:56:49",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 626 T\u00edtulo/s",
+    "fecha": "2025-08-18T15:56:49"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-18T15:56:50.613"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 49.53,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 2476.46,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-18T15:56:49",
+    "cantidad": 626.0,
+    "precio": 79120.0
+   }
+  ],
+  "precio": 79350.0,
+  "cantidad": 626.0,
+  "monto": 497450.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 495291.2,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 2525.99,
+  "arancelesUSD": 0.0,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 140633706,
+  "mercado": "bcba",
+  "simbolo": "AL30D",
+  "moneda": "dolar_Estadounidense",
+  "tipo": "venta",
+  "fechaAlta": "2025-08-18T15:56:50.573",
+  "validez": "2025-08-18T00:00:00",
+  "fechaOperado": "2025-08-18T15:56:52",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 626 T\u00edtulo/s",
+    "fecha": "2025-08-18T15:56:52"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-18T15:56:53.643"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 50.02,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 1.91,
+    "iva": 0.0,
+    "moneda": "DOLARES_USA"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-18T15:56:52",
+    "cantidad": 626.0,
+    "precio": 61.0
+   }
+  ],
+  "precio": 60.81,
+  "cantidad": 626.0,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 381.86,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 50.02,
+  "arancelesUSD": 1.91,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 140641664,
+  "mercado": "bcba",
+  "simbolo": "BABA",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-08-18T16:01:13.117",
+  "validez": "2025-08-18T16:01:00",
+  "fechaOperado": "2025-08-18T16:01:19",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 3 T\u00edtulo/s",
+    "fecha": "2025-08-18T16:01:19"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-18T16:01:21.253"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 36.86,
+    "iva": 7.74,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 263.25,
+    "iva": 55.28,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-18T16:01:19",
+    "cantidad": 3.0,
+    "precio": 17550.0
+   }
+  ],
+  "precio": 17800.0,
+  "cantidad": 3.0,
+  "monto": 55282.5,
+  "fondosParaOperacion": null,
+  "montoOperacion": 52650.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 363.13,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 140641669,
+  "mercado": "bcba",
+  "simbolo": "NIO",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-08-18T16:01:13.147",
+  "validez": "2025-08-18T16:01:00",
+  "fechaOperado": "2025-08-18T16:01:18",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 9 T\u00edtulo/s",
+    "fecha": "2025-08-18T16:01:18"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-18T16:01:19.32"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 9.99,
+    "iva": 2.1,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 71.33,
+    "iva": 14.98,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-18T16:01:18",
+    "cantidad": 9.0,
+    "precio": 1585.0
+   }
+  ],
+  "precio": 1600.0,
+  "cantidad": 9.0,
+  "monto": 14978.25,
+  "fondosParaOperacion": null,
+  "montoOperacion": 14265.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 98.4,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 140641873,
+  "mercado": "bcba",
+  "simbolo": "BIDU",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-08-18T16:01:14.97",
+  "validez": "2025-08-18T16:01:00",
+  "fechaOperado": "2025-08-18T16:01:18",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 2 T\u00edtulo/s",
+    "fecha": "2025-08-18T16:01:18"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-18T16:01:20.02"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 15.02,
+    "iva": 3.15,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 107.25,
+    "iva": 22.52,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-18T16:01:18",
+    "cantidad": 2.0,
+    "precio": 10725.0
+   }
+  ],
+  "precio": 10825.0,
+  "cantidad": 2.0,
+  "monto": 22417.5,
+  "fondosParaOperacion": null,
+  "montoOperacion": 21450.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 147.94,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 140641929,
+  "mercado": "bcba",
+  "simbolo": "JD",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-08-18T16:01:15.413",
+  "validez": "2025-08-18T16:01:00",
+  "fechaOperado": "2025-08-18T16:01:18",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 1 T\u00edtulo/s",
+    "fecha": "2025-08-18T16:01:18"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-18T16:01:19.53"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 7.28,
+    "iva": 1.53,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 52.0,
+    "iva": 10.92,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-18T16:01:18",
+    "cantidad": 1.0,
+    "precio": 10400.0
+   }
+  ],
+  "precio": 10500.0,
+  "cantidad": 1.0,
+  "monto": 10867.5,
+  "fondosParaOperacion": null,
+  "montoOperacion": 10400.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 71.73,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 140653539,
+  "mercado": "bcba",
+  "simbolo": "IOLPORA",
+  "moneda": "peso_Argentino",
+  "tipo": "suscripcionFCI",
+  "fechaAlta": "2025-08-18T16:04:14.587",
+  "validez": null,
+  "fechaOperado": "2025-08-19T20:57:00",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 148486 T\u00edtulo/s",
+    "fecha": "2025-08-19T20:57:00"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-19T20:57:51.723"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 0.0,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-19T20:57:00",
+    "cantidad": 148486.0283,
+    "precio": 1.04533
+   }
+  ],
+  "precio": null,
+  "cantidad": null,
+  "monto": 155216.9,
+  "fondosParaOperacion": null,
+  "montoOperacion": 155216.9,
+  "modalidad": "precio_Limite",
+  "arancelesARS": 0.0,
+  "arancelesUSD": 0.0,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 140680375,
+  "mercado": "bcba",
+  "simbolo": "IOLDOLD",
+  "moneda": "dolar_Estadounidense",
+  "tipo": "suscripcionFCI",
+  "fechaAlta": "2025-08-18T16:15:38.29",
+  "validez": null,
+  "fechaOperado": "2025-08-19T20:57:00",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 366,419 T\u00edtulo/s",
+    "fecha": "2025-08-19T20:57:00"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-19T20:57:12.9"
+   }
+  ],
+  "aranceles": [],
+  "operaciones": [
+   {
+    "fecha": "2025-08-19T20:57:00",
+    "cantidad": 366.4188,
+    "precio": 1.036928
+   }
+  ],
+  "precio": null,
+  "cantidad": null,
+  "monto": 379.95,
+  "fondosParaOperacion": null,
+  "montoOperacion": 379.95,
+  "modalidad": "precio_Limite",
+  "arancelesARS": 0.0,
+  "arancelesUSD": 0.0,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 140971514,
+  "mercado": "bcba",
+  "simbolo": "MGC9O",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-08-20T12:13:56.65",
+  "validez": "2025-08-20T17:00:00",
+  "fechaOperado": "2025-08-20T12:14:01",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 213 T\u00edtulo/s",
+    "fecha": "2025-08-20T12:14:01"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-20T12:14:03.047"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 19.68,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 983.95,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-20T12:14:01",
+    "cantidad": 213.0,
+    "precio": 92390.0
+   }
+  ],
+  "precio": 93490.0,
+  "cantidad": 213.0,
+  "monto": 200000.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 196790.7,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 1003.63,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 140974285,
+  "mercado": "bcba",
+  "simbolo": "IOLPORA",
+  "moneda": "peso_Argentino",
+  "tipo": "suscripcionFCI",
+  "fechaAlta": "2025-08-20T12:23:05.067",
+  "validez": null,
+  "fechaOperado": "2025-08-20T20:10:00",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 193436 T\u00edtulo/s",
+    "fecha": "2025-08-20T20:10:00"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-20T20:10:19.33"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 0.0,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-20T20:10:00",
+    "cantidad": 193436.4231,
+    "precio": 1.045334
+   }
+  ],
+  "precio": null,
+  "cantidad": null,
+  "monto": 202205.67,
+  "fondosParaOperacion": null,
+  "montoOperacion": 202205.67,
+  "modalidad": "precio_Limite",
+  "arancelesARS": 0.0,
+  "arancelesUSD": 0.0,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 142133089,
+  "mercado": "bcba",
+  "simbolo": "S12S5",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-08-29T15:12:25.91",
+  "validez": "2025-08-29T17:00:00",
+  "fechaOperado": "2025-08-29T15:12:28",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 638095 T\u00edtulo/s",
+    "fecha": "2025-08-29T15:12:28"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-08-29T15:12:29.663"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 10.01,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 2001.07,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-08-29T15:12:28",
+    "cantidad": 638095.0,
+    "precio": 156.8
+   }
+  ],
+  "precio": 157.5,
+  "cantidad": 638095.0,
+  "monto": 1005000.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 1000532.96,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 2011.08,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 143066004,
+  "mercado": "bcba",
+  "simbolo": "AL30",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-09-06T19:25:33.61",
+  "validez": "2025-09-06T00:00:00",
+  "fechaOperado": "2025-09-08T12:04:20",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 8 T\u00edtulo/s",
+    "fecha": "2025-09-08T12:04:20"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-09-08T12:06:04.663"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 0.61,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 30.27,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-09-08T12:04:20",
+    "cantidad": 8.0,
+    "precio": 75670.0
+   }
+  ],
+  "precio": 75920.0,
+  "cantidad": 8.0,
+  "monto": 6701.61,
+  "fondosParaOperacion": null,
+  "montoOperacion": 6053.6,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 30.88,
+  "arancelesUSD": 0.0,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 143131907,
+  "mercado": "bcba",
+  "simbolo": "AL30C",
+  "moneda": "dolar_Estadounidense",
+  "tipo": "venta",
+  "fechaAlta": "2025-09-08T12:06:04.377",
+  "validez": "2025-09-08T00:00:00",
+  "fechaOperado": "2025-09-08T12:08:34",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 8 T\u00edtulo/s",
+    "fecha": "2025-09-08T12:08:34"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-09-08T12:08:55.18"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 0.57,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 0.02,
+    "iva": 0.0,
+    "moneda": "DOLARES_USA"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-09-08T12:08:34",
+    "cantidad": 8.0,
+    "precio": 52.05
+   }
+  ],
+  "precio": 51.5,
+  "cantidad": 8.0,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 4.16,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 0.57,
+  "arancelesUSD": 0.02,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 144911174,
+  "mercado": "bcba",
+  "simbolo": "BIDU",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-09-19T13:23:46.267",
+  "validez": "2025-09-19T13:23:00",
+  "fechaOperado": "2025-09-19T13:23:51",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 4 T\u00edtulo/s",
+    "fecha": "2025-09-19T13:23:51"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-09-19T13:23:52.777"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 54.35,
+    "iva": 11.41,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 388.2,
+    "iva": 81.52,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-09-19T13:23:51",
+    "cantidad": 4.0,
+    "precio": 19410.0
+   }
+  ],
+  "precio": 19670.0,
+  "cantidad": 4.0,
+  "monto": 81396.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 77640.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 535.48,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 144911175,
+  "mercado": "bcba",
+  "simbolo": "NIO",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-09-19T13:23:46.28",
+  "validez": "2025-09-19T13:23:00",
+  "fechaOperado": "2025-09-19T13:23:52",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 18 T\u00edtulo/s",
+    "fecha": "2025-09-19T13:23:52"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-09-19T13:23:52.95"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 36.16,
+    "iva": 7.59,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 258.3,
+    "iva": 54.24,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-09-19T13:23:52",
+    "cantidad": 18.0,
+    "precio": 2870.0
+   }
+  ],
+  "precio": 2910.0,
+  "cantidad": 18.0,
+  "monto": 54195.75,
+  "fondosParaOperacion": null,
+  "montoOperacion": 51660.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 356.29,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 144911176,
+  "mercado": "bcba",
+  "simbolo": "BABA",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-09-19T13:23:46.28",
+  "validez": "2025-09-19T13:23:00",
+  "fechaOperado": "2025-09-19T13:23:51",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 6 T\u00edtulo/s",
+    "fecha": "2025-09-19T13:23:51"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-09-19T13:23:52.87"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 120.12,
+    "iva": 25.23,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 858.0,
+    "iva": 180.18,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-09-19T13:23:51",
+    "cantidad": 6.0,
+    "precio": 28600.0
+   }
+  ],
+  "precio": 29020.0,
+  "cantidad": 6.0,
+  "monto": 180054.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 171600.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 1183.53,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 144911182,
+  "mercado": "bcba",
+  "simbolo": "JD",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-09-19T13:23:47.357",
+  "validez": "2025-09-19T13:23:00",
+  "fechaOperado": "2025-09-19T13:23:51",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 2 T\u00edtulo/s",
+    "fecha": "2025-09-19T13:23:51"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-09-19T13:23:52.647"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 19.47,
+    "iva": 4.09,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 139.1,
+    "iva": 29.21,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-09-19T13:23:51",
+    "cantidad": 2.0,
+    "precio": 13910.0
+   }
+  ],
+  "precio": 14100.0,
+  "cantidad": 2.0,
+  "monto": 29190.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 27820.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 191.87,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 144911804,
+  "mercado": "bcba",
+  "simbolo": "S30S5",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2025-09-19T13:25:38.053",
+  "validez": "2025-09-19T17:00:00",
+  "fechaOperado": "2025-09-19T13:25:42",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Operaci\u00f3n de 1,00313e+006 T\u00edtulo/s",
+    "fecha": "2025-09-19T13:25:42"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2025-09-19T13:25:43.667"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 15.84,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 3168.9,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2025-09-19T13:25:42",
+    "cantidad": 1003134.0,
+    "precio": 157.95
+   }
+  ],
+  "precio": 159.5,
+  "cantidad": 1003134.0,
+  "monto": 1600000.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 1584450.15,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 3184.74,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 165391448,
+  "mercado": "bcba",
+  "simbolo": "BABA",
+  "moneda": "peso_Argentino",
+  "tipo": "venta",
+  "fechaAlta": "2026-03-01T22:23:46.13",
+  "validez": "2026-03-02T17:00:00",
+  "fechaOperado": "2026-03-02T10:35:58",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-03-01T22:23:46.13"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 9 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:35:58"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-03-02T10:36:17.29"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-03-02T10:36:17.563"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 143.58,
+    "iva": 30.15,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 1025.55,
+    "iva": 215.37,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-03-02T10:35:58",
+    "cantidad": 9.0,
+    "precio": 22790.0
+   }
+  ],
+  "precio": 22370.0,
+  "cantidad": 9.0,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 205110.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 1414.65,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 165391454,
+  "mercado": "bcba",
+  "simbolo": "BIDU",
+  "moneda": "peso_Argentino",
+  "tipo": "venta",
+  "fechaAlta": "2026-03-01T22:24:27.71",
+  "validez": "2026-03-02T17:00:00",
+  "fechaOperado": "2026-03-02T10:35:58",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-03-01T22:24:27.71"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 6 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:35:58"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-03-02T10:36:17.977"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-03-02T10:36:18.193"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 67.2,
+    "iva": 14.11,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 480.0,
+    "iva": 100.8,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-03-02T10:35:58",
+    "cantidad": 6.0,
+    "precio": 16000.0
+   }
+  ],
+  "precio": 15690.0,
+  "cantidad": 6.0,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 96000.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 662.11,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 165391464,
+  "mercado": "bcba",
+  "simbolo": "JD",
+  "moneda": "peso_Argentino",
+  "tipo": "venta",
+  "fechaAlta": "2026-03-01T22:24:59.74",
+  "validez": "2026-03-02T17:00:00",
+  "fechaOperado": "2026-03-02T10:35:58",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-03-01T22:24:59.74"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 3 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:35:58"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-03-02T10:36:17.673"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-03-02T10:36:17.96"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 19.92,
+    "iva": 4.18,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 142.28,
+    "iva": 29.88,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-03-02T10:35:58",
+    "cantidad": 3.0,
+    "precio": 9485.0
+   }
+  ],
+  "precio": 9310.0,
+  "cantidad": 3.0,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 28455.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 196.26,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 165391466,
+  "mercado": "bcba",
+  "simbolo": "NIO",
+  "moneda": "peso_Argentino",
+  "tipo": "venta",
+  "fechaAlta": "2026-03-01T22:25:20.203",
+  "validez": "2026-03-02T17:00:00",
+  "fechaOperado": "2026-03-02T10:35:58",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-03-01T22:25:20.203"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 27 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:35:58"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-03-02T10:36:17.437"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-03-02T10:36:17.693"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 33.17,
+    "iva": 6.97,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 236.93,
+    "iva": 49.76,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-03-02T10:35:58",
+    "cantidad": 27.0,
+    "precio": 1755.0
+   }
+  ],
+  "precio": 1719.0,
+  "cantidad": 27.0,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 47385.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 326.83,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 165391567,
+  "mercado": "bcba",
+  "simbolo": "ADBARFA",
+  "moneda": "peso_Argentino",
+  "tipo": "suscripcionFCI",
+  "fechaAlta": "2026-03-01T22:35:16.563",
+  "validez": null,
+  "fechaOperado": "2026-03-02T20:49:00",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-03-01T22:35:16.563"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-03-02T15:02:24.52"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 89735,8 T\u00edtulo/s",
+    "fecha": "2026-03-02T20:49:00"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-03-02T20:49:50.41"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 0.0,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-03-02T20:49:00",
+    "cantidad": 89735.7786,
+    "precio": 5.349037
+   }
+  ],
+  "precio": null,
+  "cantidad": null,
+  "monto": 480000.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 480000.0,
+  "modalidad": "precio_Limite",
+  "arancelesARS": 0.0,
+  "arancelesUSD": 0.0,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 165407952,
+  "mercado": "bcba",
+  "simbolo": "S16M6",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2026-03-02T10:41:46.123",
+  "validez": "2026-03-02T17:00:00",
+  "fechaOperado": "2026-03-02T10:41:51",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-03-02T10:41:46.123"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 144900 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:41:51"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 966276 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:41:52"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-03-02T10:41:52.613"
+   },
+   {
+    "detalle": "Parcialmente Terminada",
+    "fecha": "2026-03-02T10:41:52.73"
+   },
+   {
+    "detalle": "Parcialmente Terminada",
+    "fecha": "2026-03-02T10:41:52.857"
+   },
+   {
+    "detalle": "Parcialmente Terminada",
+    "fecha": "2026-03-02T10:41:52.957"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 144900 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:41:53"
+   },
+   {
+    "detalle": "Parcialmente Terminada",
+    "fecha": "2026-03-02T10:41:53.027"
+   },
+   {
+    "detalle": "Parcialmente Terminada",
+    "fecha": "2026-03-02T10:41:53.09"
+   },
+   {
+    "detalle": "Parcialmente Terminada",
+    "fecha": "2026-03-02T10:41:53.177"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-03-02T10:41:53.26"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 25000 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:41:54"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 25000 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:41:55"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 25000 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:41:56"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 582799 T\u00edtulo/s",
+    "fecha": "2026-03-02T10:41:57"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 19.86,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 3971.5,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-03-02T10:41:51",
+    "cantidad": 144900.0,
+    "precio": 103.67
+   },
+   {
+    "fecha": "2026-03-02T10:41:52",
+    "cantidad": 966276.0,
+    "precio": 103.67
+   },
+   {
+    "fecha": "2026-03-02T10:41:53",
+    "cantidad": 144900.0,
+    "precio": 103.67
+   },
+   {
+    "fecha": "2026-03-02T10:41:54",
+    "cantidad": 25000.0,
+    "precio": 103.672
+   },
+   {
+    "fecha": "2026-03-02T10:41:55",
+    "cantidad": 25000.0,
+    "precio": 103.673
+   },
+   {
+    "fecha": "2026-03-02T10:41:56",
+    "cantidad": 25000.0,
+    "precio": 103.674
+   },
+   {
+    "fecha": "2026-03-02T10:41:57",
+    "cantidad": 582799.0,
+    "precio": 103.95
+   }
+  ],
+  "precio": 104.5,
+  "cantidad": 1913875.0,
+  "monto": 2000000.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 1985748.3,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 3991.36,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 165409546,
+  "mercado": "bcba",
+  "simbolo": "ADBARFA",
+  "moneda": "peso_Argentino",
+  "tipo": "suscripcionFCI",
+  "fechaAlta": "2026-03-02T10:45:27.153",
+  "validez": null,
+  "fechaOperado": "2026-03-02T20:49:00",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-03-02T10:45:27.153"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-03-02T15:02:24.52"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 75633,4 T\u00edtulo/s",
+    "fecha": "2026-03-02T20:49:00"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-03-02T20:49:47.513"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 0.0,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-03-02T20:49:00",
+    "cantidad": 75633.4009,
+    "precio": 5.349037
+   }
+  ],
+  "precio": null,
+  "cantidad": null,
+  "monto": 404565.86,
+  "fondosParaOperacion": null,
+  "montoOperacion": 404565.86,
+  "modalidad": "precio_Limite",
+  "arancelesARS": 0.0,
+  "arancelesUSD": 0.0,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 165426177,
+  "mercado": "bcba",
+  "simbolo": "AO27D",
+  "moneda": "dolar_Estadounidense",
+  "tipo": "compra",
+  "fechaAlta": "2026-03-02T11:24:40.53",
+  "validez": "2026-03-02T17:00:00",
+  "fechaOperado": "2026-03-02T11:24:44",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-03-02T11:24:40.53"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 671 T\u00edtulo/s",
+    "fecha": "2026-03-02T11:24:44"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 458 T\u00edtulo/s",
+    "fecha": "2026-03-02T11:24:45"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-03-02T11:24:45.513"
+   },
+   {
+    "detalle": "Parcialmente Terminada",
+    "fecha": "2026-03-02T11:24:45.65"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-03-02T11:24:45.78"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 161.68,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 5.69,
+    "iva": 0.0,
+    "moneda": "DOLARES_USA"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-03-02T11:24:44",
+    "cantidad": 671.0,
+    "precio": 100.85
+   },
+   {
+    "fecha": "2026-03-02T11:24:45",
+    "cantidad": 458.0,
+    "precio": 100.85
+   }
+  ],
+  "precio": 101.85,
+  "cantidad": 1129.0,
+  "monto": 1150.14,
+  "fondosParaOperacion": null,
+  "montoOperacion": 1138.59,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 161.68,
+  "arancelesUSD": 5.69,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 172012506,
+  "mercado": "bcba",
+  "simbolo": "S14G6",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2026-04-28T14:18:46.78",
+  "validez": "2026-04-28T17:00:00",
+  "fechaOperado": "2026-04-28T14:18:53",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-04-28T14:18:46.78"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 2,16832e+006 T\u00edtulo/s",
+    "fecha": "2026-04-28T14:18:53"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-04-28T14:18:54.18"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-04-28T14:18:54.403"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 21.78,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 4356.15,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-04-28T14:18:53",
+    "cantidad": 2168316.0,
+    "precio": 100.45
+   }
+  ],
+  "precio": 101.0,
+  "cantidad": 2168316.0,
+  "monto": 2190000.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 2178073.42,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 4377.93,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 173371484,
+  "mercado": "bcba",
+  "simbolo": "AO27D",
+  "moneda": "dolar_Estadounidense",
+  "tipo": "venta",
+  "fechaAlta": "2026-05-08T12:51:17.407",
+  "validez": "2026-05-08T17:00:00",
+  "fechaOperado": "2026-05-08T12:51:20",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-05-08T12:51:17.407"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 1129 T\u00edtulo/s",
+    "fecha": "2026-05-08T12:51:20"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-05-08T12:51:22.377"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-05-08T12:51:22.873"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 162.96,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 5.74,
+    "iva": 0.0,
+    "moneda": "DOLARES_USA"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-05-08T12:51:20",
+    "cantidad": 1129.0,
+    "precio": 101.65
+   }
+  ],
+  "precio": 100.65,
+  "cantidad": 1129.0,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 1147.63,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 162.96,
+  "arancelesUSD": 5.74,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 173372871,
+  "mercado": "bcba",
+  "simbolo": "ADBARFA",
+  "moneda": "peso_Argentino",
+  "tipo": "rescateFCI",
+  "fechaAlta": "2026-05-08T12:56:09.81",
+  "validez": null,
+  "fechaOperado": "2026-05-08T19:11:00",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-05-08T12:56:09.81"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-05-08T15:02:16.747"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 165369 T\u00edtulo/s",
+    "fecha": "2026-05-08T19:11:00"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-05-08T19:11:47.573"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 0.0,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-05-08T19:11:00",
+    "cantidad": 165369.1795,
+    "precio": 5.622966
+   }
+  ],
+  "precio": null,
+  "cantidad": null,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 929865.27,
+  "modalidad": "precio_Limite",
+  "arancelesARS": 0.0,
+  "arancelesUSD": 0.0,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 175561329,
+  "mercado": "bcba",
+  "simbolo": "IOLDOLD",
+  "moneda": "dolar_Estadounidense",
+  "tipo": "rescateFCI",
+  "fechaAlta": "2026-05-29T16:48:36.097",
+  "validez": null,
+  "fechaOperado": "2026-06-01T19:16:00",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-05-29T16:48:36.097"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-06-01T15:02:34.93"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 366,419 T\u00edtulo/s",
+    "fecha": "2026-06-01T19:16:00"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-06-01T19:16:51.993"
+   }
+  ],
+  "aranceles": [],
+  "operaciones": [
+   {
+    "fecha": "2026-06-01T19:16:00",
+    "cantidad": 366.4188,
+    "precio": 1.078551
+   }
+  ],
+  "precio": null,
+  "cantidad": null,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 395.2,
+  "modalidad": "precio_Limite",
+  "arancelesARS": 0.0,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 185143364,
+  "mercado": "bcba",
+  "simbolo": "IOLCAMA",
+  "moneda": "peso_Argentino",
+  "tipo": "suscripcionFCI",
+  "fechaAlta": "2026-08-14T10:35:29.263",
+  "validez": null,
+  "fechaOperado": "2026-08-14T18:57:00",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-08-14T10:35:29.263"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-08-14T15:02:46.58"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 83937,1 T\u00edtulo/s",
+    "fecha": "2026-08-14T18:57:00"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-08-14T18:57:19.64"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 0.0,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-08-14T18:57:00",
+    "cantidad": 83937.128,
+    "precio": 11.913679
+   }
+  ],
+  "precio": null,
+  "cantidad": null,
+  "monto": 1000000.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 1000000.0,
+  "modalidad": "precio_Limite",
+  "arancelesARS": 0.0,
+  "arancelesUSD": 0.0,
+  "plazo": "inmediata"
+ },
+ {
+  "numero": 185183784,
+  "mercado": "bcba",
+  "simbolo": "S13N6",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2026-08-14T12:09:39.68",
+  "validez": "2026-08-14T17:00:00",
+  "fechaOperado": "2026-08-14T12:09:45",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-08-14T12:09:39.68"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 1,92308e+006 T\u00edtulo/s",
+    "fecha": "2026-08-14T12:09:45"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-08-14T12:09:46.43"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-08-14T12:09:46.55"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 19.9,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 3979.04,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-08-14T12:09:45",
+    "cantidad": 1923076.0,
+    "precio": 103.455
+   }
+  ],
+  "precio": 104.0,
+  "cantidad": 1923076.0,
+  "monto": 2000000.0,
+  "fondosParaOperacion": null,
+  "montoOperacion": 1989518.28,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 3998.94,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 185183992,
+  "mercado": "bcba",
+  "simbolo": "MELI",
+  "moneda": "peso_Argentino",
+  "tipo": "compra",
+  "fechaAlta": "2026-08-14T12:10:18.697",
+  "validez": "2026-08-14T17:00:00",
+  "fechaOperado": "2026-08-14T12:10:24",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-08-14T12:10:18.697"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 13 T\u00edtulo/s",
+    "fecha": "2026-08-14T12:10:24"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-08-14T12:10:25.26"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-08-14T12:10:25.597"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Derechos De Mercado",
+    "neto": 221.95,
+    "iva": 46.61,
+    "moneda": "PESO_ARGENTINO"
+   },
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 1585.35,
+    "iva": 332.92,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-08-14T12:10:24",
+    "cantidad": 13.0,
+    "precio": 24390.0
+   }
+  ],
+  "precio": 24750.0,
+  "cantidad": 13.0,
+  "monto": 346486.56,
+  "fondosParaOperacion": null,
+  "montoOperacion": 317070.0,
+  "modalidad": "precio_Mercado",
+  "arancelesARS": 2186.83,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 189984264,
+  "mercado": "bcba",
+  "simbolo": "IOLCAMA",
+  "moneda": "peso_Argentino",
+  "tipo": "rescateFCI",
+  "fechaAlta": "2026-09-23T12:20:46.023",
+  "validez": null,
+  "fechaOperado": "2026-09-23T19:07:00",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-09-23T12:20:46.023"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-09-23T15:02:16.587"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 83937,1 T\u00edtulo/s",
+    "fecha": "2026-09-23T19:07:00"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-09-23T19:07:40.467"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 0.0,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-09-23T19:07:00",
+    "cantidad": 83937.128,
+    "precio": 12.23127
+   }
+  ],
+  "precio": null,
+  "cantidad": null,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 1026657.68,
+  "modalidad": "precio_Limite",
+  "arancelesARS": 0.0,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ },
+ {
+  "numero": 190089464,
+  "mercado": "bcba",
+  "simbolo": "IOLPORA",
+  "moneda": "peso_Argentino",
+  "tipo": "rescateFCI",
+  "fechaAlta": "2026-09-24T10:45:32.06",
+  "validez": null,
+  "fechaOperado": "2026-09-24T19:16:00",
+  "estadoActual": "terminada",
+  "estados": [
+   {
+    "detalle": "Iniciada",
+    "fecha": "2026-09-24T10:45:32.06"
+   },
+   {
+    "detalle": "En Proceso",
+    "fecha": "2026-09-24T15:02:21.623"
+   },
+   {
+    "detalle": "Operaci\u00f3n de 341922 T\u00edtulo/s",
+    "fecha": "2026-09-24T19:16:00"
+   },
+   {
+    "detalle": "Terminada",
+    "fecha": "2026-09-24T19:16:43.86"
+   }
+  ],
+  "aranceles": [
+   {
+    "tipo": "Comisi\u00f3n",
+    "neto": 0.0,
+    "iva": 0.0,
+    "moneda": "PESO_ARGENTINO"
+   }
+  ],
+  "operaciones": [
+   {
+    "fecha": "2026-09-24T19:16:00",
+    "cantidad": 341922.4514,
+    "precio": 1.586833
+   }
+  ],
+  "precio": null,
+  "cantidad": null,
+  "monto": null,
+  "fondosParaOperacion": null,
+  "montoOperacion": 542573.83,
+  "modalidad": "precio_Limite",
+  "arancelesARS": 0.0,
+  "arancelesUSD": 0.0,
+  "plazo": "a24horas"
+ }
+]

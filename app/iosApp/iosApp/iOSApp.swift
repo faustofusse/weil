@@ -3,6 +3,8 @@ import SharedUI
 
 @main
 struct iOSApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
         IosBridges.shared.secureStore = KeychainStore()
         IosBridges.shared.passkeyCeremony = PasskeyManager()
@@ -14,6 +16,12 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // Documents shared from other apps (Share Extension) or
+                // opened with "Open in Weil"; see SharedImportHandoff.
+                .onOpenURL { SharedImportHandoff.handle($0) }
+                .onChange(of: scenePhase, initial: true) { _, phase in
+                    if phase == .active { SharedImportHandoff.drain() }
+                }
         }
     }
 }

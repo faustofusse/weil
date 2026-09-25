@@ -62,9 +62,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
@@ -77,6 +83,7 @@ import weil.app.sharedui.generated.resources.account_commodity_hint
 import weil.app.sharedui.generated.resources.account_commodity_label
 import weil.app.sharedui.generated.resources.account_default_badge
 import weil.app.sharedui.generated.resources.account_default_hint
+import weil.app.sharedui.generated.resources.account_default_short
 import weil.app.sharedui.generated.resources.account_delete_message
 import weil.app.sharedui.generated.resources.account_expand
 import weil.app.sharedui.generated.resources.account_in_net_worth_toggle
@@ -132,21 +139,19 @@ fun AccountsTreeScreen(
     onNavigateToAdd: () -> Unit,
 ) {
     Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToAdd,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.account_add_title))
-            }
-        },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(Res.string.tree_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
+                    }
+                },
+                // A header action, not a FAB: the FAB sat on top of the last
+                // row's balance, and Categorías already adds this way.
+                actions = {
+                    IconButton(onClick = onNavigateToAdd) {
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.account_add_title))
                     }
                 },
             )
@@ -212,24 +217,13 @@ private fun AccountsTreeSection(
                             // yields the space this total needs, which is
                             // what keeps it flush against the row's trailing
                             // edge.
-                            TypeTotals(typeSum(state, row.type))
+                            TypeTotals(typeSum(state, row.type).mapValues { (_, v) -> v * naturalSign(row.type) })
                         },
                     )
-                    is NodeRow -> NodeRowView(
+                    is NodeRow -> AccountListRow(
                         state = state,
                         row = row,
-                        onToggle = { state.toggleExpanded(it) },
-                        onOpen = { id -> onNavigateToAccount(id) },
-                        // The tree is always fully expanded: indentation alone
-                        // carries the hierarchy, no fold column needed.
-                        toggleSlot = false,
-                        // Each type's run of rows reads as one card: only its
-                        // outer edges get rounded.
-                        skin = rowSkin(
-                            first = rows.getOrNull(index - 1) !is NodeRow,
-                            last = rows.getOrNull(index + 1) !is NodeRow,
-                        ),
-                        flat = true,
+                        onOpen = { onNavigateToAccount(row.node.account.id) },
                     )
                 }
             }
@@ -237,10 +231,142 @@ private fun AccountsTreeSection(
     }
 }
 
+/**
+ * Income, liability and equity balances are negative by bookkeeping
+ * convention; the tree shows them the way a person says them ("cobré
+ * 950.000", "debo 30.000"), so only an asset or expense below zero is ever
+ * a minus on screen.
+ */
+internal fun naturalSign(type: AccountType): Long = when (type) {
+    AccountType.Asset, AccountType.Expense -> 1L
+    else -> -1L
+}
+
+/**
+ * One account as the same touchable slab every other list in the app uses
+ * ([AppListRow]: disc, bold name, dim caption, amount on the right) — the
+ * tree used to be the one screen drawn as a settings table. Children hang
+ * off their parent with an indent and no disc, like the subcategory cards,
+ * so the hierarchy reads from shape instead of from a smaller grey font.
+ * Tap opens the register; long-press opens [AccountActionsSheet].
+ */
+@Composable
+private fun AccountListRow(
+    state: LedgerState,
+    row: NodeRow,
+    onOpen: () -> Unit,
+) {
+    val account = row.node.account
+    var actionsOpen by remember { mutableStateOf(false) }
+    val categorical = account.type == AccountType.Expense || account.type == AccountType.Income
+    val look = state.looks[account.id]
+    val paint = accountPaint(look?.color, seed = (look?.seed ?: account.id).takeIf { categorical })
+    val sign = naturalSign(account.type)
+    val totals = state.displayTotals[account.id].orEmpty()
+        .mapValues { (_, v) -> v * sign }
+        .entries.sortedByDescending { kotlin.math.abs(it.value) }
+    val hidden = state.amountsHidden
+    val primary = totals.firstOrNull()
+    val childCount = row.node.children.size
+    val isDefault = state.defaultAccounts[account.type] == account.id
+    // Everything that tells two rows apart, in one quiet line: the declared
+    // currency (two "Banco" rows differ in nothing else), the star, and how
+    // many accounts a parent's amount is summing.
+    val subtitle = listOfNotNull(
+        account.commodity?.takeIf { it.isNotBlank() },
+        if (isDefault) "★ " + stringResource(Res.string.account_default_short) else null,
+        if (childCount > 0) subaccountsLabel(childCount) else null,
+    ).joinToString(" · ").ifBlank { null }
+    val indent = (row.depth.coerceAtMost(3) * 28).dp
+    val connector = MaterialTheme.colorScheme.outlineVariant
+
+    AppListRow(
+        icon = if (row.depth == 0) AccountIcons.resolve(look?.icon, account.type) else null,
+        paint = paint,
+        title = account.name.censored() + if (row.depth > 0 && isDefault) " ★" else "",
+        titleColor = if (categorical && row.depth == 0) paint.ink else Color.Unspecified,
+        // Subaccounts are one compact line, so they can't grow a caption:
+        // the amount's symbol already says the currency, and the default
+        // star rides on the name instead.
+        subtitle = if (row.depth == 0) subtitle else null,
+        onClick = onOpen,
+        onLongClick = { actionsOpen = true },
+        modifier = Modifier
+            .then(if (row.depth > 0) Modifier.treeConnector(indent, connector) else Modifier)
+            // One height per level, with or without a disc or a caption:
+            // 60.dp cards for top-level accounts, 44.dp for subaccounts
+            // (plus AppListRow's 10.dp gap below each).
+            .heightIn(min = if (row.depth == 0) 70.dp else 54.dp)
+            .padding(start = indent),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val zero = primary == null || primary.value == 0L
+            // Other currencies sit on the same line, dimmer and to the left,
+            // so a mixed account is as tall as the rest and the main amount
+            // still ends on the shared right edge.
+            val rest = totals.drop(1).filter { it.value != 0L }
+            if (rest.isNotEmpty()) {
+                Text(
+                    rest.joinToString(" · ") { (c, v) -> maskedAmount(v, c, hidden) },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 1,
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(
+                if (primary == null) {
+                    maskedAmount(0L, account.commodity ?: Money.DEFAULT_COMMODITY, hidden)
+                } else {
+                    maskedAmount(primary.value, primary.key, hidden)
+                },
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = when {
+                    // Dim, not a dash: an empty account is a real answer.
+                    zero -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    primary!!.value < 0 -> MoneyColor.negative
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 1,
+            )
+        }
+    }
+    if (actionsOpen) {
+        AccountActionsSheet(
+            state = state,
+            account = account,
+            onDismiss = { actionsOpen = false },
+        )
+    }
+}
+
+/**
+ * The "└" that hangs a child card off the one above it: a vertical stroke
+ * down the indent gutter that bends into the card's vertical middle. Drawn
+ * behind the row's whole slot, which includes [AppListRow]'s 10.dp bottom
+ * gap, so the card itself spans `height - gap`; the stroke starts a little
+ * above the slot to reach up into the previous row's gap.
+ */
+private fun Modifier.treeConnector(indent: Dp, color: Color): Modifier = drawBehind {
+    val gap = 10.dp.toPx()
+    val radius = 10.dp.toPx()
+    val x = (indent - 16.dp).toPx()
+    val end = (indent - 4.dp).toPx()
+    val mid = (size.height - gap) / 2f
+    val path = Path().apply {
+        moveTo(x, mid - 18.dp.toPx())
+        lineTo(x, mid - radius)
+        quadraticTo(x, mid, x + radius, mid)
+        lineTo(end, mid)
+    }
+    drawPath(path, color, style = Stroke(width = 1.25.dp.toPx(), cap = StrokeCap.Round))
+}
+
 internal fun typeSum(state: LedgerState, type: AccountType): Map<String, Long> {
     val acc = mutableMapOf<String, Long>()
     state.tree.filter { it.account.type == type }.forEach { root ->
-        for ((c, v) in state.totals[root.account.id].orEmpty()) {
+        for ((c, v) in state.displayTotals[root.account.id].orEmpty()) {
             acc[c] = (acc[c] ?: 0L) + v
         }
     }
@@ -450,14 +576,14 @@ internal fun NodeRowView(
             }
             Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
                 BalanceText(
-                    totals = state.totals[node.account.id].orEmpty(),
+                    totals = state.displayTotals[node.account.id].orEmpty(),
                     signalNegative = node.account.type == AccountType.Asset ||
                         node.account.type == AccountType.Expense,
                 )
                 // The number shown is a subtree rollup, not just this
                 // account's own postings — "comida ARS 2.500" would otherwise
                 // read the same whether or not "verduras" is folded inside it.
-                if (childCount > 0 && state.leafTotals[node.account.id].orEmpty() != state.totals[node.account.id].orEmpty()) {
+                if (childCount > 0 && state.displayLeafTotals[node.account.id].orEmpty() != state.displayTotals[node.account.id].orEmpty()) {
                     Text(
                         stringResource(Res.string.account_includes_subaccounts),
                         style = MaterialTheme.typography.bodySmall,
@@ -679,6 +805,8 @@ internal fun AccountActionsSheet(
     if (pickingIcon) {
         IconPickerDialog(
             selected = account.icon,
+            inherited = account.parentId?.let { state.looks[it] }
+                ?.let { AccountIcons.resolve(it.icon, account.type) },
             onDismiss = onDismiss,
             onPick = {
                 state.setIcon(account.id, it)
@@ -771,11 +899,12 @@ private fun TypeTotals(totals: Map<String, Long>) {
     ) {
         entries.forEach { (commodity, minor) ->
             Text(
-                // A type total is never colored (a negative income total is
-                // normal bookkeeping), so this one keeps its sign.
+                // Already in natural sign (see [naturalSign]), so a minus
+                // here is a real overdraft.
                 formatMoney(minor, commodity, signed = true),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

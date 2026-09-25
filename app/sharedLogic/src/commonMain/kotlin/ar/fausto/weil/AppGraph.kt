@@ -88,6 +88,12 @@ class AppGraph(
      * confirmation step.
      */
     val autoRecord = AutoRecordRepository(accounts, emails, ledger, settings, suggestions)
+
+    /** Broker imports: the DB half every broker shares (plans/inversiones-brokers.md). */
+    val brokers = BrokersRepository(db, accounts, ledger, settings)
+
+    /** InvertirOnline: credentials in this device's secure store, read-only API. */
+    val iol = IolRepository(store, brokers, settings)
     val scanner: QrScanner? get() = qrScannerProvider()
 
     /** Needs a foreground activity/controller, so it is resolved lazily. */

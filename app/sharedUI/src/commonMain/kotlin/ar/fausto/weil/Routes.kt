@@ -53,7 +53,27 @@ data class EmailDetailRoute(val id: String)
 /** El original (foto o PDF) del que se leyó un movimiento; solo lectura. */
 data class DocumentRoute(val docId: String)
 
+/**
+ * Not a tab any more: pushed from the account icon in Inicio's top bar. The
+ * bar slot went to [InvestmentsRoute].
+ */
 object ProfileRoute
+
+/** The investments tab: brokers, consolidated positions, their movements. */
+object InvestmentsRoute
+
+/**
+ * Review of a broker plan before it is written. Carries the plan itself
+ * (the stack holds plain objects, never serialized) plus what the screen
+ * needs to show it: the broker's accounts and the commodity scales.
+ */
+data class BrokerImportRoute(
+    val brokerName: String,
+    val provider: String,
+    val plan: BrokerPlan,
+    val accounts: BrokerAccounts,
+    val scales: Map<String, Int>,
+)
 
 object JournalRoute
 

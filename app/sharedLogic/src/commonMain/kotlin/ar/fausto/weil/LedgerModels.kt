@@ -74,6 +74,43 @@ data class AccountNode(
         get() = listOf(this) + children.flatMap { it.selfAndDescendants }
 }
 
+/**
+ * How an account is drawn once inheritance is applied: a subaccount with no
+ * icon (or color) of its own wears its nearest ancestor's, so "Comida:Verduras"
+ * shows Comida's glyph instead of the type's generic one. A value the account
+ * stores itself is an override and always wins.
+ *
+ * [seed] is the id a derived (unpainted) color is computed from: the account
+ * that lends the color, or the root when nobody in the chain picked one — so
+ * an unpainted subcategory lands on its parent's derived color rather than on
+ * a random one of its own.
+ */
+data class AccountLook(
+    val icon: String?,
+    val color: String?,
+    val seed: String,
+)
+
+/** id → [AccountLook] for every node of the forest, resolved top-down. */
+fun List<AccountNode>.accountLooks(): Map<String, AccountLook> {
+    val out = HashMap<String, AccountLook>()
+    fun walk(node: AccountNode, parent: AccountLook?) {
+        val account = node.account
+        val look = AccountLook(
+            icon = account.icon ?: parent?.icon,
+            color = account.color ?: parent?.color,
+            seed = when {
+                account.color != null || parent == null -> account.id
+                else -> parent.seed
+            },
+        )
+        out[account.id] = look
+        node.children.forEach { walk(it, look) }
+    }
+    forEach { walk(it, null) }
+    return out
+}
+
 /** Signed amount in minor units with its commodity; never use floats for money. */
 data class Money(val minorUnits: Long, val commodity: String) {
     fun format(): String = formatMinorUnits(minorUnits)
@@ -82,12 +119,20 @@ data class Money(val minorUnits: Long, val commodity: String) {
         const val DEFAULT_COMMODITY = "ARS"
 
         /**
-         * Parses user input into minor units (scale 2). Accepts '.' or ',' as
-         * the decimal separator. A lone separator with more than 2 digits after
-         * it is treated as a thousands separator ("1.234" = 1234). When both
-         * appear, the rightmost one is the decimal point. Max 2 decimals.
+         * Parses user input into minor units at [scale] decimals (2 for
+         * money; an instrument's own scale for a quantity: 4 for 0,4939 TTWO,
+         * 0 for 13 MELI). Accepts '.' or ',' as the decimal separator. When
+         * both appear, the rightmost one is the decimal point.
+         *
+         * A lone separator is ambiguous ("1.234"): at scale 2 it is a
+         * thousands separator when more than 2 digits follow (the rule money
+         * always had). At any other scale a repeated separator or a '.'
+         * followed by exactly 3 digits groups thousands (es-AR), and anything
+         * else is the decimal point. More decimals than [scale] is invalid,
+         * never rounded.
          */
-        fun parse(text: String, commodity: String): Money? {
+        fun parse(text: String, commodity: String, scale: Int = 2): Money? {
+            require(scale >= 0) { "negative scale: $scale" }
             val cleaned = text.filter { it != ' ' && it != '\u00a0' }
             if (cleaned.isEmpty()) return null
             val negative = cleaned.startsWith("-")
@@ -101,13 +146,21 @@ data class Money(val minorUnits: Long, val commodity: String) {
                     val at = maxOf(lastDot, lastComma)
                     val intDigits = body.substring(0, at).filter { it.isDigit() }
                     val fracDigits = body.substring(at + 1).filter { it.isDigit() }
-                    if (fracDigits.length > 2) return null
+                    if (fracDigits.length > scale) return null
                     intDigits to fracDigits
                 }
                 lastDot != -1 || lastComma != -1 -> {
                     val at = maxOf(lastDot, lastComma)
+                    val separator = body[at]
                     val after = body.substring(at + 1).filter { it.isDigit() }
-                    if (after.length <= 2) {
+                    val decimal = when {
+                        scale == 2 -> after.length <= 2
+                        body.count { it == separator } > 1 -> false
+                        separator == '.' && after.length == 3 -> false
+                        else -> true
+                    }
+                    if (decimal) {
+                        if (after.length > scale) return null
                         body.substring(0, at).filter { it.isDigit() } to after
                     } else {
                         body.filter { it.isDigit() } to ""
@@ -116,25 +169,26 @@ data class Money(val minorUnits: Long, val commodity: String) {
                 else -> body to ""
             }
             if (intPart.isEmpty() && fracPart.isEmpty()) return null
-            val whole = (intPart.ifEmpty { "0" }).toLongOrNull() ?: return null
-            val frac = when (fracPart.length) {
-                0 -> 0L
-                1 -> fracPart[0].digitToInt() * 10L
-                else -> fracPart[0].digitToInt() * 10L + fracPart[1].digitToInt()
-            }
-            val total = whole * 100 + frac
+            // Digits concatenated and parsed once: exact at any scale, and an
+            // amount that does not fit in a Long is invalid instead of wrapped.
+            val total = ((intPart.ifEmpty { "0" }) + fracPart.padEnd(scale, '0')).toLongOrNull() ?: return null
             return Money(if (negative) -total else total, commodity)
         }
     }
 }
 
-fun formatMinorUnits(units: Long): String {
+/**
+ * Minor units as es-AR text at [scale] decimals: "1.234,56" for money,
+ * "0,4939" for a quantity at scale 4, "13" at scale 0. Parses back through
+ * [Money.parse] at the same scale.
+ */
+fun formatMinorUnits(units: Long, scale: Int = 2): String {
     val negative = units < 0
-    val magnitude = if (negative) -units else units
-    val whole = magnitude / 100
-    val frac = magnitude % 100
-    val wholeText = whole.toString().reversed().chunked(3).joinToString(".").reversed()
-    return (if (negative) "-" else "") + wholeText + "," + frac.toString().padStart(2, '0')
+    val digits = (if (negative) -units else units).toString().padStart(scale + 1, '0')
+    val whole = digits.substring(0, digits.length - scale)
+    val frac = digits.substring(digits.length - scale)
+    val wholeText = whole.reversed().chunked(3).joinToString(".").reversed()
+    return (if (negative) "-" else "") + wholeText + (if (scale == 0) "" else ",$frac")
 }
 
 /**
@@ -181,8 +235,43 @@ data class Posting(
     val accountId: String,
     val amountMinor: Long,
     val commodity: String,
+    /**
+     * Ledger's `@@`: what this posting cost in another commodity, signed like
+     * [amountMinor]. A buy of 0,4939 TTWO for US$ 99,98 is `+4939 NASDAQ:TTWO`
+     * with cost `+9998 USD`. Null on every posting that is not an exchange.
+     */
+    val costMinor: Long? = null,
+    val costCommodity: String? = null,
 ) {
     fun money() = Money(amountMinor, commodity)
+
+    /**
+     * What this posting counts as when the transaction is balanced: its cost
+     * when it has one, else its own amount (ledger's rule, see
+     * [resolvePostings]).
+     */
+    fun weight(): Money =
+        if (costMinor != null && costCommodity != null) Money(costMinor, costCommodity) else money()
+
+    /**
+     * Back into an editable draft, cost included. Every screen that rebuilds a
+     * transaction from its postings (edit, undo of a delete) goes through
+     * here: dropping the cost would silently turn a buy into an unbalanced
+     * row, or, worse, into one that balances by the old two-commodity
+     * exception and loses its price.
+     *
+     * [scale] is the commodity's (see [DraftPosting.scale]); the default 2
+     * round-trips any commodity exactly, a screen that shows the amount to a
+     * person passes the real one.
+     */
+    fun toDraft(scale: Int = 2): DraftPosting = DraftPosting(
+        accountId = accountId,
+        amountText = formatMinorUnits(amountMinor, scale),
+        commodity = commodity,
+        scale = scale,
+        costText = costMinor?.let { formatMinorUnits(it) }.orEmpty(),
+        costCommodity = costCommodity,
+    )
 }
 
 data class Transaction(
@@ -257,11 +346,25 @@ data class AssociationUndo(
     val previousAccountId: String? = null,
 )
 
-/** Editor-facing posting draft: blank amount = ledger-style elided posting. */
+/**
+ * Editor-facing posting draft: blank amount = ledger-style elided posting.
+ *
+ * [amountText] is read at [scale] decimals. Drafts built by code keep the
+ * default 2 and carry `formatMinorUnits(minor)`, which round-trips the exact
+ * minor units for any commodity (0,4939 TTWO travels as "49,39" and comes
+ * back as 4939). A screen a person types into sets the commodity's real
+ * scale, so the same buy reads "0,4939" there; the ledger only ever sees
+ * integers either way.
+ */
 data class DraftPosting(
     val accountId: String?,
     val amountText: String,
     val commodity: String = Money.DEFAULT_COMMODITY,
+    /** The `@@` cost, same text rules as [amountText]; blank = no cost. */
+    val costText: String = "",
+    val costCommodity: String? = null,
+    /** Decimals [amountText] is written at; the cost is money and always at 2. */
+    val scale: Int = 2,
 )
 
 class LedgerValidationException(message: String) : Exception(message)
@@ -306,20 +409,28 @@ private fun buildValidated(
             blank = draft
             continue
         }
-        val money = Money.parse(amountText, draft.commodity)
+        val money = Money.parse(amountText, draft.commodity, draft.scale)
             ?: throw LedgerValidationException("invalid amount: '$amountText'")
         if (money.minorUnits == 0L && !allowZero) throw LedgerValidationException("amounts cannot be zero")
-        residuals[money.commodity] = (residuals[money.commodity] ?: 0L) + money.minorUnits
-        resolved += Posting(
+        val cost = parseCost(draft, money)
+        val posting = Posting(
             id = Uuid.random().toString(),
             transactionId = seedTransactionId ?: "",
             accountId = accountId,
             amountMinor = money.minorUnits,
             commodity = money.commodity,
+            costMinor = cost?.minorUnits,
+            costCommodity = cost?.commodity,
         )
+        val weight = posting.weight()
+        residuals[weight.commodity] = (residuals[weight.commodity] ?: 0L) + weight.minorUnits
+        resolved += posting
     }
 
     blank?.let { empty ->
+        if (empty.costText.isNotBlank()) {
+            throw LedgerValidationException("the balancing posting cannot carry a cost")
+        }
         val commodity = empty.commodity
         val residual = residuals[commodity] ?: 0L
         if (residual == 0L) {
@@ -335,13 +446,23 @@ private fun buildValidated(
         )
     }
 
-    // A currency exchange cannot balance per commodity: pesos leave one
-    // account and dollars arrive in another, and the rate lives in the row's
-    // prose, not in a posting. Its shape is unmistakable — exactly two
+    // Every posting above was summed at its *weight*: the cost when it has
+    // one. That is what lets a buy with a commission balance — +0,4939 TTWO
+    // at cost +99,98 USD, +1,00 USD commission, -100,98 USD cash — and what
+    // an exchange recorded with a cost uses too.
+    //
+    // A currency exchange recorded *without* a cost cannot balance per
+    // commodity: pesos leave one account and dollars arrive in another, and
+    // the rate lives in the row's prose, not in a posting. Its shape is unmistakable — exactly two
     // postings, one commodity each, moving in opposite directions — so it is
     // exempted narrowly. Anything else (a four-posting transaction with one
     // currency short) is still a typo and still rejected.
+    // Legacy shape only: once any posting states a cost, the transaction has
+    // said how it balances, and an off residual is a real error (a TTWO buy
+    // priced in USD but paid from a pesos account would otherwise slip
+    // through as an "exchange").
     val exchange = resolved.size == 2 &&
+        resolved.none { it.costMinor != null } &&
         residuals.size == 2 &&
         residuals.values.all { it != 0L } &&
         residuals.values.map { it > 0L }.distinct().size == 2
@@ -355,14 +476,46 @@ private fun buildValidated(
     return resolved to residuals
 }
 
-/** Per-commodity residuals of a draft set, for the editor's live footer. */
+/**
+ * The `@@` cost of a draft, validated against the amount it prices, or null
+ * when the draft has none.
+ */
+private fun parseCost(draft: DraftPosting, amount: Money): Money? {
+    val text = draft.costText.trim()
+    if (text.isEmpty()) return null
+    val commodity = draft.costCommodity?.takeIf { it.isNotBlank() }
+        ?: throw LedgerValidationException("a cost needs a commodity")
+    // A cost in the posting's own commodity says nothing (10 USD @@ 10 USD)
+    // and would double-count it in the balance.
+    if (commodity == amount.commodity) {
+        throw LedgerValidationException("a cost must be in another commodity than ${amount.commodity}")
+    }
+    val cost = Money.parse(text, commodity)
+        ?: throw LedgerValidationException("invalid cost: '$text'")
+    if (cost.minorUnits == 0L) throw LedgerValidationException("a cost cannot be zero")
+    // Signed like the amount: buying (+quantity) costs +money, selling
+    // (-quantity) at cost removes -money. Opposite signs are a typo.
+    if ((cost.minorUnits > 0) != (amount.minorUnits > 0)) {
+        throw LedgerValidationException("a cost must have the sign of its amount")
+    }
+    return cost
+}
+
+/**
+ * Per-commodity residuals of a draft set, for the editor's live footer.
+ * Summed by weight, like [resolvePostings]: a posting with a cost counts in
+ * its cost's commodity.
+ */
 fun residualsOf(drafts: List<DraftPosting>): Map<String, Long> {
     val residuals = mutableMapOf<String, Long>()
     for (draft in drafts) {
         val amountText = draft.amountText.trim()
         if (amountText.isBlank()) continue
-        val money = Money.parse(amountText, draft.commodity) ?: continue
-        residuals[money.commodity] = (residuals[money.commodity] ?: 0L) + money.minorUnits
+        val money = Money.parse(amountText, draft.commodity, draft.scale) ?: continue
+        val cost = draft.costCommodity?.takeIf { draft.costText.isNotBlank() }
+            ?.let { Money.parse(draft.costText.trim(), it) }
+        val weight = cost ?: money
+        residuals[weight.commodity] = (residuals[weight.commodity] ?: 0L) + weight.minorUnits
     }
     return residuals
 }

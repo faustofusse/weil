@@ -1,0 +1,150 @@
+{
+ "cuentas": [
+  {
+   "numero": "0000000",
+   "tipo": "inversion_Argentina_Pesos",
+   "moneda": "peso_Argentino",
+   "disponible": 542573.83,
+   "comprometido": 0.0,
+   "saldo": 542573.83,
+   "titulosValorizados": 2352667.47896,
+   "total": 2895241.30896,
+   "margenDescubierto": 0.0,
+   "saldos": [
+    {
+     "liquidacion": "inmediato",
+     "saldo": 542573.83,
+     "comprometido": 0.0,
+     "disponible": 542573.83,
+     "disponibleOperar": 542573.83
+    },
+    {
+     "liquidacion": "hrs24",
+     "saldo": 0.0,
+     "comprometido": 0.0,
+     "disponible": 0.0,
+     "disponibleOperar": 542573.83
+    },
+    {
+     "liquidacion": "hrs48",
+     "saldo": 0.0,
+     "comprometido": 0.0,
+     "disponible": 0.0,
+     "disponibleOperar": 542573.83
+    },
+    {
+     "liquidacion": "hrs72",
+     "saldo": 0.0,
+     "comprometido": 0.0,
+     "disponible": 0.0,
+     "disponibleOperar": 542573.83
+    },
+    {
+     "liquidacion": "masHrs72",
+     "saldo": 0.0,
+     "comprometido": 0.0,
+     "disponible": 0.0,
+     "disponibleOperar": 0.0
+    }
+   ],
+   "estado": "operable"
+  },
+  {
+   "numero": "0000000",
+   "tipo": "inversion_Argentina_Dolares",
+   "moneda": "dolar_Estadounidense",
+   "disponible": 3045.52,
+   "comprometido": 0.0,
+   "saldo": 3045.52,
+   "titulosValorizados": 0.0,
+   "total": 3045.52,
+   "margenDescubierto": 0.0,
+   "saldos": [
+    {
+     "liquidacion": "inmediato",
+     "saldo": 3045.52,
+     "comprometido": 0.0,
+     "disponible": 3045.52,
+     "disponibleOperar": 3045.52
+    },
+    {
+     "liquidacion": "hrs24",
+     "saldo": 0.0,
+     "comprometido": 0.0,
+     "disponible": 0.0,
+     "disponibleOperar": 3045.52
+    },
+    {
+     "liquidacion": "hrs48",
+     "saldo": 0.0,
+     "comprometido": 0.0,
+     "disponible": 0.0,
+     "disponibleOperar": 3045.52
+    },
+    {
+     "liquidacion": "hrs72",
+     "saldo": 0.0,
+     "comprometido": 0.0,
+     "disponible": 0.0,
+     "disponibleOperar": 3045.52
+    },
+    {
+     "liquidacion": "masHrs72",
+     "saldo": 0.0,
+     "comprometido": 0.0,
+     "disponible": 0.0,
+     "disponibleOperar": 0.0
+    }
+   ],
+   "estado": "operable"
+  },
+  {
+   "numero": "0000000-EEUU",
+   "tipo": "inversion_Estados_Unidos_Dolares",
+   "moneda": "dolar_Estadounidense",
+   "disponible": 4.14,
+   "comprometido": 0.0,
+   "saldo": 4.14,
+   "titulosValorizados": 0.0,
+   "total": 4.14,
+   "margenDescubierto": 0.0,
+   "saldos": [
+    {
+     "liquidacion": "inmediato",
+     "saldo": 4.14,
+     "comprometido": 0.0,
+     "disponible": 4.14,
+     "disponibleOperar": 4.14
+    },
+    {
+     "liquidacion": "hrs24",
+     "saldo": 0.0,
+     "comprometido": 0.0,
+     "disponible": 0.0,
+     "disponibleOperar": 4.14
+    },
+    {
+     "liquidacion": "hrs48",
+     "saldo": 0.0,
+     "comprometido": 0.0,
+     "disponible": 0.0,
+     "disponibleOperar": 4.14
+    }
+   ],
+   "estado": "operable"
+  }
+ ],
+ "estadisticas": [
+  {
+   "descripcion": "Anterior",
+   "cantidad": 3,
+   "volumen": 3306588.28
+  },
+  {
+   "descripcion": "Actual",
+   "cantidad": 0,
+   "volumen": 0.0
+  }
+ ],
+ "totalEnPesos": 7448293.70896
+}

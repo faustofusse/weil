@@ -200,6 +200,12 @@ object Icons {
             "M6 9.5l6 6 6-6",
         )
 
+        val ArrowUpward: ImageVector = lineIcon(
+            "ArrowUpward",
+            "M12 19V5",
+            "M5 12l7-7 7 7",
+        )
+
         val ChevronRight: ImageVector = lineIcon(
             "ChevronRight",
             "M9 18l6-6-6-6",
@@ -334,7 +340,15 @@ object Icons {
             "M17.5 21a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
         )
 
-        /** Bottom bar: the profile tab. */
+        /** Bottom bar: the investments tab. A rising line, not a bar chart:
+         *  the tab is about value over time, and bars read as a report. */
+        val TrendingUp: ImageVector = lineIcon(
+            "TrendingUp",
+            "M3 17l6-6 4 4 8-8",
+            "M15 7h6v6",
+        )
+
+        /** A person's silhouette (the profile's name card). */
         val Person: ImageVector = lineIcon(
             "Person",
             "M20 21v-1.5a4.5 4.5 0 0 0-4.5-4.5h-7A4.5 4.5 0 0 0 4 19.5V21",
