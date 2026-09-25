@@ -123,3 +123,51 @@ data class PositionLine(
             return gain.toDouble() / cost.toDouble()
         }
 }
+
+/**
+ * One instrument held at several brokers is one position (plan, UI §4):
+ * `BCBA:MELI` at IOL and at Galicia is the same BYMA instrument. Quantities
+ * add up; costs add up only when every broker states them in the same
+ * currency — pesos plus dollars is not a cost, so the merged one has none
+ * and the positions view shows no gain for it rather than a wrong one.
+ */
+fun consolidateHoldings(perBroker: List<Map<String, HeldPosition>>): Map<String, HeldPosition> {
+    val result = mutableMapOf<String, HeldPosition>()
+    for (holdings in perBroker) {
+        for ((commodity, held) in holdings) {
+            val current = result[commodity]
+            result[commodity] = if (current == null) held else merge(current, held)
+        }
+    }
+    return result
+}
+
+private fun merge(a: HeldPosition, b: HeldPosition): HeldPosition {
+    val quantity = a.quantityMinor + b.quantityMinor
+    // A side with no cost (a split, a transfer in) adds nothing to it.
+    return when {
+        b.costMinor == 0L -> a.copy(quantityMinor = quantity)
+        a.costMinor == 0L -> b.copy(quantityMinor = quantity)
+        a.costCommodity == b.costCommodity -> HeldPosition(quantity, a.costMinor + b.costMinor, a.costCommodity)
+        else -> HeldPosition(quantity, 0L, null)
+    }
+}
+
+/** Unrealized gain of a set of positions in one currency, and the cost it is measured against. */
+data class UnrealizedTotal(val commodity: String, val gainMinor: Long, val costMinor: Long) {
+    val ratio: Double? get() = if (costMinor > 0L) gainMinor.toDouble() / costMinor.toDouble() else null
+}
+
+/**
+ * The hero's gain line: [lines]' unrealized gains summed per currency,
+ * counting only the positions that have one (priced, and cost in the
+ * currency they are valued in), so the percentage is over the same cost
+ * the gain is.
+ */
+fun unrealizedTotals(lines: List<PositionLine>): List<UnrealizedTotal> =
+    lines.filter { it.unrealizedMinor != null && it.valueCommodity != null && it.costMinor != null }
+        .groupBy { it.valueCommodity!! }
+        .map { (currency, group) ->
+            UnrealizedTotal(currency, group.sumOf { it.unrealizedMinor!! }, group.sumOf { it.costMinor!! })
+        }
+        .sortedByDescending { kotlin.math.abs(it.costMinor) }

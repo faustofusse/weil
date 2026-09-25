@@ -72,6 +72,21 @@ class IolImportTest {
     }
 
     @Test
+    fun theInvestmentsTabSeesTheConnectionAndItsLastSync() = runBlocking {
+        assertEquals(emptyList(), graph.brokers.connections())
+        val accounts = iol.connect("user", "ok")
+        val before = graph.brokers.connections().single()
+        assertEquals(IOL_PROVIDER, before.provider)
+        assertEquals(accounts, before.accounts)
+        assertNull(before.syncedAt)
+        iol.apply(iol.preview())
+        assertTrue(graph.brokers.connections().single().syncedAt != null)
+        // Credentials are this device's; the connection is the account's.
+        iol.disconnect()
+        assertEquals(1, graph.brokers.connections().size)
+    }
+
+    @Test
     fun firstImportLandsOnIolAndTheSecondFindsNothingNew() = runBlocking {
         val accounts = iol.connect("user", "ok")
         assertEquals("user", iol.username)

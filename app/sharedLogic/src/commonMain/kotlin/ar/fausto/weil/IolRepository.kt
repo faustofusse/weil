@@ -92,7 +92,7 @@ class IolRepository(
         const val PASSWORD_KEY = "iol.password"
 
         /** Synced: a second device resumes from where the first one left. */
-        const val SYNCED_AT_KEY = "broker.iol.synced_at"
+        val SYNCED_AT_KEY = brokerSyncedAtKey(IOL_PROVIDER)
 
         /** Far enough back to be "everything IOL keeps". */
         private const val FIRST_DAY = "2000-01-01"

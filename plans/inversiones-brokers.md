@@ -596,8 +596,8 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
   repedidos) e `IolLiveTest` (opt-in con `IOL_USERNAME`/`IOL_PASSWORD`,
   contra la API real y una base descartable: 44 movimientos, 0 issues,
   0 diferencias).
-- Pendiente: sync automático al abrir la app / pull-to-refresh de la pestaña
-  (hoy es el botón «Sincronizar»), y WorkManager en segundo plano.
+- Hecho: pull-to-refresh de la pestaña y el ícono de sincronizar del top bar.
+  Pendiente: sync automático al abrir la app y WorkManager en segundo plano.
 
 ### Fase 5 — valuación en la UI (en curso)
 
@@ -651,8 +651,23 @@ acciones) y las posiciones cerradas como «0,00».
       «incluir subcuentas» (el costo es por cuenta).
 - [x] Escala por commodity al **mostrar y tipear** en el editor (movido desde
       la fase 1; 8c00094).
-- [ ] `InvestmentsScreen` completa (hero, avisos, brokers, posiciones
-      consolidadas, movimientos) y detalle de instrumento; ver sección UI.
+- [x] `InvestmentsScreen` completa: hero con el valor por moneda (caja +
+      cartera de cada broker, valuada), la ganancia no realizada por moneda
+      (`unrealizedTotals`: sólo posiciones con ganancia, % sobre ese mismo
+      costo) y la línea al oficial; una fila por broker
+      (`BrokersRepository.connections()`, leído de `settings`, así un broker
+      conectado en otro device aparece con «Sin conectar en este
+      dispositivo»; frescura desde `broker.<p>.synced_at`); posiciones
+      consolidadas entre brokers (`consolidateHoldings`: cantidades suman,
+      costos sólo si están en la misma moneda) con el mismo `PositionsCard`
+      (tocar abre el registro del broker con más cantidad, filtrado); los
+      últimos 5 movimientos de las cuentas de caja y cartera; «Sumar otra
+      fuente» abajo. Pull-to-refresh y el ícono del top bar sincronizan IOL.
+      Harness: `investments` / `investments-empty`.
+- [ ] Avisos (aserción fallida, hueco de cobertura, contraseña inválida):
+      necesitan el preview de red, hoy se ven recién en la revisión.
+- [ ] Detalle de instrumento propio (desglose por broker, historia de
+      precios); hoy tocar una posición abre el registro filtrado.
 
 ### Fase 6 — entradas automáticas
 

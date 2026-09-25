@@ -99,4 +99,47 @@ class ValuationTest {
         assertNull(closed.valueMinor)
         assertNull(closed.costMinor)
     }
+
+    @Test
+    fun oneInstrumentAtTwoBrokersIsOnePosition() {
+        val merged = consolidateHoldings(
+            listOf(
+                mapOf("BCBA:MELI" to HeldPosition(13L, 31_925_683L, "ARS"), "ARS" to HeldPosition(100L, 0L, null)),
+                mapOf("BCBA:MELI" to HeldPosition(5L, 12_000_000L, "ARS"), "NASDAQ:TTWO" to HeldPosition(4939L, 10_098L, "USD")),
+            ),
+        )
+        assertEquals(HeldPosition(18L, 43_925_683L, "ARS"), merged["BCBA:MELI"])
+        assertEquals(HeldPosition(4939L, 10_098L, "USD"), merged["NASDAQ:TTWO"])
+        // Costs in two currencies don't add up: no cost, so no invented gain.
+        val mixed = consolidateHoldings(
+            listOf(
+                mapOf("NASDAQ:TTWO" to HeldPosition(4939L, 10_098L, "USD")),
+                mapOf("NASDAQ:TTWO" to HeldPosition(1000L, 3_000_000L, "ARS")),
+            ),
+        )
+        assertEquals(HeldPosition(5939L, 0L, null), mixed["NASDAQ:TTWO"])
+        // A leg without cost (a split) only moves the quantity.
+        val split = consolidateHoldings(
+            listOf(mapOf("BCBA:MELI" to HeldPosition(13L, 100L, "ARS")), mapOf("BCBA:MELI" to HeldPosition(13L, 0L, null))),
+        )
+        assertEquals(HeldPosition(26L, 100L, "ARS"), split["BCBA:MELI"])
+    }
+
+    @Test
+    fun unrealizedTotalsCountOnlyPositionsWithAGain() {
+        val lines = valuation.positions(
+            mapOf(
+                "BCBA:MELI" to HeldPosition(13L, 31_925_683L, "ARS"),
+                "BCBA:S13N6" to HeldPosition(1_923_076L, 200_000_000L, "ARS"),
+                "NASDAQ:TTWO" to HeldPosition(4939L, 15_000_000L, "ARS"),
+                "BCBA:XYZ" to HeldPosition(5L, 1_000L, "ARS"),
+            ),
+        )
+        val totals = unrealizedTotals(lines)
+        assertEquals(1, totals.size)
+        val ars = totals.single()
+        assertEquals("ARS", ars.commodity)
+        assertEquals(231_925_683L, ars.costMinor)
+        assertEquals((30_446_000L - 31_925_683L) + (204_328_748L - 200_000_000L), ars.gainMinor)
+    }
 }

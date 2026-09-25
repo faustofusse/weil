@@ -13,6 +13,14 @@ import kotlinx.serialization.json.Json
 /** Synced setting holding a provider's [BrokerAccounts] as JSON. */
 fun brokerAccountsKey(provider: String) = "broker.$provider.accounts"
 
+/** Synced setting: epoch ms of a provider's last applied import. */
+fun brokerSyncedAtKey(provider: String) = "broker.$provider.synced_at"
+
+private val BROKER_ACCOUNTS_KEY = Regex("""^broker\.([^.]+)\.accounts$""")
+
+/** A broker the ledger books into: its accounts and when it last imported. */
+data class BrokerConnection(val provider: String, val accounts: BrokerAccounts, val syncedAt: Long?)
+
 class BrokersRepository(
     private val db: DatabaseProvider,
     private val accounts: AccountsRepository,
@@ -26,6 +34,26 @@ class BrokersRepository(
         settings.all()[brokerAccountsKey(provider)]?.let {
             runCatching { json.decodeFromString(BrokerAccounts.serializer(), it) }.getOrNull()
         }
+
+    /**
+     * Every connected broker whose holdings account still exists, in
+     * provider order. Read from the synced settings, so a broker connected
+     * on another device shows here too (credentials, being device-local,
+     * don't: syncing it from this one needs connecting again).
+     */
+    suspend fun connections(): List<BrokerConnection> {
+        val rows = settings.all()
+        val ids = accounts.tree().flatMap { it.selfAndDescendants }.map { it.account.id }.toSet()
+        return rows.keys.mapNotNull { BROKER_ACCOUNTS_KEY.find(it)?.groupValues?.get(1) }
+            .sorted()
+            .mapNotNull { provider ->
+                val broker = runCatching {
+                    json.decodeFromString(BrokerAccounts.serializer(), rows.getValue(brokerAccountsKey(provider)))
+                }.getOrNull() ?: return@mapNotNull null
+                if (broker.holdings !in ids) return@mapNotNull null
+                BrokerConnection(provider, broker, rows[brokerSyncedAtKey(provider)]?.toLongOrNull())
+            }
+    }
 
     /**
      * Creates (or finds, by name) the accounts a broker books into and

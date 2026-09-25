@@ -223,7 +223,7 @@ private fun PositionRow(line: PositionLine, selected: Boolean, newestDay: String
 }
 
 /** "+$ 1.234,00 · +4,6 %": signed both ways, since a gain is not a flow. */
-private fun gainText(gain: Long, commodity: String, ratio: Double?): String {
+internal fun gainText(gain: Long, commodity: String, ratio: Double?): String {
     val sign = if (gain > 0) "+" else ""
     val money = sign + formatMoney(gain, commodity, signed = true)
     val pct = ratio?.let { r ->

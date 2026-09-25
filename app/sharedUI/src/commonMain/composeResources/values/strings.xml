@@ -54,6 +54,17 @@
     <string name="investments_source_ibkr_hint">Importando el reporte Flex de tu cuenta</string>
     <string name="investments_source_statement">Resumen de otro banco</string>
     <string name="investments_source_statement_hint">El PDF de tu cuenta comitente</string>
+    <string name="investments_value">Valor de tus inversiones</string>
+    <string name="investments_unrealized">%1$s sin realizar</string>
+    <string name="investments_brokers">Brokers</string>
+    <string name="investments_recent">Últimos movimientos</string>
+    <string name="investments_add">Sumar otra fuente</string>
+    <string name="investments_connect_here">Sin conectar en este dispositivo</string>
+    <string name="investments_never_synced">Nunca sincronizado</string>
+    <string name="investments_synced_now">Actualizado recién</string>
+    <string name="investments_synced_minutes">Actualizado hace %1$d min</string>
+    <string name="investments_synced_hours">Actualizado hace %1$d h</string>
+    <string name="investments_synced_days">Actualizado hace %1$d días</string>
     <string name="investments_soon">Pronto</string>
     <string name="investments_soon_message">Todavía no está disponible</string>
     <string name="iol_connect_title">Conectar InvertirOnline</string>

@@ -451,9 +451,12 @@ fun RootScreen(
                                         entry<CategoriesRoute> { categoriesScreen(bar) }
                                         entry<InvestmentsRoute> {
                                             InvestmentsScreen(
+                                                ledgerState = ledgerState,
                                                 iol = graph.iol,
                                                 brokers = graph.brokers,
                                                 onReviewImport = { navigate(it) },
+                                                onOpenAccount = { id, commodity -> navigate(AccountDetailRoute(id, commodity)) },
+                                                onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                                 bottomBar = bar,
                                             )
                                         }
