@@ -139,7 +139,14 @@ fun JournalScreen(
      */
     bottomBar: (@Composable () -> Unit)? = null,
 ) {
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(state.scrollIndex, state.scrollOffset)
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                state.scrollIndex = index
+                state.scrollOffset = offset
+            }
+    }
     var showDeleteRangeDialog by remember { mutableStateOf(false) }
     var showDateRangeFilterDialog by remember { mutableStateOf(false) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }

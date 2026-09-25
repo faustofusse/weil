@@ -228,8 +228,21 @@ class JournalState(
     private var loadStarted = false
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
 
+    /**
+     * Scroll position, hoisted for the same reason as [filter]: the screen's
+     * own `rememberLazyListState` does not reliably survive the Movimientos
+     * tab leaving composition (a push onto the outer stack disposes the whole
+     * tab shell), so opening a transaction and coming back landed the list
+     * somewhere above where it was.
+     */
+    var scrollIndex = 0
+    var scrollOffset = 0
+
     init {
-        scope.launch { ledger.changes.collect { loadFirst() } }
+        // Reload as deep as the user has scrolled: a plain first page would
+        // cut the list short under someone past row [LIST_PAGE_SIZE], and the
+        // LazyColumn would clamp them upwards after every edit.
+        scope.launch { ledger.changes.collect { loadFirst(limit = maxOf(LIST_PAGE_SIZE, items.size)) } }
     }
 
     /** Home hands over its already-loaded recent transactions so the journal opens painted. */
@@ -328,10 +341,10 @@ class JournalState(
         items = items + page.filter { seen.add(it.id) }
     }
 
-    private suspend fun loadFirst() {
-        val page = ledger.page(query = appliedQuery.ifEmpty { null }, fromDate = dateFrom, toDate = dateTo)
+    private suspend fun loadFirst(limit: Int = LIST_PAGE_SIZE) {
+        val page = ledger.page(limit = limit, query = appliedQuery.ifEmpty { null }, fromDate = dateFrom, toDate = dateTo)
         cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
-        hasMore = page.size == LIST_PAGE_SIZE
+        hasMore = page.size == limit
         accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons; colors = it.colors }
         items = page
         loaded = true
