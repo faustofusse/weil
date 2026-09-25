@@ -3,6 +3,8 @@
 package ar.fausto.weil
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -23,6 +25,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.net_worth_convert_label
+import weil.app.sharedui.generated.resources.net_worth_convert_off
 import weil.app.sharedui.generated.resources.net_worth_excluded_by_parent
 import weil.app.sharedui.generated.resources.net_worth_picker_hint
 import weil.app.sharedui.generated.resources.net_worth_picker_title
@@ -52,6 +56,26 @@ internal fun NetWorthPickerSheet(state: LedgerState, onDismiss: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // The converted line under the hero is part of the same
+                // "what my net worth is" question, so it's chosen here.
+                Text(
+                    stringResource(Res.string.net_worth_convert_label),
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "USD" to "US$",
+                        "ARS" to "$",
+                        NET_WORTH_CONVERSION_OFF to stringResource(Res.string.net_worth_convert_off),
+                    ).forEach { (value, label) ->
+                        FilterChip(
+                            selected = state.netWorthCurrency == value,
+                            onClick = { state.chooseNetWorthCurrency(value) },
+                            label = { Text(label) },
+                        )
+                    }
+                }
             }
             HorizontalDivider(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
             LazyColumn(

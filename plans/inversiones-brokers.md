@@ -624,8 +624,18 @@ acciones) y las posiciones cerradas como «0,00».
 - [x] Arreglos de layout: `SectionHeader` ya no aplasta el título cuando lo de
       la derecha es largo («Activos» en una columna de letras); encabezado de
       cuenta con la moneda principal grande y las demás más chicas.
-- [ ] Línea «≈ US$ X al oficial (fecha)» (setting `networth.currency`, default
-      USD); fetch del oficial del BCRA al sincronizar, a `prices`.
+- [x] Línea «≈ US$ X al oficial $ 1.525,50 (25/09)» bajo el hero de Inicio
+      (`OfficialRate.kt`): `BcraClient` → `prices` (USD en ARS, fuente
+      `bcra`, 15:00 ART del día), `OfficialRatesRepository.refresh` después
+      de cada sync de `LedgerState.refresh` (sólo los días que faltan, a lo
+      sumo una vez por hora, errores tragados), `Valuation.official` +
+      `convert()` puro: sin línea si no hay tipo, si tiene más de 5 días, si
+      hay plata en una moneda sin tipo (EUR) o si no hay nada que convertir.
+      Setting `networth.currency` (USD por defecto, ARS, `off`) elegido en la
+      hoja del patrimonio (mantener apretado el hero). Tests:
+      `OfficialRateTest` (parser con una respuesta real, conversión) y
+      `OfficialRatesTest` (SQLite: una sola llamada por día, sólo el día que
+      falta). Harness: tipo fijo inyectado (`AppGraph(officialRates =)`).
 - [x] Vista de posiciones en `AccountDetailScreen` (pregunta 3):
       `Valuation.positions(holdings)` (puro, `ValuationTest`) arma una
       `PositionLine` por instrumento con valor al último precio y ganancia no

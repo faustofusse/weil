@@ -56,6 +56,7 @@ import kotlin.math.abs
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.net_worth_official
 import weil.app.sharedui.generated.resources.account_add_title
 import weil.app.sharedui.generated.resources.home_accounts_title
 import weil.app.sharedui.generated.resources.home_add_first_account
@@ -470,6 +471,28 @@ private fun BalanceHero(state: LedgerState) {
                     }
                 }
             }
+        }
+        // The same total restated in one currency at the BCRA's rate, with
+        // the rate and its day: a conversion without its rate is a number
+        // nobody can check. Absent when there is nothing honest to say
+        // (no rate, a stale one, a currency without a rate).
+        val converted = remember(lines, state.valuation, state.netWorthCurrency) {
+            state.valuation.convert(lines.associate { it.key to it.value }, state.netWorthCurrency, epochMillis())
+        }
+        converted?.let { c ->
+            Text(
+                stringResource(
+                    Res.string.net_worth_official,
+                    maskedAmount(c.minor, c.commodity, hidden),
+                    formatPrice(c.rate.price, c.rate.quoteCommodity, exact = true),
+                    shortDate(c.rate.at),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
         state.error?.let { ErrorBanner(it, modifier = Modifier.padding(top = 12.dp)) }
     }

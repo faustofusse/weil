@@ -236,7 +236,7 @@ private fun gainText(gain: Long, commodity: String, ratio: Double?): String {
 }
 
 /** "24/09": a price's day, the year only when it's not this one. */
-private fun shortDate(at: Long): String {
+internal fun shortDate(at: Long): String {
     val tz = TimeZone.currentSystemDefault()
     val date = Instant.fromEpochMilliseconds(at).toLocalDateTime(tz).date
     val thisYear = Instant.fromEpochMilliseconds(epochMillis()).toLocalDateTime(tz).year

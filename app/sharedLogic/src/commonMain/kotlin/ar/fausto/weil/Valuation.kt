@@ -15,6 +15,8 @@ data class Valuation(
     val commodities: Map<String, InstrumentInfo> = emptyMap(),
     /** Latest price per commodity. */
     val prices: Map<String, PriceQuote> = emptyMap(),
+    /** Newest official USD rate in ARS, for [convert]; see [OFFICIAL_SOURCE]. */
+    val official: PriceQuote? = null,
 ) {
     /**
      * [totals] (commodity → minor units) as money: currencies kept, priced

@@ -24,7 +24,23 @@ class LedgerState(
     val settings: SettingsRepository,
     /** Commodities and prices for [displayTotals]; null prints raw balances. */
     private val brokers: BrokersRepository? = null,
+    /** Keeps the official dollar current; null leaves the converted line to stored rates. */
+    private val officialRates: OfficialRatesRepository? = null,
 ) {
+    /**
+     * What the net worth is restated in at the official rate (`USD`, `ARS`
+     * or [NET_WORTH_CONVERSION_OFF]); see [NET_WORTH_CURRENCY_KEY].
+     */
+    var netWorthCurrency by mutableStateOf(DEFAULT_NET_WORTH_CURRENCY)
+        private set
+
+    fun chooseNetWorthCurrency(value: String) {
+        netWorthCurrency = value
+        scope.launch {
+            runCatching { settings.set(NET_WORTH_CURRENCY_KEY, value.takeIf { it != DEFAULT_NET_WORTH_CURRENCY }) }
+        }
+    }
+
     /**
      * Per-type default account ids as stored (not resolved): the account a
      * new transaction preselects for that type. Raw ids, because the account
@@ -172,6 +188,7 @@ class LedgerState(
             settings.changes.collect {
                 defaultAccounts = settings.defaultAccounts()
                 reloadHomeOrder()
+                reloadNetWorthCurrency()
             }
         }
     }
@@ -191,6 +208,11 @@ class LedgerState(
                 try {
                     ledger.syncNow()
                     loadLocal()
+                    // After the sync, so a rate another device already
+                    // fetched today is seen and not fetched again.
+                    if (officialRates?.refresh() == true) {
+                        brokers?.let { b -> runCatching { b.valuation() }.getOrNull()?.let { valuation = it } }
+                    }
                 } catch (e: Throwable) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
                 }
@@ -213,6 +235,7 @@ class LedgerState(
         brokers?.let { b -> runCatching { b.valuation() }.getOrNull()?.let { valuation = it } }
         defaultAccounts = settings.defaultAccounts()
         reloadHomeOrder()
+        reloadNetWorthCurrency()
         storedRecent = ledger.page(limit = RECENT_COUNT)
         if (settled.isNotEmpty()) {
             pending = pending.filterNot { it.id in settled }
@@ -362,6 +385,10 @@ class LedgerState(
         if (homeOrderWrites > 0) return
         val stored = settings.homeAccountOrder()
         if (homeOrderWrites == 0) homeOrder = stored
+    }
+
+    private suspend fun reloadNetWorthCurrency() {
+        netWorthCurrency = settings.all()[NET_WORTH_CURRENCY_KEY] ?: DEFAULT_NET_WORTH_CURRENCY
     }
 
     fun toggleAmountsHidden() {
