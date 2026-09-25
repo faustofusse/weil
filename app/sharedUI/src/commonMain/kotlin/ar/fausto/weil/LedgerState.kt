@@ -86,6 +86,14 @@ class LedgerState(
      * write would let the row blink out until the next read.
      */
     private var pending by mutableStateOf<List<Transaction>>(emptyList())
+
+    /**
+     * Pending ids whose insert has returned. A read that *starts* after that
+     * sees the row (or its deletion), so [loadLocal] retires them from
+     * [pending] — otherwise a row deleted later, or pushed out of the recent
+     * page, would be resurrected (and double-counted) from memory forever.
+     */
+    private val written = mutableSetOf<String>()
     private val unseen: List<Transaction> by derivedStateOf {
         if (pending.isEmpty()) emptyList()
         else pending.filter { p -> storedRecent.none { it.id == p.id } }
@@ -197,6 +205,7 @@ class LedgerState(
     }
 
     private suspend fun loadLocal() {
+        val settled = written.toSet()
         val newTree = accounts.tree()
         val leafs = ledger.leafBalances()
         tree = newTree
@@ -205,6 +214,10 @@ class LedgerState(
         defaultAccounts = settings.defaultAccounts()
         reloadHomeOrder()
         storedRecent = ledger.page(limit = RECENT_COUNT)
+        if (settled.isNotEmpty()) {
+            pending = pending.filterNot { it.id in settled }
+            written.removeAll(settled)
+        }
     }
 
     /**
@@ -245,6 +258,7 @@ class LedgerState(
             error = null
             try {
                 ledger.add(date, payee, note, drafts, timeKnown, id = txId)
+                written += txId
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 // The row never reached the database, so take it back off the
