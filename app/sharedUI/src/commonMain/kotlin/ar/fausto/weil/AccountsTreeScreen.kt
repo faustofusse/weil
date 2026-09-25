@@ -62,10 +62,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
@@ -272,20 +277,43 @@ private fun AccountListRow(
         if (isDefault) "★ " + stringResource(Res.string.account_default_short) else null,
         if (childCount > 0) subaccountsLabel(childCount) else null,
     ).joinToString(" · ").ifBlank { null }
-    val indent = (row.depth.coerceAtMost(3) * 20).dp
+    val indent = (row.depth.coerceAtMost(3) * 28).dp
+    val connector = MaterialTheme.colorScheme.outlineVariant
 
     AppListRow(
         icon = if (row.depth == 0) AccountIcons.resolve(look?.icon, account.type) else null,
         paint = paint,
-        title = account.name.censored(),
+        title = account.name.censored() + if (row.depth > 0 && isDefault) " ★" else "",
         titleColor = if (categorical && row.depth == 0) paint.ink else Color.Unspecified,
-        subtitle = subtitle,
+        // Subaccounts are one compact line, so they can't grow a caption:
+        // the amount's symbol already says the currency, and the default
+        // star rides on the name instead.
+        subtitle = if (row.depth == 0) subtitle else null,
         onClick = onOpen,
         onLongClick = { actionsOpen = true },
-        modifier = Modifier.padding(start = indent),
+        modifier = Modifier
+            .then(if (row.depth > 0) Modifier.treeConnector(indent, connector) else Modifier)
+            // One height per level, with or without a disc or a caption:
+            // 60.dp cards for top-level accounts, 44.dp for subaccounts
+            // (plus AppListRow's 10.dp gap below each).
+            .heightIn(min = if (row.depth == 0) 70.dp else 54.dp)
+            .padding(start = indent),
     ) {
-        Column(horizontalAlignment = Alignment.End) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             val zero = primary == null || primary.value == 0L
+            // Other currencies sit on the same line, dimmer and to the left,
+            // so a mixed account is as tall as the rest and the main amount
+            // still ends on the shared right edge.
+            val rest = totals.drop(1).filter { it.value != 0L }
+            if (rest.isNotEmpty()) {
+                Text(
+                    rest.joinToString(" · ") { (c, v) -> maskedAmount(v, c, hidden) },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 1,
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             Text(
                 if (primary == null) {
                     maskedAmount(0L, account.commodity ?: Money.DEFAULT_COMMODITY, hidden)
@@ -302,17 +330,6 @@ private fun AccountListRow(
                 },
                 maxLines = 1,
             )
-            // Other currencies ride as a caption instead of a second
-            // headline, so a mixed account is the same height as the rest.
-            val rest = totals.drop(1).filter { it.value != 0L }
-            if (rest.isNotEmpty()) {
-                Text(
-                    rest.joinToString(" · ") { (c, v) -> maskedAmount(v, c, hidden) },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    maxLines = 1,
-                )
-            }
         }
     }
     if (actionsOpen) {
@@ -322,6 +339,28 @@ private fun AccountListRow(
             onDismiss = { actionsOpen = false },
         )
     }
+}
+
+/**
+ * The "└" that hangs a child card off the one above it: a vertical stroke
+ * down the indent gutter that bends into the card's vertical middle. Drawn
+ * behind the row's whole slot, which includes [AppListRow]'s 10.dp bottom
+ * gap, so the card itself spans `height - gap`; the stroke starts a little
+ * above the slot to reach up into the previous row's gap.
+ */
+private fun Modifier.treeConnector(indent: Dp, color: Color): Modifier = drawBehind {
+    val gap = 10.dp.toPx()
+    val radius = 10.dp.toPx()
+    val x = (indent - 16.dp).toPx()
+    val end = (indent - 4.dp).toPx()
+    val mid = (size.height - gap) / 2f
+    val path = Path().apply {
+        moveTo(x, mid - 18.dp.toPx())
+        lineTo(x, mid - radius)
+        quadraticTo(x, mid, x + radius, mid)
+        lineTo(end, mid)
+    }
+    drawPath(path, color, style = Stroke(width = 1.25.dp.toPx(), cap = StrokeCap.Round))
 }
 
 internal fun typeSum(state: LedgerState, type: AccountType): Map<String, Long> {
