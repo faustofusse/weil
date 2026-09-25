@@ -65,6 +65,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.broker_adjust_payee
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.app_title
 import weil.app.sharedui.generated.resources.login_approved
@@ -654,6 +655,7 @@ fun RootScreen(
                                 // bar; no longer a tab, so it always wears the
                                 // back arrow (bottomBar = null).
                                 entry<BrokerImportRoute> { route ->
+                                    val adjustPayee = stringResource(Res.string.broker_adjust_payee, route.brokerName)
                                     BrokerImportScreen(
                                         route = route,
                                         ledger = graph.ledger,
@@ -662,6 +664,10 @@ fun RootScreen(
                                                 IOL_PROVIDER -> graph.iol.apply(plan)
                                                 else -> graph.brokers.apply(plan)
                                             }.also { ledgerState.refresh() }
+                                        },
+                                        adjust = { difference ->
+                                            graph.brokers.adjustOpening(route.accounts, difference, adjustPayee)
+                                                .also { ledgerState.refresh() }
                                         },
                                         onDone = { pop() },
                                         onNavigateBack = { pop() },

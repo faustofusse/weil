@@ -152,6 +152,39 @@ class BrokersRepository(
         return ledger.addAll(selected.map { it.transaction })
     }
 
+    /**
+     * Settles a cash [difference] against the opening balance: what the
+     * broker holds minus what the ledger holds, booked between the broker's
+     * cash account and `Patrimonio:Saldo inicial`.
+     *
+     * The opening of an account whose deposits the broker never reports is
+     * a remainder (see planBrokerImport's opening), and every bank transfer
+     * the user records afterwards moves it; this is the one-tap way to fix it
+     * once the history is in. A separate transaction rather than an edit of
+     * the opening, so it reads as what it is and undoes cleanly. Dated just
+     * before the oldest movement of the broker's cash, which is where an
+     * opening belongs. Returns the new transaction's id.
+     *
+     * Cash only: a quantity that disagrees is a split, a transfer between
+     * brokers or a missing trade, and money is not how any of those is fixed.
+     */
+    suspend fun adjustOpening(broker: BrokerAccounts, difference: BalanceDifference, payee: String): String {
+        require(difference.accountId in broker.cash.values) { "only cash differences can be adjusted" }
+        require(difference.deltaMinor != 0L) { "nothing to adjust" }
+        val date = (ledger.earliestDate(broker.cash.values.toList()) ?: epochMillis()) - 1
+        val delta = difference.deltaMinor
+        return ledger.add(
+            date = date,
+            payee = payee,
+            note = null,
+            drafts = listOf(
+                DraftPosting(difference.accountId, formatMinorUnits(delta), difference.commodity),
+                DraftPosting(broker.opening, formatMinorUnits(-delta), difference.commodity),
+            ),
+            timeKnown = false,
+        )
+    }
+
     private suspend fun findOrCreate(
         name: String,
         type: AccountType,

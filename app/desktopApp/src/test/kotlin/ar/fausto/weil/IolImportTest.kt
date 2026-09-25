@@ -116,6 +116,47 @@ class IolImportTest {
         assertEquals(before, graph.accounts.tree().flatMap { it.selfAndDescendants }.size)
     }
 
+    /**
+     * The real sequence after an import: bank transfers IOL never reported
+     * get recorded against IOL:Pesos, the opening (a remainder) no longer
+     * adds up, and one adjustment settles it.
+     */
+    @Test
+    fun aTransferRecordedLaterIsSettledAgainstTheOpening() = runBlocking {
+        val accounts = iol.connect("user", "ok")
+        iol.apply(iol.preview())
+        val pesos = accounts.cash.getValue("ARS")
+        // A withdrawal from IOL to the bank, recorded from the bank's side.
+        graph.ledger.add(
+            iolTime("2026-01-10T10:00:00")!!, "Transferencia a Santander", null,
+            listOf(DraftPosting(pesos, "-1056293,72"), DraftPosting("seed-asset-bank", "1056293,72")),
+        )
+
+        val difference = iol.preview().differences.single()
+        assertEquals(pesos, difference.accountId)
+        assertEquals(105_629_372L, difference.deltaMinor)
+
+        val id = graph.brokers.adjustOpening(accounts, difference, "Ajuste de saldo inicial IOL")
+        val adjustment = graph.ledger.get(id)!!
+        // Before everything else the account has: it belongs to the opening.
+        assertEquals(graph.ledger.earliestDate(accounts.cash.values.toList()), adjustment.date)
+        assertEquals(
+            setOf(pesos to 105_629_372L, accounts.opening to -105_629_372L),
+            adjustment.postings.map { it.accountId to it.amountMinor }.toSet(),
+        )
+        assertEquals(emptyList(), iol.preview().differences)
+    }
+
+    @Test
+    fun onlyCashDifferencesCanBeAdjusted() = runBlocking<Unit> {
+        val accounts = iol.connect("user", "ok")
+        assertFailsWith<IllegalArgumentException> {
+            graph.brokers.adjustOpening(
+                accounts, BalanceDifference(accounts.holdings, "BCBA:MELI", 13L, 14L), "x",
+            )
+        }
+    }
+
     @Test
     fun appliedTransactionsCarryTheirBrokerOrigin() = runBlocking {
         iol.connect("user", "ok")

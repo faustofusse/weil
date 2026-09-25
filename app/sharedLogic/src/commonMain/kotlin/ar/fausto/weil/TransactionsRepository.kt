@@ -740,6 +740,18 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         }
     }
 
+    /** Date of the oldest transaction touching any of [accountIds], or null when none does. */
+    suspend fun earliestDate(accountIds: List<String>): Long? {
+        if (accountIds.isEmpty()) return null
+        return db.useForRead { d ->
+            d.query(
+                "select min(t.date) from postings p join transactions t on t.id = p.transaction_id" +
+                    " where p.account_id in (${quoteList(accountIds)})",
+                null,
+            ) { rows -> (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() }
+        }
+    }
+
     /** Leaf-level totals per commodity, straight from postings. */
     suspend fun leafBalances(): Map<String, Map<String, Long>> = db.useForRead { d ->
         d.query(

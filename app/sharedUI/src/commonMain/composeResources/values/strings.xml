@@ -76,6 +76,10 @@
     <string name="broker_differences_body">Después de importar, esto no coincidiría con lo que informa el broker. Suele ser un depósito o una extracción que el broker no reporta.</string>
     <string name="broker_difference_row">%1$s: el broker dice %2$s, tus cuentas %3$s</string>
     <string name="broker_issues_title">No se pudieron importar</string>
+    <string name="broker_adjust">Ajustar</string>
+    <string name="broker_adjusted">Saldo inicial ajustado</string>
+    <string name="broker_adjust_payee">Ajuste de saldo inicial %1$s</string>
+    <string name="broker_all_match">Todo coincide con el broker</string>
 
     <!-- Categories (expense accounts) -->
     <string name="categories_title">Categorías</string>

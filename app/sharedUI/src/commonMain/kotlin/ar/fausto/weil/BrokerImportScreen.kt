@@ -3,6 +3,7 @@ package ar.fausto.weil
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +36,9 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.action_undo
+import weil.app.sharedui.generated.resources.broker_adjust
+import weil.app.sharedui.generated.resources.broker_adjusted
+import weil.app.sharedui.generated.resources.broker_all_match
 import weil.app.sharedui.generated.resources.broker_difference_row
 import weil.app.sharedui.generated.resources.broker_differences_body
 import weil.app.sharedui.generated.resources.broker_differences_title
@@ -58,6 +63,8 @@ fun BrokerImportScreen(
     route: BrokerImportRoute,
     ledger: TransactionsRepository,
     apply: suspend (BrokerPlan) -> List<String>,
+    /** Settles a cash difference against the opening balance; returns the new transaction's id. */
+    adjust: suspend (BalanceDifference) -> String,
     onDone: () -> Unit,
     onNavigateBack: () -> Unit,
 ) {
@@ -68,6 +75,12 @@ fun BrokerImportScreen(
     val count = plan.transactions.size
     val doneMessage = stringResource(Res.string.broker_import_done, count)
     val undoLabel = stringResource(Res.string.action_undo)
+    val adjustedMessage = stringResource(Res.string.broker_adjusted)
+    // Differences settled on this screen: they leave the list, and come back
+    // if the adjustment is undone.
+    var adjusted by remember { mutableStateOf<Set<BalanceDifference>>(emptySet()) }
+    var adjusting by remember { mutableStateOf<BalanceDifference?>(null) }
+    val differences = plan.differences.filter { it !in adjusted }
     val scales = route.scales + plan.newCommodities.associate { it.id to it.scale }
     val symbols = plan.newCommodities.associate { it.id to it.symbol }
 
@@ -138,17 +151,17 @@ fun BrokerImportScreen(
         ) {
             item(key = "count") {
                 Text(
-                    if (count == 0) {
-                        stringResource(Res.string.broker_import_nothing)
-                    } else {
-                        stringResource(Res.string.broker_import_count, count)
+                    when {
+                        count > 0 -> stringResource(Res.string.broker_import_count, count)
+                        differences.isEmpty() && plan.issues.isEmpty() -> stringResource(Res.string.broker_all_match)
+                        else -> stringResource(Res.string.broker_import_nothing)
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 12.dp),
                 )
             }
-            if (plan.differences.isNotEmpty()) {
+            if (differences.isNotEmpty()) {
                 item(key = "differences") {
                     Section(stringResource(Res.string.broker_differences_title))
                     Text(
@@ -157,24 +170,62 @@ fun BrokerImportScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
-                    plan.differences.forEach { difference ->
-                        val cash = difference.accountId != route.accounts.holdings
+                    differences.forEach { difference ->
+                        val cash = difference.accountId in route.accounts.cash.values
                         val label = if (cash) currencyName(difference.commodity) else symbols[difference.commodity] ?: difference.commodity
                         fun amount(minor: Long) = if (cash) {
                             formatMoney(minor, difference.commodity, signed = true)
                         } else {
                             formatQuantity(minor, scales[difference.commodity] ?: 2)
                         }
-                        Text(
-                            stringResource(
-                                Res.string.broker_difference_row,
-                                label,
-                                amount(difference.brokerMinor),
-                                amount(difference.ledgerMinor),
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(bottom = 4.dp),
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                        ) {
+                            Text(
+                                stringResource(
+                                    Res.string.broker_difference_row,
+                                    label,
+                                    amount(difference.brokerMinor),
+                                    amount(difference.ledgerMinor),
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            // Cash only (see BrokersRepository.adjustOpening):
+                            // a position that disagrees isn't fixed with money.
+                            if (cash) {
+                                if (adjusting == difference) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.padding(start = 12.dp).size(18.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    TextButton(
+                                        onClick = {
+                                            adjusting = difference
+                                            scope.launch {
+                                                try {
+                                                    val id = adjust(difference)
+                                                    adjusted = adjusted + difference
+                                                    Feedback.undoable(adjustedMessage, undoLabel) {
+                                                        ledger.delete(id)
+                                                        adjusted = adjusted - difference
+                                                    }
+                                                } catch (e: Throwable) {
+                                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                                    Feedback.show(e.message ?: e.toString())
+                                                } finally {
+                                                    adjusting = null
+                                                }
+                                            }
+                                        },
+                                        enabled = adjusting == null,
+                                        modifier = Modifier.padding(start = 8.dp),
+                                    ) { Text(stringResource(Res.string.broker_adjust)) }
+                                }
+                            }
+                        }
                     }
                     Spacer(Modifier.height(16.dp))
                 }
