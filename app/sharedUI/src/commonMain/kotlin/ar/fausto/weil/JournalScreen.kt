@@ -162,6 +162,7 @@ fun JournalScreen(
     var showDeleteRangeDialog by remember { mutableStateOf(false) }
     var showDateRangeFilterDialog by remember { mutableStateOf(false) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
+    var showRenameSelectedDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val selecting = state.isSelecting
     // A selection run always wins the bar's mode: long-pressing a row while
@@ -235,6 +236,7 @@ fun JournalScreen(
             val actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit =
                 if (selecting) {
                     {
+                        RenameSelectionAction(state.selected.size) { showRenameSelectedDialog = true }
                         IconButton(onClick = { showDeleteSelectedDialog = true }) {
                             Icon(
                                 Icons.Filled.Delete,
@@ -547,6 +549,16 @@ fun JournalScreen(
 
     if (showDateRangeFilterDialog) {
         DateRangeFilterDialog(state = state, onDismiss = { showDateRangeFilterDialog = false })
+    }
+
+    if (showRenameSelectedDialog) {
+        RenameSelectedDialog(
+            count = state.selected.size,
+            current = { state.selectedPayees() },
+            rename = { state.renameSelected(it) },
+            restore = { state.restorePayees(it) },
+            onDismiss = { showRenameSelectedDialog = false },
+        )
     }
 
     if (showDeleteSelectedDialog) {

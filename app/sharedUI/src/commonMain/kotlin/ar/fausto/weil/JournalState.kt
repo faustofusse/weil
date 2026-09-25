@@ -375,6 +375,25 @@ class JournalState(
         return backups
     }
 
+    /**
+     * Multi-select rename: sets every ticked transaction's payee to [payee]
+     * and ends the run. Returns the previous payees for Deshacer; the reload
+     * comes from [TransactionsRepository.changes].
+     */
+    suspend fun renameSelected(payee: String): Map<String, String> {
+        val ids = selection.toList()
+        if (ids.isEmpty()) return emptyMap()
+        val previous = ledger.renamePayees(ids, payee)
+        selection.clear()
+        return previous
+    }
+
+    /** Current payees of the ticked rows, to prefill the rename dialog. */
+    suspend fun selectedPayees(): Map<String, String> = ledger.payees(selection.toList())
+
+    /** Puts back what [renameSelected] overwrote. */
+    suspend fun restorePayees(previous: Map<String, String>) = ledger.restorePayees(previous)
+
     /** Re-creates rows deleted by [deleteSelected]; the Deshacer half. */
     suspend fun restore(backups: List<TransactionBackup>) = ledger.restoreBackups(backups)
 

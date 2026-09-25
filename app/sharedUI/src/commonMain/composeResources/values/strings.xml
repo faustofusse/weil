@@ -237,6 +237,11 @@
     <string name="journal_delete_selected_title">¿Eliminar %1$d transacciones?</string>
     <string name="journal_delete_selected_body">Se eliminan las transacciones elegidas con todos sus registros. Podés deshacerlo desde el aviso.</string>
     <string name="journal_delete_failed">No se pudieron eliminar las transacciones</string>
+    <string name="journal_rename_selected">Renombrar %1$d</string>
+    <string name="journal_rename_selected_title">Renombrar %1$d transacciones</string>
+    <string name="journal_rename_selected_body">Se cambia la descripción de todas las transacciones elegidas. Podés deshacerlo desde el aviso.</string>
+    <string name="journal_renamed_count">%1$d renombradas</string>
+    <string name="journal_rename_failed">No se pudieron renombrar las transacciones</string>
     <string name="journal_search_hint">Buscar por descripción o cuenta</string>
     <string name="journal_search_empty">Sin resultados para «%1$s»</string>
 
