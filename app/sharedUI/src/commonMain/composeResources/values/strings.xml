@@ -134,10 +134,6 @@
     <string name="account_default_hint">Se preselecciona en movimientos nuevos (%1$s)</string>
     <string name="account_default_badge">Cuenta predeterminada</string>
     <string name="account_default_short">predeterminada</string>
-    <string name="account_commodity_label">Moneda</string>
-    <string name="account_commodity_any">Cualquiera</string>
-    <string name="account_commodity_hint">Los movimientos nuevos usan esta moneda. Dos cuentas pueden llamarse igual si su moneda es distinta.</string>
-    <string name="account_commodity_mismatch">Esta cuenta es en %1$s</string>
 
     <!-- Net worth picker -->
     <string name="net_worth_picker_title">Patrimonio</string>

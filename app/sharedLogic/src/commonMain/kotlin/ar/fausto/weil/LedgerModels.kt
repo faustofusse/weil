@@ -41,18 +41,6 @@ data class Account(
      */
     val icon: String? = null,
     /**
-     * The currency this account holds, when it is restricted to one
-     * ("ARS", "USD"). Only meaningful for Asset/Liability; null means
-     * unrestricted, which is the right answer for categories and for any
-     * account the user never declared.
-     *
-     * Soft on purpose: it drives defaults, filtering and disambiguation, but
-     * postings are never rejected for disagreeing with it — an FX transfer
-     * is legitimately one transaction touching two commodities, and history
-     * predates whatever the user declares today.
-     */
-    val commodity: String? = null,
-    /**
      * Key of the palette entry this account is painted with (see
      * `AccountColors` in sharedUI), a key for the same reasons as [icon].
      * One key means two colors — a tint for the avatar disc and an ink for

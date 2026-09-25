@@ -21,7 +21,6 @@ export interface MessageAccount {
   id: string;
   path: string;
   type: 'expense' | 'income' | 'asset' | 'liability';
-  commodity?: string | null;
   label?: string;
 }
 

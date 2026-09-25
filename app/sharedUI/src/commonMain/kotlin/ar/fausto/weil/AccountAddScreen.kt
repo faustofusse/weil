@@ -42,8 +42,6 @@ import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.account_add_title
 import weil.app.sharedui.generated.resources.account_choose_parent
-import weil.app.sharedui.generated.resources.account_commodity_any
-import weil.app.sharedui.generated.resources.account_commodity_label
 import weil.app.sharedui.generated.resources.account_name_label
 import weil.app.sharedui.generated.resources.account_parent_none
 import weil.app.sharedui.generated.resources.account_parent_under
@@ -68,17 +66,11 @@ fun AccountAddScreen(
     var type by remember { mutableStateOf(initialType ?: AccountType.Asset) }
     var parent by remember { mutableStateOf<AccountNode?>(null) }
     var pickingParent by remember { mutableStateOf(false) }
-    // Inherited from the parent when there is one: a subaccount of "Santander
-    // USD" is in dollars, and asking again invites the contradiction.
-    var commodity by remember { mutableStateOf<String?>(null) }
-    var pickingCommodity by remember { mutableStateOf(false) }
     val nameFocus = remember { FocusRequester() }
 
     LaunchedEffect(Unit) { nameFocus.requestFocus() }
 
     val effectiveType = parent?.account?.type ?: type
-    val holdsMoney = effectiveType == AccountType.Asset || effectiveType == AccountType.Liability
-    val effectiveCommodity = parent?.account?.commodity ?: commodity
 
     fun save() {
         if (name.isBlank() || state.busy) return
@@ -86,7 +78,6 @@ fun AccountAddScreen(
             name.trim(),
             effectiveType,
             parent?.account?.id,
-            commodity = effectiveCommodity.takeIf { holdsMoney },
         )
         onSaved()
     }
@@ -169,29 +160,7 @@ fun AccountAddScreen(
                 enabled = parent == null,
                 onPick = { type = it },
             )
-            // Only for accounts that hold money: a category is spent in
-            // whatever currency the account paying it holds.
-            if (holdsMoney) {
-                Spacer(Modifier.height(12.dp))
-                PickerField(
-                    label = stringResource(Res.string.account_commodity_label),
-                    value = effectiveCommodity,
-                    placeholder = stringResource(Res.string.account_commodity_any),
-                    onClick = { if (parent?.account?.commodity == null) pickingCommodity = true },
-                )
-            }
         }
-    }
-
-    if (pickingCommodity) {
-        CommodityPickerDialog(
-            selected = commodity,
-            onDismiss = { pickingCommodity = false },
-            onPick = {
-                commodity = it
-                pickingCommodity = false
-            },
-        )
     }
 
     if (pickingParent) {

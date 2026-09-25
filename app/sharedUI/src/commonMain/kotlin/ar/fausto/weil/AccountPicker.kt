@@ -65,13 +65,6 @@ fun AccountPickerSheet(
      */
     rootLabel: String? = null,
     onPickRoot: (() -> Unit)? = null,
-    /**
-     * When set, asset/liability accounts declaring a *different* currency are
-     * hidden (categories and undeclared accounts always stay). A hidden
-     * parent's matching descendants are promoted rather than dropped with it,
-     * so declaring a currency on a folder never hides the accounts inside it.
-     */
-    commodityFilter: String? = null,
     typeOptions: List<AccountType> = emptyList(),
     initialType: AccountType? = null,
     onTypeChange: (AccountType) -> Unit = {},
@@ -80,10 +73,8 @@ fun AccountPickerSheet(
 ) {
     var filter by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(initialType ?: typeOptions.firstOrNull()) }
-    val shown = remember(tree, type, typeOptions, commodityFilter) {
-        val byType =
-            if (typeOptions.isEmpty() || type == null) tree else tree.filter { it.account.type == type }
-        if (commodityFilter == null) byType else filterByCommodity(byType, commodityFilter)
+    val shown = remember(tree, type, typeOptions) {
+        if (typeOptions.isEmpty() || type == null) tree else tree.filter { it.account.type == type }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column {
@@ -225,10 +216,6 @@ fun AccountPickerSheet(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false),
                             )
-                            // Two same-named accounts flatten to the same
-                            // path; the currency is the only thing that tells
-                            // the rows apart.
-                            CommodityBadge(node.account.commodity)
                         }
                     }
                 } else {
@@ -241,19 +228,6 @@ fun AccountPickerSheet(
         }
     }
 }
-
-/**
- * Drops asset/liability accounts whose declared currency is not [commodity],
- * promoting the survivors under a dropped parent instead of taking the whole
- * branch with it. Accounts that declare nothing are never filtered out: no
- * declaration means no claim, and hiding them would punish the default state.
- */
-private fun filterByCommodity(nodes: List<AccountNode>, commodity: String): List<AccountNode> =
-    nodes.flatMap { node ->
-        val kept = filterByCommodity(node.children, commodity)
-        val own = node.account.commodity
-        if (own == null || own == commodity) listOf(node.copy(children = kept)) else kept
-    }
 
 /** Marker row for a type section in the depth-first list below. */
 private data class TypeHeaderRow(val type: AccountType, val divider: Boolean)
@@ -322,7 +296,6 @@ private fun LazyListScope.itemsIndented(
                             .weight(1f, fill = false)
                             .padding(horizontal = 16.dp),
                     )
-                    CommodityBadge(node.account.commodity)
                     Spacer(Modifier.weight(1f))
                     if (node.children.isNotEmpty()) {
                         Text(

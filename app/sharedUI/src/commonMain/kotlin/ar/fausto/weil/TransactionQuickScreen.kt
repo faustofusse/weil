@@ -134,19 +134,7 @@ fun TransactionQuickScreen(
     val scope = rememberCoroutineScope()
     val amountFocus = remember { FocusRequester() }
 
-    // The asset leg is what holds money, so it decides the currency: a
-    // charge on a dollar account is in dollars without the user saying so.
-    // An account that declares nothing keeps the old default.
-    val assetId = when (currentKind) {
-        TxnKind.Expense, TxnKind.Transfer -> fromId
-        TxnKind.Income -> toId
-    }
-    val commodity = remember(tree, assetId) {
-        tree.flatMap { it.selfAndDescendants }
-            .firstOrNull { it.account.id == assetId }
-            ?.account?.commodity
-            ?: Money.DEFAULT_COMMODITY
-    }
+    val commodity = Money.DEFAULT_COMMODITY
     val money = Money.parse(amountText.trim(), commodity)
     val amountValid = money != null && money.minorUnits > 0
     val canRecord = !busy && amountValid && fromId != null && toId != null
@@ -154,7 +142,7 @@ fun TransactionQuickScreen(
     suspend fun reloadTree() {
         defaults = settings.defaultAccounts()
         tree = accounts.tree()
-        paths = disambiguatedPaths(tree)
+        paths = displayPaths(tree)
     }
 
     LaunchedEffect(Unit) {
@@ -431,23 +419,10 @@ fun TransactionQuickScreen(
             else -> listOfNotNull(fromId).toSet()
         }
         val isCategory = pickerType == AccountType.Expense
-        // A transfer here carries one amount, so both legs must be the same
-        // currency: offering a dollar account opposite a peso one would only
-        // produce a transaction this screen cannot express (the full editor
-        // does FX, with two amounts).
-        val transferCommodity = if (currentKind == TxnKind.Transfer) {
-            val other = if (field == QuickField.From) toId else fromId
-            tree.flatMap { it.selfAndDescendants }
-                .firstOrNull { it.account.id == other }
-                ?.account?.commodity
-        } else {
-            null
-        }
         AccountPickerSheet(
             tree = tree.filter { it.account.type == pickerType },
             title = if (field == QuickField.From) fromLabel else toLabel,
             exclude = exclude,
-            commodityFilter = transferCommodity,
             createLabel = if (isCategory) newCategoryLabel else null,
             onCreate = if (isCategory) {
                 {

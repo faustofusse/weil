@@ -293,9 +293,8 @@ class LedgerState(
         type: AccountType,
         parentId: String?,
         icon: String? = null,
-        commodity: String? = null,
         color: String? = null,
-    ) = mutate { accounts.add(name, type, parentId, icon, commodity, color) }
+    ) = mutate { accounts.add(name, type, parentId, icon, color) }
 
     fun rename(id: String, name: String) =
         mutate { accounts.rename(id, name) }
@@ -324,14 +323,6 @@ class LedgerState(
         settings.setDefaultAccount(account.type, account.id.takeIf { it != current })
         defaultAccounts = settings.defaultAccounts()
     }
-
-    /**
-     * Declares (or clears, with null) the currency an Asset/Liability account
-     * holds. Existing postings are untouched: the currency restricts what the
-     * entry screens offer, not what the ledger already recorded.
-     */
-    fun setCommodity(id: String, commodity: String?) =
-        mutate { accounts.setCommodity(id, commodity) }
 
     /** Only meaningful for Asset/Liability; see [excludedFromNetWorth]. */
     fun setInNetWorth(id: String, included: Boolean) =

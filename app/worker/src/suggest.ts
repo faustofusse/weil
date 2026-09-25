@@ -280,23 +280,13 @@ export interface AccountsBody {
   income?: SuggestOption[];
 }
 
-/** An own account, with what distinguishes two namesakes: the currency. */
+/** An own account; a liability is described so it isn't mistaken for a balance. */
 export interface OwnOption extends SuggestOption {
-  commodity?: string | null;
   type?: 'asset' | 'liability';
 }
 
-/**
- * What each own account is, in one line. The currency is the whole point: a
- * Santander alert for "U$S5,00" is the Santander account that holds dollars,
- * and without this the model is choosing between two strings that differ by a
- * word it has no reason to weigh.
- */
 function describeOwn(option: OwnOption): string | null {
-  const bits: string[] = [];
-  if (option.commodity) bits.push(`holds ${option.commodity}`);
-  if (option.type === 'liability') bits.push('a credit card or a debt, not a balance');
-  return bits.length > 0 ? bits.join('; ') : null;
+  return option.type === 'liability' ? 'a credit card or a debt, not a balance' : null;
 }
 
 const MESSAGE_CONTEXT =

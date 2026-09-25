@@ -323,19 +323,13 @@ fun Database.migrateSchema() {
         addColumn("alter table accounts add column color text")
     }
     if ("commodity" !in columns) {
-        // Declared currency of an Asset/Liability account ("USD"), null when
-        // the account is not restricted to one — every Income/Expense
-        // category, and any asset the user never declared. Deliberately NOT
-        // `not null default 'ARS'`: a default would assert a currency for
-        // every pre-existing account, and "unknown" has to stay
-        // distinguishable from "pesos" for resolveAccountHint to be able to
-        // refuse to guess.
-        //
-        // No unique index on (parent_id, name, commodity) to go with it: the
-        // sync engine replicates row state, so two devices creating the same
-        // account offline would converge into a constraint violation on a
-        // table the UI cannot repair. The duplicate check lives in
-        // AccountsRepository instead.
+        // Unused. It held a declared currency per asset account, a feature
+        // since removed; the app, the worker and the web app neither read nor
+        // write it any more. `drop column` does replicate on the sync engine
+        // (docs/sync-engine-ddl.md), but it must wait until no installed build
+        // still reads the column: older builds select it in every account
+        // query and would fail all of them once the drop reached them. The
+        // doc has the steps.
         addColumn("alter table accounts add column commodity text")
     }
     val txColumns = query("pragma table_info(transactions)", null) { rows ->

@@ -139,7 +139,7 @@ class SuggestRepository(
         val id = message.ref
         val tree = accounts.tree()
         val flat = tree.flatMap { it.selfAndDescendants }
-        val options = flat.map { AccountOption(it.account.id, it.path, wireType(it.account.type), it.account.commodity) }
+        val options = flat.map { AccountOption(it.account.id, it.path, wireType(it.account.type)) }
         // Who the message was sent to. A cash order "for FAUSTO" is the user
         // moving their own money only if the models know the user is Fausto;
         // without a name set the line is simply left out.
@@ -332,11 +332,8 @@ class SuggestRepository(
                         )
                     },
                     nearby = nearby,
-                    // Own accounts carry their currency: that is what tells
-                    // "Santander Dolares" from "Santander Pesos" when the
-                    // alert only says U$S.
                     own = options.filter { it.type == "asset" || it.type == "liability" }
-                        .map { PathOption(it.id, it.path, it.commodity, it.type) },
+                        .map { PathOption(it.id, it.path, it.type) },
                     expense = options.filter { it.type == "expense" }.map { PathOption(it.id, it.path) },
                     income = options.filter { it.type == "income" }.map { PathOption(it.id, it.path) },
                 ),
@@ -612,14 +609,12 @@ private data class AccountOption(
     val id: String,
     val path: String,
     val type: String,
-    val commodity: String? = null,
 )
 
 @Serializable
 private data class PathOption(
     val id: String,
     val path: String,
-    val commodity: String? = null,
     val type: String? = null,
 )
 

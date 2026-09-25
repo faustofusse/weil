@@ -198,8 +198,8 @@ class EmailParsingTest {
 
 class AccountHintTest {
 
-    private fun asset(id: String, name: String, commodity: String? = null) =
-        Account(id, name, null, AccountType.Asset, commodity = commodity)
+    private fun asset(id: String, name: String) =
+        Account(id, name, null, AccountType.Asset)
 
     private val accounts = listOf(
         asset("mp", "Mercado Pago"),
@@ -226,36 +226,6 @@ class AccountHintTest {
         // Two equally-named accounts, nothing to break the tie.
         val twins = listOf(asset("a", "Santander"), asset("b", "Santander"))
         assertNull(resolveAccountHint(listOf("santander"), "ARS", twins))
-    }
-
-    @Test
-    fun aDeclaredCurrencyTellsTwoSameNamedAccountsApart() {
-        // The case the name heuristic cannot reach: identical names, and only
-        // the declared commodity to go on.
-        val twins = listOf(
-            asset("ars", "Santander", "ARS"),
-            asset("usd", "Santander", "USD"),
-        )
-        assertEquals("ars", resolveAccountHint(listOf("santander"), "ARS", twins))
-        assertEquals("usd", resolveAccountHint(listOf("santander"), "USD", twins))
-    }
-
-    @Test
-    fun aDeclaredCurrencyExcludesTheAccountOutright() {
-        // A dollars-only account is not where a peso charge landed, however
-        // well the name matches; with no alternative the answer is null.
-        val only = listOf(asset("usd", "Brubank", "USD"))
-        assertNull(resolveAccountHint(listOf("brubank"), "ARS", only))
-        assertEquals("usd", resolveAccountHint(listOf("brubank"), "USD", only))
-    }
-
-    @Test
-    fun anUndeclaredAccountStillCompetes() {
-        // Trees predating the column keep working, and a declared match wins
-        // over an undeclared namesake.
-        val mixed = listOf(asset("old", "Galicia"), asset("new", "Galicia", "ARS"))
-        assertEquals("new", resolveAccountHint(listOf("galicia"), "ARS", mixed))
-        assertEquals("old", resolveAccountHint(listOf("galicia"), "USD", mixed))
     }
 }
 

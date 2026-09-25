@@ -84,23 +84,20 @@ class FakeDatabase(
         val food = "seed-expense-food"
         val salary = "seed-income-salary"
         // `insert or replace`: migrateSchema() already seeded the starter tree
-        // under some of these ids, and the demo's shapes (two "Banco" roots,
-        // painted categories) have to win over it.
+        // under some of these ids, and the demo's shapes (painted categories)
+        // have to win over it.
         fun account(
             id: String,
             name: String,
             type: String,
-            commodity: String? = null,
             icon: String? = null,
             color: String? = null,
         ) = execute(
-            "insert or replace into accounts(id, name, parent_id, type, commodity, icon, color) " +
+            "insert or replace into accounts(id, name, parent_id, type, icon, color) " +
                 "values (:id, :name, null, :type, " +
-                "${if (commodity == null) "null" else ":commodity"}, " +
                 "${if (icon == null) "null" else ":icon"}, " +
                 "${if (color == null) "null" else ":color"})",
             mapOf(":id" to id, ":name" to name, ":type" to type) +
-                (commodity?.let { mapOf(":commodity" to it) } ?: emptyMap()) +
                 (icon?.let { mapOf(":icon" to it) } ?: emptyMap()) +
                 (color?.let { mapOf(":color" to it) } ?: emptyMap()),
         )
@@ -111,10 +108,8 @@ class FakeDatabase(
             mapOf(":at" to System.currentTimeMillis()),
         )
         account(cash, "Efectivo", "asset")
-        account(bank, "Banco", "asset", "ARS")
-        // Same name, different currency: the case the tree has to render
-        // unambiguously and the pickers have to filter.
-        account("seed-asset-bank-usd", "Banco", "asset", "USD")
+        account(bank, "Banco", "asset")
+        account("seed-asset-bank-usd", "Banco USD", "asset")
         // Painted, so the shots show both halves of a palette entry; the
         // income stays unpainted, which is the fallback look.
         account(food, "Comida", "expense", icon = "food", color = "terracota")

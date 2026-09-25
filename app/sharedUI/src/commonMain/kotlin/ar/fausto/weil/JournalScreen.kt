@@ -876,29 +876,12 @@ internal fun dayLabel(group: DayGroup): String = when (group) {
 
 /** id → colon-joined full path for picker and journal rendering. */
 suspend fun accountPaths(accounts: AccountsRepository): Map<String, String> =
-    disambiguatedPaths(accounts.tree())
+    displayPaths(accounts.tree())
 
-/**
- * id → path, with the currency appended when a namesake shares that path
- * ("Activos:Banco (USD)"). Two accounts may have the same name as long as
- * their currencies differ, and a bare path then names neither of them.
- *
- * Only the ambiguous ones are decorated: a suffix on every row would read as
- * part of the account's name everywhere the path is shown.
- */
-fun disambiguatedPaths(tree: List<AccountNode>): Map<String, String> {
-    val nodes = tree.flatMap { it.selfAndDescendants }
-    val shared = nodes.groupBy { it.path.lowercase() }.filterValues { it.size > 1 }.keys
-    return nodes.associate { node ->
-        val commodity = node.account.commodity
-        val path = node.path.censored().displayPath()
-        node.account.id to if (commodity != null && node.path.lowercase() in shared) {
-            "$path ($commodity)"
-        } else {
-            path
-        }
-    }
-}
+/** id → path as shown on screen (censored, with the display separator). */
+fun displayPaths(tree: List<AccountNode>): Map<String, String> =
+    tree.flatMap { it.selfAndDescendants }
+        .associate { it.account.id to it.path.censored().displayPath() }
 
 /** id → account type, so journal/home rows can color a posting by what it did to an asset account. */
 suspend fun accountTypes(accounts: AccountsRepository): Map<String, AccountType> =

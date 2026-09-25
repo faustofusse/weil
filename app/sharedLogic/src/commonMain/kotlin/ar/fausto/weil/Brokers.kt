@@ -40,7 +40,7 @@ class BrokersRepository(
         }
         val root = findOrCreate(label, AccountType.Asset, null)
         val cash = currencies.associateWith { currency ->
-            findOrCreate(cashAccountName(currency), AccountType.Asset, root, commodity = currency)
+            findOrCreate(cashAccountName(currency), AccountType.Asset, root)
         }
         val holdings = findOrCreate("Cartera", AccountType.Asset, root)
         // Distinct root names on purpose: a root name is unique across all
@@ -189,12 +189,11 @@ class BrokersRepository(
         name: String,
         type: AccountType,
         parentId: String?,
-        commodity: String? = null,
     ): String {
         val existing = accounts.tree().flatMap { it.selfAndDescendants }.firstOrNull {
             it.account.parentId == parentId && it.account.type == type && it.account.name.equals(name, ignoreCase = true)
         }
-        return existing?.account?.id ?: accounts.add(name, type, parentId, commodity = commodity)
+        return existing?.account?.id ?: accounts.add(name, type, parentId)
     }
 
     private fun cashAccountName(currency: String): String = when (currency) {

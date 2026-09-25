@@ -192,7 +192,7 @@ private fun CategoryRow(
         // omitting the line made that row shorter than its neighbours, which
         // read as a rendering glitch instead of as information.
         subtitle = if (total.isEmpty()) {
-            formatMoney(0L, account.commodity ?: Money.DEFAULT_COMMODITY)
+            formatMoney(0L, Money.DEFAULT_COMMODITY)
         } else {
             formatTotals(total)
         },

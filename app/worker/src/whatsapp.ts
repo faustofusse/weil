@@ -263,9 +263,7 @@ interface PostableAccountLike {
   id: string;
   path: string;
   type: 'expense' | 'income' | 'asset' | 'liability';
-  /** Declared currency of an asset/liability account, null when unrestricted. */
-  commodity?: string | null;
-  /** Path, decorated with the currency when a namesake shares it (see withLabels). */
+  /** What the model is shown: the path. */
   label?: string;
 }
 
@@ -467,25 +465,20 @@ async function createTransaction(
     return 'No pude leer el monto. Probá con «panadería 300».';
   }
   const commodity = (parsed.commodity || 'ARS').trim().toUpperCase();
-  const byLabel = new Map(accounts.map((a) => [(a.label || a.path).toLowerCase(), a]));
   const byPath = new Map<string, PostableAccountLike[]>();
   for (const a of accounts) {
     const key = a.path.toLowerCase();
     byPath.set(key, [...(byPath.get(key) ?? []), a]);
   }
-  // Same resolution as the document importer: label first, then a bare path
-  // when it names exactly one account or when the currency picks one of the
-  // namesakes. Still ambiguous means "no pick", which falls through to the
+  // Same resolution as the document importer: a path that names exactly one
+  // account. A shared path means "no pick", which falls through to the
   // default account rather than guessing.
   const pick = (path: string | null | undefined, types: PostableAccountLike['type'][]) => {
     const key = path?.trim().toLowerCase();
     if (!key) return null;
     const sharing = byPath.get(key) ?? [];
-    const hit =
-      byLabel.get(key) ??
-      (sharing.length <= 1 ? sharing[0] : sharing.filter((a) => a.commodity === commodity)[0]);
-    const ambiguous = !byLabel.get(key) && sharing.length > 1 && sharing.filter((a) => a.commodity === commodity).length !== 1;
-    return hit && !ambiguous && types.includes(hit.type) ? hit : null;
+    const hit = sharing.length === 1 ? sharing[0] : undefined;
+    return hit && types.includes(hit.type) ? hit : null;
   };
 
   const own = pick(parsed.account, ['asset', 'liability']) ?? (await defaultAssetAccount(db, accounts));

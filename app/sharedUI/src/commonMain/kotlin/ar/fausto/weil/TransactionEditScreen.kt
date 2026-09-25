@@ -57,7 +57,6 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.account_add_title
-import weil.app.sharedui.generated.resources.account_commodity_mismatch
 import weil.app.sharedui.generated.resources.editor_cost
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.action_delete
@@ -415,9 +414,6 @@ fun TransactionEditScreen(
                     draft = draft,
                     path = paths[draft.accountId],
                     instrument = valuation.commodities[draft.commodity],
-                    accountCommodity = accountTree.flatMap { it.selfAndDescendants }
-                        .firstOrNull { it.account.id == draft.accountId }
-                        ?.account?.commodity,
                     onAccount = { pickingFor = index },
                     onAmount = { amount -> drafts = drafts.copyAt(index) { copy(amountText = amount) } },
                     onCommodity = { ccy -> drafts = drafts.copyAt(index) { inCommodity(ccy) } },
@@ -501,11 +497,7 @@ fun TransactionEditScreen(
             onDismiss = { pickingFor = null },
         ) { picked ->
             drafts = drafts.copyAt(index) {
-                // An account that declares a currency sets the row's; one
-                // that doesn't leaves whatever was there, so picking an
-                // account never silently rewrites an amount's meaning.
                 copy(accountId = picked.account.id)
-                    .inCommodity(picked.account.commodity ?: commodity)
             }
             pickingFor = null
         }
@@ -617,20 +609,12 @@ private fun PostingSlab(
     path: String?,
     /** Set when the row holds an instrument: a quantity, not money. */
     instrument: InstrumentInfo?,
-    /**
-     * The currency the row's account declares, if any. Only ever a warning:
-     * an FX transfer is legitimately one transaction touching two
-     * currencies, and postings recorded before the account declared
-     * anything must stay editable.
-     */
-    accountCommodity: String?,
     onAccount: () -> Unit,
     onAmount: (String) -> Unit,
     onCommodity: (String) -> Unit,
     onRemove: () -> Unit,
     canRemove: Boolean,
 ) {
-    val mismatch = accountCommodity != null && accountCommodity != draft.commodity.uppercase()
     Column {
         SheetRow {
             Row(
@@ -747,14 +731,6 @@ private fun PostingSlab(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.7f),
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                )
-            }
-            if (mismatch) {
-                Text(
-                    stringResource(Res.string.account_commodity_mismatch, accountCommodity),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = 6.dp),
                 )
             }
         }

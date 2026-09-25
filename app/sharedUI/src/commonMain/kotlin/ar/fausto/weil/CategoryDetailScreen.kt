@@ -207,10 +207,7 @@ fun CategoryDetailScreen(
                             // shorter than the one beside it, which read as a
                             // rendering glitch instead of as information.
                             subtitle = if (childTotal.isEmpty()) {
-                                formatMoney(
-                                    0L,
-                                    child.account.commodity ?: Money.DEFAULT_COMMODITY,
-                                )
+                                formatMoney(0L, Money.DEFAULT_COMMODITY)
                             } else {
                                 formatTotals(childTotal)
                             },
