@@ -1,0 +1,47 @@
+{
+ "pais": "argentina",
+ "activos": [
+  {
+   "cantidad": 13.0,
+   "comprometido": 0.0,
+   "puntosVariacion": -80.0,
+   "variacionDiaria": -0.33,
+   "ultimoPrecio": 23510.0,
+   "ppc": 24390.0,
+   "gananciaPorcentaje": -3.6,
+   "gananciaDinero": -11440.0,
+   "valorizado": 305630.0,
+   "titulo": {
+    "simbolo": "MELI",
+    "descripcion": "Cedear Mercadolibre Inc.",
+    "pais": "argentina",
+    "mercado": "bcba",
+    "tipo": "CEDEARS",
+    "plazo": "t1",
+    "moneda": "peso_Argentino"
+   },
+   "parking": null
+  },
+  {
+   "cantidad": 1923076.0,
+   "comprometido": 0.0,
+   "puntosVariacion": 0.236,
+   "variacionDiaria": 0.22,
+   "ultimoPrecio": 106.446,
+   "ppc": 103.455,
+   "gananciaPorcentaje": 2.89,
+   "gananciaDinero": 57519.2,
+   "valorizado": 2047037.47896,
+   "titulo": {
+    "simbolo": "S13N6",
+    "descripcion": "Letra Tesoro Nacional Capitalizable 13/11/26 $",
+    "pais": "argentina",
+    "mercado": "bcba",
+    "tipo": "Letras",
+    "plazo": "t1",
+    "moneda": "peso_Argentino"
+   },
+   "parking": null
+  }
+ ]
+}

@@ -1,0 +1,182 @@
+{
+ "ADBARFA": {
+  "simbolo": "ADBARFA",
+  "descripcion": "Adcap Balanceado XVI",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "FondoComundeInversion",
+  "plazo": "t0",
+  "moneda": "peso_Argentino"
+ },
+ "AL30": {
+  "simbolo": "AL30",
+  "descripcion": "Bono Rep. Argentina Usd Step Up 2030",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "TitulosPublicos",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "AL30C": {
+  "simbolo": "AL30C",
+  "descripcion": "Bono Rep. Argentina Usd Step Up 2030",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "TitulosPublicos",
+  "plazo": "t1",
+  "moneda": "dolar_Estadounidense"
+ },
+ "AL30D": {
+  "simbolo": "AL30D",
+  "descripcion": "Bono Rep. Argentina Usd Step Up 2030",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "TitulosPublicos",
+  "plazo": "t1",
+  "moneda": "dolar_Estadounidense"
+ },
+ "AO27D": {
+  "simbolo": "AO27D",
+  "descripcion": "Bono Tesoro Nacional 6% 29/10/27 Usd",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "TitulosPublicos",
+  "plazo": "t1",
+  "moneda": "dolar_Estadounidense"
+ },
+ "BABA": {
+  "simbolo": "BABA",
+  "descripcion": "Cedear Alibaba Group Holding L",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "CEDEARS",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "BIDU": {
+  "simbolo": "BIDU",
+  "descripcion": "Cedear Baidu, Inc.",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "CEDEARS",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "IOLCAMA": {
+  "simbolo": "IOLCAMA",
+  "descripcion": "IOL Cash Management",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "FondoComundeInversion",
+  "plazo": "t0",
+  "moneda": "peso_Argentino"
+ },
+ "IOLDOLD": {
+  "simbolo": "IOLDOLD",
+  "descripcion": "IOL D\u00f3lar Ahorro Plus",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "FondoComundeInversion",
+  "plazo": "t0",
+  "moneda": "dolar_Estadounidense"
+ },
+ "IOLPORA": {
+  "simbolo": "IOLPORA",
+  "descripcion": "IOL Portafolio Potenciado",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "FondoComundeInversion",
+  "plazo": "t0",
+  "moneda": "peso_Argentino"
+ },
+ "JD": {
+  "simbolo": "JD",
+  "descripcion": "Cedear Jd.Com, Inc.",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "CEDEARS",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "MELI": {
+  "simbolo": "MELI",
+  "descripcion": "Cedear Mercadolibre Inc.",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "CEDEARS",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "MGC9O": {
+  "simbolo": "MGC9O",
+  "descripcion": "On Pampa Energia Sa Regs 9.5% V 08/12/26",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "ObligacionesNegociables",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "NIO": {
+  "simbolo": "NIO",
+  "descripcion": "Cedear Nio Inc.",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "CEDEARS",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "S12S5": {
+  "simbolo": "S12S5",
+  "descripcion": "Letras Del Tesoro Cap $ V 12/09/25",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "Letras",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "S13N6": {
+  "simbolo": "S13N6",
+  "descripcion": "Letra Tesoro Nacional Capitalizable 13/11/26 $",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "Letras",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "S14G6": {
+  "simbolo": "S14G6",
+  "descripcion": "Letra Tesoro Nacional Capitalizable 14/08/26 $",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "Letras",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "S16M6": {
+  "simbolo": "S16M6",
+  "descripcion": "Letra Tesoro Nacional Capitalizable 16/03/26 $",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "Letras",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "S29G5": {
+  "simbolo": "S29G5",
+  "descripcion": "Letras Del Tesoro Cap $ V 29/08/2025",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "Letras",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ },
+ "S30S5": {
+  "simbolo": "S30S5",
+  "descripcion": "Letras Del Tesoro Cap $ V 30/09/25",
+  "pais": "argentina",
+  "mercado": "bcba",
+  "tipo": "Letras",
+  "plazo": "t1",
+  "moneda": "peso_Argentino"
+ }
+}

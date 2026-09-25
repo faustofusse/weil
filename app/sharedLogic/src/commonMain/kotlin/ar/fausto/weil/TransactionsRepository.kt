@@ -718,6 +718,28 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         }
     }
 
+    /**
+     * What a holdings account has, per commodity: the quantity and its total
+     * cost (the sum of the `@@` costs booked into it, see [Posting.weight]).
+     * The broker planner's average cost comes from here. A split's postings
+     * carry no cost, so they change the quantity and leave the cost alone,
+     * which is what a split does.
+     */
+    suspend fun holdings(accountId: String): Map<String, HeldPosition> = db.useForRead { d ->
+        d.query(
+            "select commodity, sum(amount_minor), sum(coalesce(cost_minor, 0)), max(cost_commodity)" +
+                " from postings where account_id = :account group by commodity",
+            mapOf(":account" to accountId),
+        ) { rows ->
+            rows.mapNotNull { row ->
+                val commodity = row.getOrNull(0)?.toString() ?: return@mapNotNull null
+                val quantity = (row.getOrNull(1) as? Number)?.toLong() ?: 0L
+                val cost = (row.getOrNull(2) as? Number)?.toLong() ?: 0L
+                commodity to HeldPosition(quantity, cost, row.getOrNull(3)?.toString())
+            }.toList().toMap()
+        }
+    }
+
     /** Leaf-level totals per commodity, straight from postings. */
     suspend fun leafBalances(): Map<String, Map<String, Long>> = db.useForRead { d ->
         d.query(

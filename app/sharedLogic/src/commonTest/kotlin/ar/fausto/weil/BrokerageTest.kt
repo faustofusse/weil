@@ -188,6 +188,72 @@ class BrokerageTest {
         assertEquals(PlannedKind.Principal, result.transactions.single().kind)
     }
 
+    /** IOL's AO27D: commission in dollars, market fee billed in pesos. */
+    @Test
+    fun feesInAnotherCurrencyAreExpensedFromThatCash() {
+        val buy = BrokerEvent.Trade(
+            "165426177", t0, true, "Compra AO27D", "BCBA:AO27D",
+            quantity = d("1129"), gross = d("1138.59"), cashCommodity = "USD", fees = d("5.69"),
+            foreignFees = mapOf("ARS" to d("161.68")),
+        )
+        val result = plan(listOf(buy), instruments = emptyList(), scales = mapOf("BCBA:AO27D" to 0))
+        val trade = result.transactions.single()
+        assertEquals(
+            setOf(
+                listOf("cartera", 1129L, "BCBA:AO27D", 114_428L),
+                listOf("cash-usd", -114_428L, "USD", null),
+                listOf("comisiones", 16_168L, "ARS", null),
+                listOf("cash-ars", -16_168L, "ARS", null),
+            ),
+            trade.lines(),
+        )
+        assertEquals("Comisión US$ 5,69 + $ 161,68", trade.transaction.note)
+    }
+
+    @Test
+    fun aTransferWithoutATransfersAccountIsAnIssue() {
+        val result = planBrokerImport(
+            BrokerBatch("iol", listOf(deposit)),
+            accounts.copy(transfers = null), BrokerLedgerView(), emptySet(),
+        )
+        assertTrue(result.transactions.isEmpty())
+        assertEquals("iol:42307900416", result.issues.single().ref)
+    }
+
+    /**
+     * IOL's MGC9O: a hard-dollar ON bought with pesos and paid back in
+     * dollars. No gain is invented across currencies: the dollars carry the
+     * peso basis as their cost, like dollars bought through MEP.
+     */
+    @Test
+    fun redemptionInAnotherCurrencyCarriesTheBasisAsCost() {
+        val principal = BrokerEvent.Principal(
+            "154964666", t0, true, "Amortización MGC9O", "BCBA:MGC9O",
+            quantity = null, cash = d("142.71"), cashCommodity = "USD",
+        )
+        val result = plan(
+            listOf(principal),
+            ledger = BrokerLedgerView(holdings = mapOf("BCBA:MGC9O" to HeldPosition(213L, 19_779_433L, "ARS"))),
+            instruments = emptyList(),
+            scales = mapOf("BCBA:MGC9O" to 0),
+        )
+        assertEquals(
+            setOf(
+                listOf("cartera", -213L, "BCBA:MGC9O", -19_779_433L),
+                listOf("cash-usd", 14_271L, "USD", 19_779_433L),
+            ),
+            result.transactions.single().lines(),
+        )
+    }
+
+    @Test
+    fun aQuantityFinerThanTheScaleIsAnIssueNotARounding() {
+        val buy = ttwoBuy.copy(quantity = d("0.49395"))
+        val result = plan(listOf(buy))
+        assertTrue(result.transactions.isEmpty())
+        assertTrue("scale" in result.issues.single().message)
+    }
+
     @Test
     fun dividendWithWithholding() {
         val dividend = BrokerEvent.Income(

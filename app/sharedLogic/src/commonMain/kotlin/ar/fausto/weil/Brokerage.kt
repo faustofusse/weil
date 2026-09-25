@@ -73,6 +73,10 @@ sealed interface BrokerEvent {
      * another currency is the connector's to convert or report).
      * [costBasis] is the broker's cost of what a sale closes (positive,
      * commissions included), when it reports one.
+     *
+     * [foreignFees] are charges in *other* currencies (IOL bills a dollar
+     * trade's market fee in pesos). They can't be part of a cost in
+     * [cashCommodity], so they are expensed from that currency's cash.
      */
     data class Trade(
         override val ref: String,
@@ -85,6 +89,7 @@ sealed interface BrokerEvent {
         val cashCommodity: String,
         val fees: Decimal = Decimal.ZERO,
         val costBasis: Decimal? = null,
+        val foreignFees: Map<String, Decimal> = emptyMap(),
     ) : BrokerEvent
 
     /** Dividend or interest: [gross] before [tax] withheld, both positive. */
@@ -102,7 +107,10 @@ sealed interface BrokerEvent {
 
     /**
      * Part of a bond paid back: [quantity] units (positive) leave, [cash]
-     * arrives. Books like a sale without fees, at average cost.
+     * arrives. Books like a sale without fees, at average cost. A null
+     * [quantity] is a redemption of the whole position — what a letra's
+     * maturity is, and all IOL states exactly (its own text rounds the
+     * count: "-2,16832e+006" for 2.168.316).
      */
     data class Principal(
         override val ref: String,
@@ -110,7 +118,7 @@ sealed interface BrokerEvent {
         override val timeKnown: Boolean,
         override val description: String,
         val instrument: String,
-        val quantity: Decimal,
+        val quantity: Decimal?,
         val cash: Decimal,
         val cashCommodity: String,
     ) : BrokerEvent
@@ -180,12 +188,16 @@ data class BrokerBatch(
     val snapshot: BrokerSnapshot? = null,
     val instruments: List<InstrumentInfo> = emptyList(),
     val prices: List<PriceQuote> = emptyList(),
+    /** What the connector itself couldn't translate; passed through as plan issues. */
+    val notes: List<PlanIssue> = emptyList(),
 )
 
 /**
  * The accounts a broker connection books into (plan decision 7), created
  * once when the broker is connected. Ids, not paths: a rename breaks nothing.
+ * Stored as JSON in the synced `broker.<provider>.accounts` setting.
  */
+@kotlinx.serialization.Serializable
 data class BrokerAccounts(
     /** Cash account per currency: "ARS" → Activos:IOL:Pesos. */
     val cash: Map<String, String>,
@@ -199,8 +211,12 @@ data class BrokerAccounts(
     val commissions: String,
     val opening: String,
     val adjustments: String,
-    /** Counterpart of deposits/withdrawals until they are matched with the bank. */
-    val transfers: String,
+    /**
+     * Counterpart of deposits/withdrawals until they are matched with the
+     * bank. Null for a broker that never reports them (IOL): a transfer
+     * event then becomes an issue instead of a guess.
+     */
+    val transfers: String? = null,
 )
 
 /** A holding as the ledger has it: quantity and total cost, both minor units. */
@@ -290,11 +306,24 @@ private class BrokerPlanner(
     private val cash: MutableMap<String, Long> = ledger.cash.toMutableMap()
     private val holdings: MutableMap<String, HeldPosition> = ledger.holdings.toMutableMap()
     private val planned = mutableListOf<PlannedTransaction>()
-    private val issues = mutableListOf<PlanIssue>()
+    private val issues = batch.notes.toMutableList()
 
     fun scaleOf(commodity: String): Int = scales[commodity] ?: 2
 
     fun minor(value: Decimal, commodity: String): Long = value.toMinorUnits(scaleOf(commodity))
+
+    /**
+     * A quantity in minor units, exactly: money may round to the cent, a
+     * quantity may not. 0,5 of something whose scale is 0 means the scale is
+     * wrong, and rounding it would book a phantom unit.
+     */
+    fun quantityMinor(value: Decimal, instrument: String): Long {
+        val scale = scaleOf(instrument)
+        if (value.rescale(scale) != value) {
+            throw PlanException("quantity ${value.toPlainString()} has more decimals than $instrument's scale ($scale)")
+        }
+        return value.toMinorUnits(scale)
+    }
 
     fun plan(): BrokerPlan {
         val (fresh, known) = batch.events
@@ -343,7 +372,7 @@ private class BrokerPlanner(
     private fun planBuy(e: BrokerEvent.Trade, ref: String) {
         if (e.quantity.isZero) throw PlanException("zero quantity")
         val cashAccount = cashAccount(e.cashCommodity)
-        val quantity = minor(e.quantity, e.instrument)
+        val quantity = quantityMinor(e.quantity, e.instrument)
         val cost = minor(e.gross + e.fees, e.cashCommodity)
         val position = holdings[e.instrument]
         checkCostCommodity(position, e.cashCommodity, e.instrument)
@@ -352,9 +381,10 @@ private class BrokerPlanner(
             listOf(
                 draft(accounts.holdings, quantity, e.instrument, cost, e.cashCommodity),
                 draft(cashAccount, -cost, e.cashCommodity),
-            ),
-            note = feeNote(e.fees, e.cashCommodity),
+            ) + foreignFeeDrafts(e.foreignFees),
+            note = feeNote(e.fees, e.cashCommodity, e.foreignFees),
         )
+        bumpForeignFees(e.foreignFees)
         holdings[e.instrument] = HeldPosition(
             (position?.quantityMinor ?: 0L) + quantity,
             (position?.costMinor ?: 0L) + cost,
@@ -364,17 +394,23 @@ private class BrokerPlanner(
     }
 
     private fun planSale(e: BrokerEvent.Trade, ref: String) {
-        val sold = minor(e.quantity.abs(), e.instrument)
+        val sold = quantityMinor(e.quantity.abs(), e.instrument)
         if (sold == 0L) throw PlanException("zero quantity")
         val net = minor(e.gross - e.fees, e.cashCommodity)
         val basis = e.costBasis?.let { minor(it, e.cashCommodity) }
-        closePosition(e, ref, PlannedKind.Trade, e.instrument, sold, net, e.cashCommodity, basis, feeNote(e.fees, e.cashCommodity))
+        closePosition(
+            e, ref, PlannedKind.Trade, e.instrument, sold, net, e.cashCommodity, basis,
+            feeNote(e.fees, e.cashCommodity, e.foreignFees), foreignFeeDrafts(e.foreignFees),
+        )
+        bumpForeignFees(e.foreignFees)
     }
 
     private fun planPrincipal(e: BrokerEvent.Principal, ref: String) {
-        val redeemed = minor(e.quantity.abs(), e.instrument)
+        val redeemed = e.quantity?.let { quantityMinor(it.abs(), e.instrument) }
+            ?: holdings[e.instrument]?.quantityMinor?.takeIf { it > 0L }
+            ?: throw PlanException("redeems the whole position of ${e.instrument} but the ledger holds none")
         if (redeemed == 0L) throw PlanException("zero quantity")
-        closePosition(e, ref, PlannedKind.Principal, e.instrument, redeemed, minor(e.cash, e.cashCommodity), e.cashCommodity, null, null)
+        closePosition(e, ref, PlannedKind.Principal, e.instrument, redeemed, minor(e.cash, e.cashCommodity), e.cashCommodity, null, null, emptyList())
     }
 
     /**
@@ -391,10 +427,14 @@ private class BrokerPlanner(
         cashCommodity: String,
         brokerBasis: Long?,
         note: String?,
+        extraDrafts: List<DraftPosting>,
     ) {
         val cashAccount = cashAccount(cashCommodity)
         val position = holdings[instrument]
-        checkCostCommodity(position, cashCommodity, instrument)
+        val costCommodity = position?.costCommodity?.takeIf { position.quantityMinor != 0L } ?: cashCommodity
+        if (costCommodity != cashCommodity && brokerBasis != null) {
+            throw PlanException("$instrument is held at cost in $costCommodity, the broker's basis is in $cashCommodity")
+        }
         val held = position?.quantityMinor ?: 0L
         val basis = brokerBasis ?: run {
             // Average cost needs the units to come from somewhere: selling
@@ -405,18 +445,29 @@ private class BrokerPlanner(
             }
             averageCost(position, quantity)
         }
-        val gain = net - basis
         val drafts = buildList {
-            add(draft(accounts.holdings, -quantity, instrument, -basis, cashCommodity))
-            add(draft(cashAccount, net, cashCommodity))
-            // Income is negative in the books: a gain is a credit.
-            if (gain != 0L) add(draft(accounts.capitalGains, -gain, cashCommodity))
+            add(draft(accounts.holdings, -quantity, instrument, -basis, costCommodity))
+            if (costCommodity == cashCommodity) {
+                add(draft(cashAccount, net, cashCommodity))
+                // Income is negative in the books: a gain is a credit.
+                val gain = net - basis
+                if (gain != 0L) add(draft(accounts.capitalGains, -gain, cashCommodity))
+            } else {
+                // Bought in one currency, paid back in another (a hard-dollar
+                // ON bought with pesos): there is no single currency to state
+                // a gain in without a rate. The money received costs the
+                // basis, exactly like dollars bought through MEP, and the
+                // result stays inside that rate instead of being invented.
+                if (net <= 0L) throw PlanException("non-positive proceeds in another currency than the cost")
+                add(draft(cashAccount, net, cashCommodity, basis, costCommodity))
+            }
+            addAll(extraDrafts)
         }
         add(kind, e, ref, drafts, note)
         holdings[instrument] = HeldPosition(
             held - quantity,
             (position?.costMinor ?: 0L) - basis,
-            position?.costCommodity ?: cashCommodity,
+            costCommodity,
         )
         cash.bump(cashCommodity, net)
     }
@@ -440,11 +491,12 @@ private class BrokerPlanner(
         val cashAccount = cashAccount(e.cashCommodity)
         val amount = minor(e.amount, e.cashCommodity)
         if (amount == 0L) throw PlanException("zero transfer")
+        val transfers = accounts.transfers ?: throw PlanException("no transfers account for this broker")
         add(
             PlannedKind.Transfer, e, ref,
             listOf(
                 draft(cashAccount, amount, e.cashCommodity),
-                draft(accounts.transfers, -amount, e.cashCommodity),
+                draft(transfers, -amount, e.cashCommodity),
             ),
             needsCounterpart = true,
         )
@@ -472,7 +524,7 @@ private class BrokerPlanner(
     }
 
     private fun planQuantityChange(e: BrokerEvent.QuantityChange, ref: String) {
-        val delta = minor(e.delta, e.instrument)
+        val delta = quantityMinor(e.delta, e.instrument)
         if (delta == 0L) throw PlanException("zero quantity change")
         // Same commodity on both legs, so it balances without a cost and the
         // position's total cost is untouched: a 2:1 split halves the cost per
@@ -511,10 +563,15 @@ private class BrokerPlanner(
                 is BrokerEvent.Trade -> {
                     q(event.instrument, event.quantity)
                     c(event.cashCommodity, if (event.quantity.signum > 0) -(event.gross + event.fees) else event.gross - event.fees)
+                    for ((commodity, fee) in event.foreignFees) c(commodity, -fee)
                 }
                 is BrokerEvent.Income -> c(event.cashCommodity, event.gross - event.tax)
                 is BrokerEvent.Principal -> {
-                    q(event.instrument, -event.quantity.abs())
+                    // A whole-position redemption takes whatever is there, so
+                    // the opening is the snapshot's (zero after maturity) plus
+                    // what it took — unknown here; it's valued from the
+                    // other events and the snapshot like any other holding.
+                    event.quantity?.let { q(event.instrument, -it.abs()) }
                     c(event.cashCommodity, event.cash)
                 }
                 is BrokerEvent.CashTransfer -> c(event.cashCommodity, event.amount)
@@ -531,7 +588,8 @@ private class BrokerPlanner(
         val instruments = (snapshot.positions.map { it.instrument } + quantityDelta.keys).distinct()
         for (instrument in instruments) {
             val held = snapshot.positions.firstOrNull { it.instrument == instrument }
-            val opening = (held?.quantity ?: Decimal.ZERO) - (quantityDelta[instrument] ?: Decimal.ZERO)
+            val opening = redeemedOpening(instrument, events)
+                ?: ((held?.quantity ?: Decimal.ZERO) - (quantityDelta[instrument] ?: Decimal.ZERO))
             if (opening.isZero) continue
             if (opening.signum < 0) {
                 issues += PlanIssue(null, "opening: $instrument would open short (${opening.toPlainString()})")
@@ -571,6 +629,36 @@ private class BrokerPlanner(
             timeKnown = false,
         )
         if (validates(transaction, null)) planned += PlannedTransaction(PlannedKind.Opening, transaction, null)
+    }
+
+    /**
+     * The opening of an instrument the batch redeems in full, or null when it
+     * doesn't. A whole-position redemption resets the count, so the snapshot
+     * says nothing about what was there before it: the opening is just
+     * enough for the events before the first redemption never to go short —
+     * zero when the batch bought it itself, which is the usual case (a letra
+     * bought and held to maturity).
+     */
+    private fun redeemedOpening(instrument: String, events: List<BrokerEvent>): Decimal? {
+        val own = events.filter {
+            (it is BrokerEvent.Trade && it.instrument == instrument) ||
+                (it is BrokerEvent.Principal && it.instrument == instrument) ||
+                (it is BrokerEvent.QuantityChange && it.instrument == instrument)
+        }
+        val firstReset = own.indexOfFirst { it is BrokerEvent.Principal && it.quantity == null }
+        if (firstReset < 0) return null
+        var running = Decimal.ZERO
+        var lowest = Decimal.ZERO
+        for (event in own.take(firstReset)) {
+            running += when (event) {
+                is BrokerEvent.Trade -> event.quantity
+                is BrokerEvent.Principal -> -(event.quantity ?: Decimal.ZERO).abs()
+                is BrokerEvent.QuantityChange -> event.delta
+                else -> Decimal.ZERO
+            }
+            if (running < lowest) lowest = running
+        }
+        return -lowest
     }
 
     /**
@@ -708,8 +796,26 @@ private class BrokerPlanner(
                 .toMinorUnits(0)
         }
 
-    private fun feeNote(fees: Decimal, commodity: String): String? =
-        if (fees.isZero) null else "Comisión ${formatMoney(minor(fees, commodity), commodity)}"
+    private fun feeNote(fees: Decimal, commodity: String, foreign: Map<String, Decimal> = emptyMap()): String? {
+        val parts = (listOf(commodity to fees) + foreign.toList())
+            .filter { !it.second.isZero }
+            .map { (c, f) -> formatMoney(minor(f, c), c) }
+        return if (parts.isEmpty()) null else "Comisión " + parts.joinToString(" + ")
+    }
+
+    /** Fees in another currency than the trade's: an expense from that currency's cash. */
+    private fun foreignFeeDrafts(fees: Map<String, Decimal>): List<DraftPosting> =
+        fees.filterValues { !it.isZero }.flatMap { (commodity, fee) ->
+            val amount = minor(fee, commodity)
+            listOf(
+                draft(accounts.commissions, amount, commodity),
+                draft(cashAccount(commodity), -amount, commodity),
+            )
+        }
+
+    private fun bumpForeignFees(fees: Map<String, Decimal>) {
+        for ((commodity, fee) in fees) cash.bump(commodity, -minor(fee, commodity))
+    }
 
     private fun draft(account: String, amount: Long, commodity: String, cost: Long? = null, costCommodity: String? = null) =
         DraftPosting(

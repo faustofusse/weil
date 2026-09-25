@@ -22,6 +22,8 @@ dependencies {
     // Repository round trips against the same SQLite FakeDatabase the shot
     // harness uses: the SQL half of the ledger, which commonTest can't reach.
     testImplementation(libs.kotlin.test)
+    // Decoding recorded broker responses (IolImportTest).
+    testImplementation(libs.kotlinx.serialization.json)
 }
 
 /**
