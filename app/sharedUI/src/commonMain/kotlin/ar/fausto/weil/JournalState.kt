@@ -380,9 +380,7 @@ class JournalState(
                     date = b.tx.date,
                     payee = b.tx.payee,
                     note = b.tx.note,
-                    drafts = b.tx.postings.map { p ->
-                        DraftPosting(p.accountId, formatMinorUnits(p.amountMinor), p.commodity)
-                    },
+                    drafts = b.tx.postings.map { it.toDraft() },
                     timeKnown = b.tx.timeKnown,
                     sources = b.sources,
                 )

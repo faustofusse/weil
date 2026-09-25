@@ -166,13 +166,7 @@ fun TransactionDetailScreen(
                             scope.launch {
                                 try {
                                     val stored = ledger.get(id)
-                                    val draftsBackup = stored?.postings?.map {
-                                        DraftPosting(
-                                            it.accountId,
-                                            formatMinorUnits(it.amountMinor),
-                                            it.commodity,
-                                        )
-                                    }.orEmpty()
+                                    val draftsBackup = stored?.postings?.map { it.toDraft() }.orEmpty()
                                     ledger.delete(id)
                                     onNavigateBack()
                                     Feedback.undoable(deletedMessage, undoLabel) {

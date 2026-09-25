@@ -547,25 +547,14 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 txs
             } else {
                 val byTx = d.query(
-                    "select id, transaction_id, account_id, amount_minor, commodity from postings" +
+                    "select $POSTING_COLUMNS from postings" +
                         " where transaction_id in (${quoteList(txs.map { it.id })})",
                     null,
                 ) { rows ->
                     val grouped = mutableMapOf<String, MutableList<Posting>>()
                     for (row in rows) {
-                        if (row.size < 5) continue
-                        val postingId = row[0]?.toString() ?: continue
-                        val transactionId = row[1]?.toString() ?: continue
-                        val accountId = row[2]?.toString() ?: continue
-                        val amount = (row[3] as? Number)?.toLong() ?: continue
-                        val commodity = row[4]?.toString() ?: continue
-                        grouped.getOrPut(transactionId) { mutableListOf() } += Posting(
-                            id = postingId,
-                            transactionId = transactionId,
-                            accountId = accountId,
-                            amountMinor = amount,
-                            commodity = commodity,
-                        )
+                        val posting = postingOf(row) ?: continue
+                        grouped.getOrPut(posting.transactionId) { mutableListOf() } += posting
                     }
                     grouped
                 }
@@ -595,18 +584,11 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         } ?: return@useForRead null
         tx.copy(
             postings = d.query(
-                "select id, transaction_id, account_id, amount_minor, commodity from postings" +
+                "select $POSTING_COLUMNS from postings" +
                     " where transaction_id in ($safe)",
                 null,
             ) { rows ->
-                rows.filter { it.size >= 5 }.mapNotNull { row ->
-                    val postingId = row[0]?.toString() ?: return@mapNotNull null
-                    val txId = row[1]?.toString() ?: return@mapNotNull null
-                    val accountId = row[2]?.toString() ?: return@mapNotNull null
-                    val amount = (row[3] as? Number)?.toLong() ?: return@mapNotNull null
-                    val commodity = row[4]?.toString() ?: return@mapNotNull null
-                    Posting(postingId, txId, accountId, amount, commodity)
-                }.toList()
+                rows.mapNotNull { row -> postingOf(row) }.toList()
             },
         )
     }
@@ -641,25 +623,14 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             }
             if (txs.isEmpty()) return@useForRead emptyMap()
             val byTx = d.query(
-                "select id, transaction_id, account_id, amount_minor, commodity from postings" +
+                "select $POSTING_COLUMNS from postings" +
                     " where transaction_id in ($idList)",
                 null,
             ) { rows ->
                 val grouped = mutableMapOf<String, MutableList<Posting>>()
                 for (row in rows) {
-                    if (row.size < 5) continue
-                    val postingId = row[0]?.toString() ?: continue
-                    val transactionId = row[1]?.toString() ?: continue
-                    val accountId = row[2]?.toString() ?: continue
-                    val amount = (row[3] as? Number)?.toLong() ?: continue
-                    val commodity = row[4]?.toString() ?: continue
-                    grouped.getOrPut(transactionId) { mutableListOf() } += Posting(
-                        id = postingId,
-                        transactionId = transactionId,
-                        accountId = accountId,
-                        amountMinor = amount,
-                        commodity = commodity,
-                    )
+                    val posting = postingOf(row) ?: continue
+                    grouped.getOrPut(posting.transactionId) { mutableListOf() } += posting
                 }
                 grouped
             }
@@ -687,23 +658,18 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         return db.useForRead { d ->
             val entries = d.query(
                 "select p.id, p.transaction_id, p.account_id, p.amount_minor, p.commodity," +
-                    " t.date, t.payee, t.time_known" +
+                    " p.cost_minor, p.cost_commodity, t.date, t.payee, t.time_known" +
                     " from postings p join transactions t on p.transaction_id = t.id" +
                     " where p.account_id in ($idList)" +
                     (if (before == null) "" else " and ($TX_CURSOR_FILTER)") +
                     " order by t.date desc, t.id desc limit $limit",
                 cursorParams(before),
             ) { rows ->
-                rows.filter { it.size >= 8 }.mapNotNull { row ->
-                    val id = row[0]?.toString() ?: return@mapNotNull null
-                    val transactionId = row[1]?.toString() ?: return@mapNotNull null
-                    val accountId = row[2]?.toString() ?: return@mapNotNull null
-                    val amount = (row[3] as? Number)?.toLong() ?: return@mapNotNull null
-                    val commodity = row[4]?.toString() ?: return@mapNotNull null
-                    val date = (row[5] as? Number)?.toLong() ?: 0L
-                    val payee = row[6]?.toString() ?: ""
-                    Posting(id, transactionId, accountId, amount, commodity) to
-                        Triple(date, payee, isTimeKnown(row[7]))
+                rows.filter { it.size >= 10 }.mapNotNull { row ->
+                    val posting = postingOf(row) ?: return@mapNotNull null
+                    val date = (row[7] as? Number)?.toLong() ?: 0L
+                    val payee = row[8]?.toString() ?: ""
+                    posting to Triple(date, payee, isTimeKnown(row[9]))
                 }.toList()
             }
 
@@ -860,21 +826,56 @@ class TransactionsRepository(private val db: DatabaseProvider) {
 
     private fun Database.insertPostings(postings: List<Posting>) {
         for (p in postings) {
+            // The cost columns are composed in only when present: an unbound
+            // named placeholder binds nothing rather than null (see
+            // insertTransaction), and most postings have no cost.
+            val cost = p.costMinor != null && p.costCommodity != null
             execute(
-                "insert into postings(id, transaction_id, account_id, amount_minor, commodity)" +
-                    " values(:id, :tx, :account, :amount, :commodity)",
-                mapOf(
-                    ":id" to p.id,
-                    ":tx" to p.transactionId,
-                    ":account" to p.accountId,
-                    ":amount" to p.amountMinor,
-                    ":commodity" to p.commodity,
-                ),
+                "insert into postings(id, transaction_id, account_id, amount_minor, commodity" +
+                    (if (cost) ", cost_minor, cost_commodity" else "") +
+                    ") values(:id, :tx, :account, :amount, :commodity" +
+                    (if (cost) ", :cost, :cost_commodity" else "") + ")",
+                buildMap {
+                    put(":id", p.id)
+                    put(":tx", p.transactionId)
+                    put(":account", p.accountId)
+                    put(":amount", p.amountMinor)
+                    put(":commodity", p.commodity)
+                    if (cost) {
+                        put(":cost", p.costMinor!!)
+                        put(":cost_commodity", p.costCommodity!!)
+                    }
+                },
             )
         }
     }
 
     private companion object {
+        /** Every posting read selects these, in this order; see [postingOf]. */
+        const val POSTING_COLUMNS =
+            "id, transaction_id, account_id, amount_minor, commodity, cost_minor, cost_commodity"
+
+        /**
+         * A posting from the first seven columns of a row ([POSTING_COLUMNS]
+         * order), or null when a required one is missing. A half-written
+         * cost (one of the two columns null) reads as no cost.
+         */
+        fun postingOf(row: List<Any?>): Posting? {
+            if (row.size < 7) return null
+            val costMinor = (row[5] as? Number)?.toLong()
+            val costCommodity = row[6]?.toString()
+            val hasCost = costMinor != null && costCommodity != null
+            return Posting(
+                id = row[0]?.toString() ?: return null,
+                transactionId = row[1]?.toString() ?: return null,
+                accountId = row[2]?.toString() ?: return null,
+                amountMinor = (row[3] as? Number)?.toLong() ?: return null,
+                commodity = row[4]?.toString() ?: return null,
+                costMinor = if (hasCost) costMinor else null,
+                costCommodity = if (hasCost) costCommodity else null,
+            )
+        }
+
         const val TX_CURSOR_FILTER = "(t.date < :date or (t.date = :date and t.id < :tid))"
 
         /**

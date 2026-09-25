@@ -99,7 +99,40 @@ const val SCHEMA_SQL =
     "candidate text not null," +
     "created_at integer not null," +
     "unique(kind, ref));" +
-    "create index if not exists idx_suggestions_created on suggestions(created_at desc);"
+    "create index if not exists idx_suggestions_created on suggestions(created_at desc);" +
+    // Instruments and currencies with more to say than a code (see
+    // plans/inversiones-brokers.md, decision 1). The id is the market-scoped
+    // symbol ('BCBA:MELI', 'NASDAQ:TTWO', 'FCI:FIMA AHORRO PLUS A'), not a
+    // UUID: two devices registering the same instrument offline converge on
+    // one row, like the seeded accounts. A commodity with no row here (ARS,
+    // USD, everything written before this table) keeps 2 decimals, so no
+    // existing posting changes meaning. `scale` is the quantity's decimals
+    // (amount_minor of a posting in this commodity is quantity × 10^scale),
+    // `price_per` the face value a quote refers to (100 for bonds and letras).
+    "create table if not exists commodities(" +
+    "id text primary key not null," +
+    "symbol text not null," +
+    "name text," +
+    "kind text not null," +
+    "scale integer not null," +
+    "price_per integer not null default 1," +
+    "quote_commodity text," +
+    "isin text," +
+    "conid text);" +
+    // Prices kept apart from the journal, like ledger's P directives: market
+    // value is computed on read and never booked. One row per commodity,
+    // quote currency, day and source, with a deterministic id so the day's
+    // row is replaced instead of piling up, and devices converge. `price` is
+    // a decimal string because fund units and bonds need 6+ decimals (see
+    // Decimal.kt), `at` epoch ms like every timestamp in this schema.
+    "create table if not exists prices(" +
+    "id text primary key not null," +
+    "commodity text not null," +
+    "quote_commodity text not null," +
+    "at integer not null," +
+    "price text not null," +
+    "source text not null);" +
+    "create index if not exists idx_prices_lookup on prices(commodity, quote_commodity, at desc);"
 
 /**
  * Bumped whenever [SCHEMA_SQL] or [migrateSchema] changes shape. Stamped into
@@ -113,7 +146,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 12L
+private const val SCHEMA_VERSION = 13L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -346,6 +379,13 @@ fun Database.migrateSchema() {
         // from the device, only by reprocessing the archived raw message.
         addColumn("alter table emails add column body_html text")
     }
+    // Ledger's `@@`: what a posting cost, in another commodity. A buy of
+    // 0,4939 TTWO books +4939 TTWO with cost +9998 USD, and the transaction
+    // balances on the cost, not on the quantity (see resolvePostings). Signed
+    // like the amount it prices. Both null on every posting that is not an
+    // exchange, which is every posting written before this column.
+    addColumn("alter table postings add column cost_minor integer")
+    addColumn("alter table postings add column cost_commodity text")
     backfillTransactionSources()
     seedDefaultAccounts()
     adoptOrphanSeedPostings()

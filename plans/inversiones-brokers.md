@@ -423,16 +423,39 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
       queda sólo empujada (se borró su modo pestaña).
 - [x] Harness: `-Pshot.route=investments`. Compila en desktop, Android e iOS.
 
-### Fase 1 — esquema y aritmética
+### Fase 1 — esquema y aritmética (hecha)
 
-- `commodities`, `prices`, `postings.cost_minor/cost_commodity`,
-  `SCHEMA_VERSION` 12 → 13.
-- Escala por commodity en `Money`/formato/parse (con default 2), y `Decimal`
-  para cantidad × precio.
-- `resolvePostings` con la regla de costo; tests de: compra con comisión,
-  venta con ganancia, cambio de moneda con y sin costo, filas viejas.
-- `TransactionsRepository` lee/escribe costo; `leafTotals` sin cambios
-  (sigue sumando cantidades por commodity).
+- [x] `commodities`, `prices` (en `SCHEMA_SQL`) y `postings.cost_minor` /
+      `cost_commodity` (en `migrateSchema`, con `addColumn`);
+      `SCHEMA_VERSION` 12 → 13.
+- [x] `Decimal` (`Decimal.kt`) sobre el `BigInteger` de bignum 0.3.10: parseo de
+      números de máquina (con exponente), suma/resta/producto exactos,
+      `movePointLeft` para el precio cada 100 VN, `rescale`/`divide`/
+      `toMinorUnits` con half-even propio, y `toMinorUnits` que tira en vez de
+      desbordar. Tests comunes con los números reales de IOL/IBKR y el caso de
+      #337 (`DecimalTest`, pasan en JVM y JS), más 17.000 casos al azar contra
+      `java.math.BigDecimal` (`DecimalJvmTest`).
+- [x] Regla de balance por **peso** en `resolvePostings`/`residualsOf`: un
+      posting con costo pesa su costo. Costo validado (con moneda, distinta de
+      la del monto, no cero, mismo signo que el monto; el posting elidido no
+      puede llevar costo). La excepción vieja de cambio de moneda sólo aplica
+      si ningún posting declara costo (`PostingCostTest`).
+- [x] `Posting.toDraft()` lleva el costo; lo usan el editor, el deshacer del
+      detalle y el del journal (el riesgo nombrado: una edición del payee que
+      borraba el precio). `TransactionsRepository` lee el costo en las cuatro
+      lecturas de postings (`postingOf`) y lo escribe sólo cuando hay.
+      Test de integración sobre SQLite (`app/desktopApp/src/test`,
+      `PostingCostPersistenceTest`): escritura, las cuatro lecturas, edición,
+      deshacer de un borrado, migración idempotente.
+- **Movido a la fase 5**: la escala por commodity en `Money.parse` /
+  `formatMinorUnits`. El núcleo no la necesita: todo posting es un entero en
+  minor units de su commodity, y los drafts armados por código viajan como
+  `formatMinorUnits(minor)` a 2 decimales, que ida y vuelta da el mismo entero
+  para cualquier escala (documentado en `DraftPosting`). Sólo mostrar y tipear
+  «0,4939» en vez de «49,39» necesita la escala, y eso es UI.
+- Notas de entorno: los tests nativos de iOS no linkean en este repo desde
+  antes de este cambio («Unable to compile C bridges», por el cinterop de
+  Turso), así que las pruebas multiplataforma corren en JVM y JS.
 
 ### Fase 2 — núcleo puro
 

@@ -143,8 +143,10 @@ fun TransactionEditScreen(
                 timeText = if (stored.timeKnown) timeInputOf(stored.date) else ""
                 payee = stored.payee
                 note = stored.note.orEmpty()
+                // toDraft carries the posting's cost (a buy's price): an edit
+                // that only touched the payee must save the same postings.
                 drafts = stored.postings.map {
-                    DraftPosting(it.accountId, rawAmountText(it.amountMinor), it.commodity)
+                    it.toDraft().copy(amountText = rawAmountText(it.amountMinor))
                 }
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -158,9 +160,7 @@ fun TransactionEditScreen(
         scope.launch {
             try {
                 val stored = ledger.get(id)
-                val draftsBackup = stored?.postings?.map {
-                    DraftPosting(it.accountId, formatMinorUnits(it.amountMinor), it.commodity)
-                }.orEmpty()
+                val draftsBackup = stored?.postings?.map { it.toDraft() }.orEmpty()
                 ledger.delete(id)
                 onSaved()
                 Feedback.undoable(deletedMessage, undoLabel) {

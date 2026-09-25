@@ -181,8 +181,38 @@ data class Posting(
     val accountId: String,
     val amountMinor: Long,
     val commodity: String,
+    /**
+     * Ledger's `@@`: what this posting cost in another commodity, signed like
+     * [amountMinor]. A buy of 0,4939 TTWO for US$ 99,98 is `+4939 NASDAQ:TTWO`
+     * with cost `+9998 USD`. Null on every posting that is not an exchange.
+     */
+    val costMinor: Long? = null,
+    val costCommodity: String? = null,
 ) {
     fun money() = Money(amountMinor, commodity)
+
+    /**
+     * What this posting counts as when the transaction is balanced: its cost
+     * when it has one, else its own amount (ledger's rule, see
+     * [resolvePostings]).
+     */
+    fun weight(): Money =
+        if (costMinor != null && costCommodity != null) Money(costMinor, costCommodity) else money()
+
+    /**
+     * Back into an editable draft, cost included. Every screen that rebuilds a
+     * transaction from its postings (edit, undo of a delete) goes through
+     * here: dropping the cost would silently turn a buy into an unbalanced
+     * row, or, worse, into one that balances by the old two-commodity
+     * exception and loses its price.
+     */
+    fun toDraft(): DraftPosting = DraftPosting(
+        accountId = accountId,
+        amountText = formatMinorUnits(amountMinor),
+        commodity = commodity,
+        costText = costMinor?.let { formatMinorUnits(it) }.orEmpty(),
+        costCommodity = costCommodity,
+    )
 }
 
 data class Transaction(
@@ -257,11 +287,23 @@ data class AssociationUndo(
     val previousAccountId: String? = null,
 )
 
-/** Editor-facing posting draft: blank amount = ledger-style elided posting. */
+/**
+ * Editor-facing posting draft: blank amount = ledger-style elided posting.
+ *
+ * [amountText] is read at 2 decimals, whatever the commodity's own scale:
+ * drafts built by code carry `formatMinorUnits(minor)`, which round-trips the
+ * exact minor units for any scale (0,4939 TTWO travels as "49,39" and comes
+ * back as 4939). Showing and typing a quantity in its real decimals is the
+ * UI's job (plans/inversiones-brokers.md, phase 5); the ledger only ever
+ * sees integers.
+ */
 data class DraftPosting(
     val accountId: String?,
     val amountText: String,
     val commodity: String = Money.DEFAULT_COMMODITY,
+    /** The `@@` cost, same text rules as [amountText]; blank = no cost. */
+    val costText: String = "",
+    val costCommodity: String? = null,
 )
 
 class LedgerValidationException(message: String) : Exception(message)
@@ -309,17 +351,25 @@ private fun buildValidated(
         val money = Money.parse(amountText, draft.commodity)
             ?: throw LedgerValidationException("invalid amount: '$amountText'")
         if (money.minorUnits == 0L && !allowZero) throw LedgerValidationException("amounts cannot be zero")
-        residuals[money.commodity] = (residuals[money.commodity] ?: 0L) + money.minorUnits
-        resolved += Posting(
+        val cost = parseCost(draft, money)
+        val posting = Posting(
             id = Uuid.random().toString(),
             transactionId = seedTransactionId ?: "",
             accountId = accountId,
             amountMinor = money.minorUnits,
             commodity = money.commodity,
+            costMinor = cost?.minorUnits,
+            costCommodity = cost?.commodity,
         )
+        val weight = posting.weight()
+        residuals[weight.commodity] = (residuals[weight.commodity] ?: 0L) + weight.minorUnits
+        resolved += posting
     }
 
     blank?.let { empty ->
+        if (empty.costText.isNotBlank()) {
+            throw LedgerValidationException("the balancing posting cannot carry a cost")
+        }
         val commodity = empty.commodity
         val residual = residuals[commodity] ?: 0L
         if (residual == 0L) {
@@ -335,13 +385,23 @@ private fun buildValidated(
         )
     }
 
-    // A currency exchange cannot balance per commodity: pesos leave one
-    // account and dollars arrive in another, and the rate lives in the row's
-    // prose, not in a posting. Its shape is unmistakable — exactly two
+    // Every posting above was summed at its *weight*: the cost when it has
+    // one. That is what lets a buy with a commission balance — +0,4939 TTWO
+    // at cost +99,98 USD, +1,00 USD commission, -100,98 USD cash — and what
+    // an exchange recorded with a cost uses too.
+    //
+    // A currency exchange recorded *without* a cost cannot balance per
+    // commodity: pesos leave one account and dollars arrive in another, and
+    // the rate lives in the row's prose, not in a posting. Its shape is unmistakable — exactly two
     // postings, one commodity each, moving in opposite directions — so it is
     // exempted narrowly. Anything else (a four-posting transaction with one
     // currency short) is still a typo and still rejected.
+    // Legacy shape only: once any posting states a cost, the transaction has
+    // said how it balances, and an off residual is a real error (a TTWO buy
+    // priced in USD but paid from a pesos account would otherwise slip
+    // through as an "exchange").
     val exchange = resolved.size == 2 &&
+        resolved.none { it.costMinor != null } &&
         residuals.size == 2 &&
         residuals.values.all { it != 0L } &&
         residuals.values.map { it > 0L }.distinct().size == 2
@@ -355,14 +415,46 @@ private fun buildValidated(
     return resolved to residuals
 }
 
-/** Per-commodity residuals of a draft set, for the editor's live footer. */
+/**
+ * The `@@` cost of a draft, validated against the amount it prices, or null
+ * when the draft has none.
+ */
+private fun parseCost(draft: DraftPosting, amount: Money): Money? {
+    val text = draft.costText.trim()
+    if (text.isEmpty()) return null
+    val commodity = draft.costCommodity?.takeIf { it.isNotBlank() }
+        ?: throw LedgerValidationException("a cost needs a commodity")
+    // A cost in the posting's own commodity says nothing (10 USD @@ 10 USD)
+    // and would double-count it in the balance.
+    if (commodity == amount.commodity) {
+        throw LedgerValidationException("a cost must be in another commodity than ${amount.commodity}")
+    }
+    val cost = Money.parse(text, commodity)
+        ?: throw LedgerValidationException("invalid cost: '$text'")
+    if (cost.minorUnits == 0L) throw LedgerValidationException("a cost cannot be zero")
+    // Signed like the amount: buying (+quantity) costs +money, selling
+    // (-quantity) at cost removes -money. Opposite signs are a typo.
+    if ((cost.minorUnits > 0) != (amount.minorUnits > 0)) {
+        throw LedgerValidationException("a cost must have the sign of its amount")
+    }
+    return cost
+}
+
+/**
+ * Per-commodity residuals of a draft set, for the editor's live footer.
+ * Summed by weight, like [resolvePostings]: a posting with a cost counts in
+ * its cost's commodity.
+ */
 fun residualsOf(drafts: List<DraftPosting>): Map<String, Long> {
     val residuals = mutableMapOf<String, Long>()
     for (draft in drafts) {
         val amountText = draft.amountText.trim()
         if (amountText.isBlank()) continue
         val money = Money.parse(amountText, draft.commodity) ?: continue
-        residuals[money.commodity] = (residuals[money.commodity] ?: 0L) + money.minorUnits
+        val cost = draft.costCommodity?.takeIf { draft.costText.isNotBlank() }
+            ?.let { Money.parse(draft.costText.trim(), it) }
+        val weight = cost ?: money
+        residuals[weight.commodity] = (residuals[weight.commodity] ?: 0L) + weight.minorUnits
     }
     return residuals
 }
