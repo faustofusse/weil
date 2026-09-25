@@ -81,6 +81,50 @@ class BrokersRepository(
         ) { rows -> rows.mapNotNull { it.firstOrNull()?.toString() }.toSet() }
     }
 
+    /**
+     * What every balance on screen is valued with: the described commodities
+     * and the latest price of each (in the commodity's quote currency when
+     * it has one, else whichever quote is newest).
+     */
+    suspend fun valuation(): Valuation = db.useForRead { d ->
+        val commodities = d.query(
+            "select id, symbol, name, kind, scale, price_per, quote_commodity from commodities",
+            null,
+        ) { rows ->
+            rows.mapNotNull { row ->
+                val id = row.getOrNull(0)?.toString() ?: return@mapNotNull null
+                InstrumentInfo(
+                    id = id,
+                    symbol = row.getOrNull(1)?.toString() ?: id,
+                    name = row.getOrNull(2)?.toString(),
+                    kind = row.getOrNull(3)?.toString() ?: "other",
+                    scale = (row.getOrNull(4) as? Number)?.toInt() ?: 2,
+                    pricePer = (row.getOrNull(5) as? Number)?.toInt() ?: 1,
+                    quoteCommodity = row.getOrNull(6)?.toString(),
+                )
+            }.toList().associateBy { it.id }
+        }
+        val latest = mutableMapOf<String, PriceQuote>()
+        d.query("select commodity, quote_commodity, at, price, source from prices order by at desc", null) { rows ->
+            for (row in rows) {
+                val commodity = row.getOrNull(0)?.toString() ?: continue
+                val quote = row.getOrNull(1)?.toString() ?: continue
+                val price = Decimal.parse(row.getOrNull(3)?.toString().orEmpty()) ?: continue
+                val preferred = commodities[commodity]?.quoteCommodity
+                val current = latest[commodity]
+                // Newest first: keep the first row, unless a later one is in
+                // the preferred quote currency and the kept one isn't.
+                if (current == null || (current.quoteCommodity != preferred && quote == preferred)) {
+                    latest[commodity] = PriceQuote(
+                        commodity, quote, (row.getOrNull(2) as? Number)?.toLong() ?: 0L, price,
+                        row.getOrNull(4)?.toString().orEmpty(),
+                    )
+                }
+            }
+        }
+        Valuation(commodities, latest)
+    }
+
     /** Decimals of every commodity the ledger describes. */
     suspend fun scales(): Map<String, Int> = db.useForRead { d ->
         d.query("select id, scale from commodities", null) { rows ->

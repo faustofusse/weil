@@ -22,6 +22,8 @@ class LedgerState(
     val accounts: AccountsRepository,
     val ledger: TransactionsRepository,
     val settings: SettingsRepository,
+    /** Commodities and prices for [displayTotals]; null prints raw balances. */
+    private val brokers: BrokersRepository? = null,
 ) {
     /**
      * Per-type default account ids as stored (not resolved): the account a
@@ -112,6 +114,26 @@ class LedgerState(
         rollupSubtrees(tree, leafTotals)
     }
 
+    /** Prices and commodity descriptions, reloaded with every [refresh]. */
+    var valuation by mutableStateOf(Valuation())
+        private set
+
+    /**
+     * [leafTotals] as money: instruments valued at their latest price into
+     * their quote currency, zero lines dropped (see [Valuation.value]). What
+     * every balance on screen prints; the raw per-commodity maps stay for the
+     * positions view, which is the one place that wants quantities.
+     */
+    val displayLeafTotals: Map<String, Map<String, Long>> by derivedStateOf {
+        val v = valuation
+        leafTotals.mapValues { (_, byCommodity) -> v.value(byCommodity) }
+    }
+
+    /** Subtree rollups of [displayLeafTotals]; valuing is linear, so rollup-then-value is the same. */
+    val displayTotals: Map<String, Map<String, Long>> by derivedStateOf {
+        rollupSubtrees(tree, displayLeafTotals)
+    }
+
     /**
      * Latest [RECENT_COUNT] transactions for Home's "recent" section. Lives
      * here, not in a screen-local `remember`, so it survives navigating away
@@ -176,6 +198,7 @@ class LedgerState(
         val leafs = ledger.leafBalances()
         tree = newTree
         storedLeafTotals = leafs
+        brokers?.let { b -> runCatching { b.valuation() }.getOrNull()?.let { valuation = it } }
         defaultAccounts = settings.defaultAccounts()
         reloadHomeOrder()
         storedRecent = ledger.page(limit = RECENT_COUNT)

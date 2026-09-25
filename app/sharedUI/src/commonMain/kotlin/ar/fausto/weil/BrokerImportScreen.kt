@@ -271,3 +271,14 @@ fun formatQuantity(minor: Long, scale: Int): String {
     val grouped = whole.reversed().chunked(3).joinToString(".").reversed()
     return (if (negative) "-" else "") + grouped + (if (frac.isEmpty()) "" else ",$frac")
 }
+
+/**
+ * An amount in whatever [commodity] it is: money for a currency, a quantity
+ * with its symbol for an instrument ("13 MELI", "0,4939 TTWO") — never an
+ * instrument's minor units dressed up as money.
+ */
+fun formatAmount(minor: Long, commodity: String, valuation: Valuation, signed: Boolean = false): String {
+    val info = valuation.commodities[commodity] ?: return formatMoney(minor, commodity, signed)
+    val magnitude = if (minor < 0 && !signed) -minor else minor
+    return formatQuantity(magnitude, info.scale) + " " + info.symbol
+}

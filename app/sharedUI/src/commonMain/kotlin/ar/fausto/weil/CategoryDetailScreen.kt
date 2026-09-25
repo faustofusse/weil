@@ -186,7 +186,7 @@ fun CategoryDetailScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     pair.forEach { child ->
                         val selected = selectedChild == child.account.id
-                        val childTotal = ledgerState.totals[child.account.id].orEmpty()
+                        val childTotal = ledgerState.displayTotals[child.account.id].orEmpty()
                         AppListRow(
                             icon = null,
                             paint = accountPaint(null),

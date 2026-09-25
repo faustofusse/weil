@@ -93,6 +93,8 @@ fun TransactionDetailScreen(
     onOpenDocument: (docId: String) -> Unit = {},
     /** Opens the vector-neighbour lab for this transaction. */
     onTrySuggestion: (() -> Unit)? = null,
+    /** Instrument descriptions, so a MELI leg reads "13 MELI" and not as money. */
+    valuation: Valuation = Valuation(),
 ) {
     var tx by remember { mutableStateOf<Transaction?>(null) }
     // Where this transaction came from. A single purchase legitimately has a
@@ -326,7 +328,11 @@ fun TransactionDetailScreen(
                                         // double-entry view, where which side
                                         // of the book a leg sits on is the
                                         // whole point: signed, always.
-                                        formatMoney(posting.amountMinor, posting.commodity, signed = true),
+                                        formatAmount(posting.amountMinor, posting.commodity, valuation, signed = true) +
+                                            // Ledger's @@: what the leg cost, when it's an exchange.
+                                            (posting.costMinor?.let { cost ->
+                                                " @@ " + formatMoney(kotlin.math.abs(cost), posting.costCommodity ?: "")
+                                            } ?: ""),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = postingColor(types[posting.accountId], posting.amountMinor),
                                         modifier = Modifier.padding(start = 12.dp),
@@ -336,9 +342,13 @@ fun TransactionDetailScreen(
                         }
                     }
 
-                    // Totales por moneda (solo si hay más de una).
-                    val totals = transaction.postings.groupBy({ it.commodity }, { it.amountMinor })
+                    // Totales por moneda, por *peso* (el costo cuando lo hay):
+                    // una compra con costo cierra en cero y no muestra nada;
+                    // sólo queda lo que de verdad no cancela, como un cambio
+                    // de moneda viejo cargado sin costo.
+                    val totals = transaction.postings.groupBy({ it.weight().commodity }, { it.weight().minorUnits })
                         .mapValues { (_, amounts) -> amounts.sum() }
+                        .filterValues { it != 0L }
                     if (totals.size > 1) {
                         Spacer(Modifier.height(12.dp))
                         Row(

@@ -175,7 +175,7 @@ private fun CategoryRow(
 ) {
     val account = node.account
     val paint = accountPaint(account.color, seed = account.id)
-    val total = state.totals[account.id].orEmpty()
+    val total = state.displayTotals[account.id].orEmpty()
     AppListRow(
         icon = AccountIcons.resolve(account.icon, account.type),
         paint = paint,

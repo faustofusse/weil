@@ -190,7 +190,7 @@ fun RootScreen(
                     // animates that replace with the shared transition specs.
                     val loggedIn = authState is AuthState.LoggedIn
                     val ledgerState = remember(loggedIn) {
-                        LedgerState(graph.accounts, graph.ledger, graph.settings)
+                        LedgerState(graph.accounts, graph.ledger, graph.settings, graph.brokers)
                     }
                     // Hoisted above the nav host, same reasoning as [ledgerState]: the
                     // journal keeps its loaded page across a visit to a transaction and
@@ -516,6 +516,7 @@ fun RootScreen(
                                         onOpenEmail = { navigate(EmailDetailRoute(it)) },
                                         onOpenDocument = { navigate(DocumentRoute(it)) },
                                         onTrySuggestion = { navigate(TransactionSimilarRoute(route.id)) },
+                                        valuation = ledgerState.valuation,
                                     )
                                 }
                                 entry<TransactionSimilarRoute> { route ->

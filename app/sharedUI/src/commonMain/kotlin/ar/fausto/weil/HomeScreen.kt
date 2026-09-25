@@ -5,6 +5,7 @@ package ar.fausto.weil
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -334,7 +335,7 @@ private fun OverflowItem(
  */
 @Composable
 private fun NetWorthCard(state: LedgerState) {
-    val lines = LedgerState.netWorth(state.tree, state.leafTotals).entries.sortedByDescending { abs(it.value) }
+    val lines = LedgerState.netWorth(state.tree, state.displayLeafTotals).entries.sortedByDescending { abs(it.value) }
     var pickerOpen by remember { mutableStateOf(false) }
     // No card here on purpose: this is the top of the page, not one section
     // among others, so it sits straight on the screen background instead of
@@ -442,13 +443,24 @@ internal fun SectionHeader(
                 )
                 .heightIn(min = 32.dp),
         ) {
+            // The title keeps its own width and the trailing content takes
+            // what's left, not the other way round: an unweighted trailing is
+            // measured first, so a wide one (a type total listing every
+            // commodity) squeezed "Activos" into a column of single letters.
             Text(
                 title,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                softWrap = false,
             )
-            trailing()
+            Row(
+                modifier = Modifier.weight(1f).padding(start = 12.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                trailing()
+            }
         }
     }
 }

@@ -240,7 +240,7 @@ private fun AccountsTreeSection(
 internal fun typeSum(state: LedgerState, type: AccountType): Map<String, Long> {
     val acc = mutableMapOf<String, Long>()
     state.tree.filter { it.account.type == type }.forEach { root ->
-        for ((c, v) in state.totals[root.account.id].orEmpty()) {
+        for ((c, v) in state.displayTotals[root.account.id].orEmpty()) {
             acc[c] = (acc[c] ?: 0L) + v
         }
     }
@@ -450,14 +450,14 @@ internal fun NodeRowView(
             }
             Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
                 BalanceText(
-                    totals = state.totals[node.account.id].orEmpty(),
+                    totals = state.displayTotals[node.account.id].orEmpty(),
                     signalNegative = node.account.type == AccountType.Asset ||
                         node.account.type == AccountType.Expense,
                 )
                 // The number shown is a subtree rollup, not just this
                 // account's own postings — "comida ARS 2.500" would otherwise
                 // read the same whether or not "verduras" is folded inside it.
-                if (childCount > 0 && state.leafTotals[node.account.id].orEmpty() != state.totals[node.account.id].orEmpty()) {
+                if (childCount > 0 && state.displayLeafTotals[node.account.id].orEmpty() != state.displayTotals[node.account.id].orEmpty()) {
                     Text(
                         stringResource(Res.string.account_includes_subaccounts),
                         style = MaterialTheme.typography.bodySmall,

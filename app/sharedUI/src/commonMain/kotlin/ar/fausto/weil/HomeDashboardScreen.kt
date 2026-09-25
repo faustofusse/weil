@@ -252,7 +252,7 @@ fun HomeDashboardScreen(
                             pair.forEachIndexed { column, node ->
                                 AccountTile(
                                     node = node,
-                                    totals = ledgerState.totals[node.account.id].orEmpty(),
+                                    totals = ledgerState.displayTotals[node.account.id].orEmpty(),
                                     hidden = ledgerState.amountsHidden,
                                     // Checkerboard of the two slates: a grid
                                     // of four identical dark rectangles reads
@@ -378,8 +378,8 @@ private fun MenuRow(
  */
 @Composable
 private fun BalanceHero(state: LedgerState) {
-    val lines = remember(state.tree, state.leafTotals) {
-        LedgerState.netWorth(state.tree, state.leafTotals).entries.sortedByDescending { abs(it.value) }
+    val lines = remember(state.tree, state.displayLeafTotals) {
+        LedgerState.netWorth(state.tree, state.displayLeafTotals).entries.sortedByDescending { abs(it.value) }
     }
     val primary = lines.firstOrNull()
     val rest = lines.drop(1)

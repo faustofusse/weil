@@ -199,7 +199,7 @@ internal fun HomeOrderSheet(state: LedgerState, onDismiss: () -> Unit) {
                         HomeOrderRow(
                             node = node,
                             onHome = index < HOME_ACCOUNT_SLOTS,
-                            totals = state.totals[id].orEmpty(),
+                            totals = state.displayTotals[id].orEmpty(),
                             hidden = state.amountsHidden,
                             lifted = lifted,
                             modifier = Modifier

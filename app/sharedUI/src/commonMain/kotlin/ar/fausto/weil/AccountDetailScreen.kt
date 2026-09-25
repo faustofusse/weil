@@ -27,6 +27,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlin.random.Random
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,12 +76,25 @@ fun AccountDetailScreen(
     val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
     val icons = remember(nodes) { nodes.associate { it.account.id to it.account.icon } }
     val colors = remember(nodes) { nodes.associate { it.account.id to it.account.color } }
-    var includeSubtree by remember { mutableStateOf(false) }
-    var entries by remember { mutableStateOf(emptyList<RegisterEntry>()) }
-    var transactions by remember { mutableStateOf(emptyMap<String, Transaction>()) }
-    var loaded by remember { mutableStateOf(false) }
+    // Opening a transaction takes this entry out of composition, and plain
+    // `remember` state goes with it: the register came back empty, and the
+    // (saveable) scroll position was clamped to the top before the reload
+    // landed. The rows are parked in [RegisterCache] under a token that is
+    // itself saveable, so it lives exactly as long as this back-stack entry —
+    // a fresh visit to the same account gets a new token and starts at the top.
+    val cacheKey = rememberSaveable { Random.nextLong().toString() }
+    val cached = remember(cacheKey) { RegisterCache[cacheKey] }
+    var includeSubtree by rememberSaveable { mutableStateOf(false) }
+    var entries by remember { mutableStateOf(cached?.entries ?: emptyList()) }
+    var transactions by remember { mutableStateOf(cached?.transactions ?: emptyMap()) }
+    var loaded by remember { mutableStateOf(cached != null) }
     var loadingMore by remember { mutableStateOf(false) }
-    var hasMore by remember { mutableStateOf(true) }
+    var hasMore by remember { mutableStateOf(cached?.hasMore ?: true) }
+    DisposableEffect(cacheKey) {
+        onDispose {
+            if (loaded) RegisterCache[cacheKey] = RegisterSnapshot(entries, transactions, hasMore)
+        }
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var actions by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -90,10 +106,13 @@ fun AccountDetailScreen(
     suspend fun loadAll() {
         error = null
         try {
-            val page = ledger.register(subtreeIds = ids())
+            // As deep as the user has already scrolled: a plain first page
+            // would cut the list short and clamp the position upwards.
+            val limit = maxOf(LIST_PAGE_SIZE, entries.size)
+            val page = ledger.register(subtreeIds = ids(), limit = limit)
             entries = page
             transactions = ledger.getAll(page.map { it.posting.transactionId }.distinct())
-            hasMore = page.size >= LIST_PAGE_SIZE
+            hasMore = page.size >= limit
             loaded = true
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -101,7 +120,15 @@ fun AccountDetailScreen(
         }
     }
 
-    LaunchedEffect(includeSubtree) { loadAll() }
+    // Toggling the subtree is a different list; start it from one page.
+    var shownSubtree by remember { mutableStateOf(includeSubtree) }
+    LaunchedEffect(includeSubtree) {
+        if (shownSubtree != includeSubtree) {
+            entries = emptyList()
+            shownSubtree = includeSubtree
+        }
+        loadAll()
+    }
 
     // Edits made from this register (or anywhere else) show up on return.
     LaunchedEffect(Unit) {
@@ -209,16 +236,30 @@ fun AccountDetailScreen(
                         // BalanceText right-aligns for its usual row use; here
                         // it's the sole element so pull it back to the card's
                         // leading edge to match the net-worth hero card.
+                        // The account's own total, not a movement in a list:
+                        // a minus sign says "negative" as plainly as red does,
+                        // without recruiting a color that elsewhere means
+                        // "money left my pocket". The biggest currency is the
+                        // headline and the rest sit under it, smaller — the
+                        // Home hero's rule: at display size, a second currency
+                        // (a broker holding pesos and dollars) doubled the
+                        // header's height.
+                        val lines = ledgerState.displayTotals[accountId].orEmpty()
+                            .entries.sortedByDescending { kotlin.math.abs(it.value) }
                         Box(modifier = Modifier.fillMaxWidth()) {
                             BalanceText(
-                                totals = ledgerState.totals[accountId].orEmpty(),
+                                totals = lines.firstOrNull()?.let { mapOf(it.key to it.value) }.orEmpty(),
                                 style = MaterialTheme.typography.displaySmall,
-                                // The account's own total, not a movement in a
-                                // list: a minus sign says "negative" as plainly
-                                // as red does, without recruiting a color that
-                                // elsewhere means "money left my pocket".
                                 signalNegative = false,
                                 modifier = Modifier.align(Alignment.CenterStart),
+                            )
+                        }
+                        lines.drop(1).forEach { (commodity, minor) ->
+                            Text(
+                                formatMoney(minor, commodity, signed = true),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
                             )
                         }
                         if (node?.children?.isNotEmpty() == true) {
@@ -268,7 +309,14 @@ fun AccountDetailScreen(
                         // The running balance after this row, in the same dim
                         // bodySmall caption slot other lists leave empty —
                         // here it's the number this screen exists to show.
-                        caption = formatMoney(entry.balanceAfter.minorUnits, entry.balanceAfter.commodity, signed = true),
+                        // A holdings account's balance is a quantity
+                        // ("13 MELI"), not money with two decimals.
+                        caption = formatAmount(
+                            entry.balanceAfter.minorUnits,
+                            entry.balanceAfter.commodity,
+                            ledgerState.valuation,
+                            signed = true,
+                        ),
                     )
                 }
             }
@@ -297,3 +345,24 @@ fun AccountDetailScreen(
     }
 }
 
+private class RegisterSnapshot(
+    val entries: List<RegisterEntry>,
+    val transactions: Map<String, Transaction>,
+    val hasMore: Boolean,
+)
+
+/**
+ * Registers of account screens that left composition while still on the back
+ * stack, keyed by their entry's saveable token. Bounded, since a popped entry
+ * never comes back for its row: the oldest are dropped past a handful.
+ */
+private object RegisterCache {
+    private const val MAX = 8
+    private val map = LinkedHashMap<String, RegisterSnapshot>()
+    operator fun get(key: String): RegisterSnapshot? = map[key]
+    operator fun set(key: String, value: RegisterSnapshot) {
+        map.remove(key)
+        map[key] = value
+        while (map.size > MAX) map.remove(map.keys.first())
+    }
+}

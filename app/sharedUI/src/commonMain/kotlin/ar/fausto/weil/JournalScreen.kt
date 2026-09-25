@@ -998,6 +998,7 @@ internal data class TxnFlow(
 
 internal fun flowOf(tx: Transaction, types: Map<String, AccountType>): TxnFlow? {
     if (tx.postings.isEmpty()) return null
+    exchangeFlowOf(tx, types)?.let { return it }
     // A mixed-commodity transaction (an FX trade) is summarised by its biggest
     // leg; the editor is where the full split lives.
     val commodity = tx.postings
@@ -1017,6 +1018,35 @@ internal fun flowOf(tx: Transaction, types: Map<String, AccountType>): TxnFlow? 
         amountMinor = if (net != 0L) net else size,
         commodity = commodity,
         direction = if (net > 0L) 1 else if (net < 0L) -1 else 0,
+    )
+}
+
+/**
+ * A transaction that states a cost (a trade, dollars bought through MEP) read
+ * as money: the asset leg *without* a cost is the money that moved, the leg
+ * with the cost is what it bought. Without this, [flowOf]'s "biggest
+ * commodity" pick chose the instrument — a fund's units in minor units dwarf
+ * any amount — and a rescue of IOLPORA printed "FCI:IOLPORA 34.192.245,14".
+ *
+ * Neutral on purpose: buying or selling moves value between the user's own
+ * accounts, it doesn't make them richer or poorer (the gain, if any, is a
+ * separate posting the detail screen shows).
+ */
+private fun exchangeFlowOf(tx: Transaction, types: Map<String, AccountType>): TxnFlow? {
+    val priced = tx.postings.filter { it.costMinor != null }
+    if (priced.isEmpty()) return null
+    fun own(p: Posting) = types[p.accountId] == AccountType.Asset || types[p.accountId] == AccountType.Liability
+    val money = tx.postings.filter { it.costMinor == null && own(it) }
+        .maxByOrNull { abs(it.amountMinor) }
+        ?: return null
+    val bought = priced.maxByOrNull { abs(it.costMinor ?: 0L) }!!
+    val out = money.amountMinor < 0
+    return TxnFlow(
+        fromId = if (out) money.accountId else bought.accountId,
+        toId = if (out) bought.accountId else money.accountId,
+        amountMinor = abs(money.amountMinor),
+        commodity = money.commodity,
+        direction = 0,
     )
 }
 
