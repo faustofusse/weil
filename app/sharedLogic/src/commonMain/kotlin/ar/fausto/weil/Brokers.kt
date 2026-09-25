@@ -122,7 +122,7 @@ class BrokersRepository(
                 }
             }
         }
-        Valuation(commodities, latest)
+        Valuation(commodities, latest, d.officialRate())
     }
 
     /** Decimals of every commodity the ledger describes. */
@@ -144,6 +144,15 @@ class BrokersRepository(
      * retry after a failure halfway writes nothing twice. The transactions
      * are one SQL transaction (`addAll`). Returns their ids, for undo.
      */
+    /** Upserts [prices] (deterministic ids: a day's second fetch replaces the first). */
+    suspend fun savePrices(prices: List<PriceQuote>) {
+        if (prices.isEmpty()) return
+        db.use { d -> for (price in prices) d.upsertPrice(price) }
+    }
+
+    /** Newest official dollar rate (see [OFFICIAL_SOURCE]), or null. */
+    suspend fun latestOfficialRate(): PriceQuote? = db.useForRead { d -> d.officialRate() }
+
     suspend fun apply(plan: BrokerPlan, selected: List<PlannedTransaction> = plan.transactions): List<String> {
         db.use { d ->
             for (commodity in plan.newCommodities) d.insertCommodity(commodity)
@@ -222,6 +231,17 @@ private fun Database.insertCommodity(c: InstrumentInfo) {
             " values(${values.keys.joinToString(", ") { ":$it" }})",
         values.mapKeys { ":${it.key}" },
     )
+}
+
+private fun Database.officialRate(): PriceQuote? = query(
+    "select at, price from prices where commodity = 'USD' and quote_commodity = 'ARS'" +
+        " and source = :source order by at desc limit 1",
+    mapOf(":source" to OFFICIAL_SOURCE),
+) { rows ->
+    rows.firstOrNull()?.let { row ->
+        val price = Decimal.parse(row.getOrNull(1)?.toString().orEmpty()) ?: return@let null
+        PriceQuote("USD", "ARS", (row.getOrNull(0) as? Number)?.toLong() ?: 0L, price, OFFICIAL_SOURCE)
+    }
 }
 
 /**

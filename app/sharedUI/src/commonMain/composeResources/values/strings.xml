@@ -141,6 +141,9 @@
 
     <!-- Net worth picker -->
     <string name="net_worth_picker_title">Patrimonio</string>
+    <string name="net_worth_official">≈ %1$s al oficial %2$s (%3$s)</string>
+    <string name="net_worth_convert_label">Convertir al dólar oficial</string>
+    <string name="net_worth_convert_off">No</string>
     <string name="net_worth_picker_hint">Elegí qué cuentas suman al patrimonio. Excluir una cuenta excluye también sus subcuentas.</string>
     <string name="net_worth_picker_action">Elegir cuentas</string>
     <string name="net_worth_excluded_by_parent">Excluida junto con su cuenta padre</string>

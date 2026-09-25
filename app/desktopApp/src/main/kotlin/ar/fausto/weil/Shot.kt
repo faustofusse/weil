@@ -77,6 +77,10 @@ fun main(args: Array<String>) {
     val sandbox = File(System.getProperty("java.io.tmpdir"), "weil-shot").apply { mkdirs() }
     val dbFile = File(sandbox, "shot.db").apply { delete() }
     val storeFile = File(sandbox, "store.properties").apply { delete() }
+    // Today's official dollar, fixed: a shot must not depend on the BCRA.
+    val fixedOfficialRate = OfficialRateSource { _, to ->
+        listOf(PriceQuote("USD", "ARS", iolTime("${to}T15:00:00")!!, Decimal.parse("1525.50")!!, OFFICIAL_SOURCE))
+    }
     val graph = AppGraph(
         store = JvmSecureStore(storeFile, seedDevSession = true),
         passkeys = { JvmDevPasskeys() },
@@ -91,6 +95,7 @@ fun main(args: Array<String>) {
         // Substring matching, not a model: the sandboxed session cannot call
         // the worker that holds the TypeSafe key.
         categorySuggester = FakeCategorySuggester(),
+        officialRates = fixedOfficialRate,
         dbContext = jvmDbDispatcher,
         dbFactory = { _, _, _ -> FakeDatabase(dbFile) },
     )
@@ -105,6 +110,7 @@ fun main(args: Array<String>) {
         embedder = FakeEmbedder(),
         categorySuggester = FakeCategorySuggester(),
         suggester = FakeSuggestTracer(graph.notifications, graph.ledger, graph.embeddings),
+        officialRates = fixedOfficialRate,
         dbContext = jvmDbDispatcher,
         dbFactory = { _, _, _ -> FakeDatabase(dbFile) },
     )
