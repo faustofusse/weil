@@ -33,7 +33,11 @@ import org.jetbrains.skia.Image
  *   ./gradlew :app:desktopApp:shot -Pshot.route=categories (expense categories
  *     with their icons)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=investments (the investments
- *     tab; no broker is seeded yet, so its empty state)
+ *     tab over a seeded IOL portfolio; `investments-empty` for no broker)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=holdings (the seeded Cartera:
+ *     positions + register)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=tx-buy   (the editor over a
+ *     fractional buy: 0,4939 TTWO at its own scale, with its cost)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=broker-import (review of a
  *     synthetic IOL plan: opening, buy, MEP, coupon, amortization, a difference)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=suggest  (the suggestion's
@@ -109,6 +113,10 @@ fun main(args: Array<String>) {
     // harness has no one to tap "revectorizar": sweep up front.
     kotlinx.coroutines.runBlocking { runCatching { graph.embeddings.embedPending() } }
 
+    // A small IOL portfolio written through the real repositories, for the
+    // routes that show investments.
+    val invest = if (route in INVESTMENT_ROUTES) kotlinx.coroutines.runBlocking { seedInvestments(graph) } else null
+
     // Same path a real Android share takes: drop a document in the inbox and
     // RootScreen navigates to the review screen once it subscribes.
     if (route == "import") {
@@ -140,7 +148,7 @@ fun main(args: Array<String>) {
                 startTab = when (route) {
                     "movements" -> AppTab.Movements
                     "categories" -> AppTab.Categories
-                    "investments" -> AppTab.Investments
+                    "investments", "investments-empty" -> AppTab.Investments
                     else -> AppTab.Home
                 },
                 initialRoute = when (route) {
@@ -169,6 +177,8 @@ fun main(args: Array<String>) {
                     // A synthetic IOL plan: the review screen can't reach IOL
                     // from the sandbox, and a plan is plain data anyway.
                     "broker-import" -> demoBrokerImport()
+                    "holdings" -> invest?.let { AccountDetailRoute(it.accounts.holdings) }
+                    "tx-buy" -> invest?.let { TransactionEditRoute(it.fractionalBuy) }
                     else -> null
                 },
             )
@@ -188,6 +198,68 @@ fun main(args: Array<String>) {
     kotlin.system.exitProcess(0)
 }
 
+
+private val INVESTMENT_ROUTES = setOf("investments", "holdings", "tx-buy", "instrument")
+
+private class SeededInvestments(val accounts: BrokerAccounts, val fractionalBuy: String)
+
+/**
+ * An IOL connection with a year of history: an opening (MELI, a letra, cash),
+ * a CEDEAR buy, a fractional US stock, a coupon, a letra redeemed whole (so
+ * one closed position) and a few days of prices, so gains have something to
+ * move against. Through [BrokersRepository], the same path a real sync takes.
+ */
+private suspend fun seedInvestments(graph: AppGraph): SeededInvestments {
+    val accounts = graph.brokers.connect(IOL_PROVIDER, "IOL", listOf("ARS", "USD"))
+    fun d(text: String) = Decimal.parse(text)!!
+    val day = 24L * 60 * 60 * 1000
+    val now = epochMillis()
+    val t0 = now - 40 * day
+    val meli = InstrumentInfo("BCBA:MELI", "MELI", "Cedear Mercadolibre", "cedear", 0, quoteCommodity = "ARS")
+    val s13n6 = InstrumentInfo("BCBA:S13N6", "S13N6", "Letra del Tesoro 13/06", "letra", 0, pricePer = 100, quoteCommodity = "ARS")
+    val s14g6 = InstrumentInfo("BCBA:S14G6", "S14G6", "Letra del Tesoro 14/08", "letra", 0, pricePer = 100, quoteCommodity = "ARS")
+    val ttwo = InstrumentInfo("NASDAQ:TTWO", "TTWO", "Take-Two Interactive", "stock", 4, quoteCommodity = "USD")
+    val al30 = InstrumentInfo("BCBA:AL30", "AL30", "Bono Rep. Argentina 2030", "bono", 0, pricePer = 100, quoteCommodity = "ARS")
+    val events = listOf(
+        BrokerEvent.Trade("seed-s14g6", t0, true, "Compra S14G6", "BCBA:S14G6", d("2168316"), d("2178073.42"), "ARS", d("4377.93")),
+        BrokerEvent.Trade("seed-meli", t0 + 5 * day, true, "Compra MELI", "BCBA:MELI", d("13"), d("317070"), "ARS", d("2186.83")),
+        BrokerEvent.Trade("seed-al30", t0 + 8 * day, true, "Compra AL30", "BCBA:AL30", d("500"), d("412500"), "ARS", d("1240")),
+        BrokerEvent.Trade("seed-ttwo", t0 + 10 * day, true, "Compra TTWO", "NASDAQ:TTWO", d("0.4939"), d("98.98"), "USD", d("1")),
+        BrokerEvent.Income("seed-al30-renta", t0 + 20 * day, true, "Renta AL30", IncomeKind.Interest, d("2.85"), "USD", instrument = "BCBA:AL30"),
+        BrokerEvent.Principal("seed-s14g6-amort", t0 + 30 * day, true, "Amortización S14G6", "BCBA:S14G6", null, d("2342410.09"), "ARS"),
+    )
+    val prices = buildList {
+        // Five closes a day apart: enough for "last price and its date".
+        for (i in 0 until 5) {
+            val at = now - (4 - i) * day
+            add(PriceQuote("BCBA:MELI", "ARS", at, d("24000").plus(d((i * 120).toString())), "iol"))
+            add(PriceQuote("BCBA:S13N6", "ARS", at, d("106.251"), "iol"))
+            add(PriceQuote("NASDAQ:TTWO", "USD", at, d("231.40").minus(d((i * 2).toString())), "iol"))
+            add(PriceQuote("BCBA:AL30", "ARS", at, d("79.10"), "iol"))
+        }
+    }
+    val snapshot = BrokerSnapshot(
+        now,
+        mapOf("ARS" to d("1542573.83"), "USD" to d("1049.66")),
+        listOf(
+            SnapshotPosition("BCBA:MELI", d("13")),
+            SnapshotPosition("BCBA:S13N6", d("1923076"), price = d("104.10")),
+            SnapshotPosition("BCBA:AL30", d("500")),
+            SnapshotPosition("NASDAQ:TTWO", d("0.4939")),
+        ),
+    )
+    val plan = planBrokerImport(
+        BrokerBatch(IOL_PROVIDER, events, snapshot, listOf(meli, s13n6, s14g6, ttwo, al30), prices),
+        accounts,
+        graph.brokers.ledgerView(accounts),
+        graph.brokers.knownRefs(IOL_PROVIDER),
+        graph.brokers.scales(),
+    )
+    check(plan.issues.isEmpty()) { "seed plan has issues: ${plan.issues}" }
+    val ids = graph.brokers.apply(plan)
+    val buy = plan.transactions.indexOfFirst { it.ref == brokerRef(IOL_PROVIDER, "seed-ttwo") }
+    return SeededInvestments(accounts, ids[buy])
+}
 
 /** A small but complete broker plan for the review screen's shot. */
 private fun demoBrokerImport(): BrokerImportRoute {

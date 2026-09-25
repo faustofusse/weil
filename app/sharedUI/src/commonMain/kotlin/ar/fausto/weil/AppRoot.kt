@@ -496,11 +496,16 @@ fun RootScreen(
                                 }
                                 entry<JournalRoute> { journalScreen(null) }
                                 entry<TransactionNewRoute> { route ->
+                                    // The editor types an instrument at its scale, which
+                                    // comes with the valuation; a cold start straight
+                                    // here (no Home underneath) hasn't loaded it yet.
+                                    LaunchedEffect(Unit) { if (!ledgerState.loaded) ledgerState.refresh() }
                                     TransactionEditScreen(
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
                                         editId = null,
                                         prefillAccountId = route.accountId,
+                                        valuation = ledgerState.valuation,
                                         onSaved = { pop() },
                                         onNavigateBack = { pop() },
                                     )
@@ -539,10 +544,15 @@ fun RootScreen(
                                     )
                                 }
                                 entry<TransactionEditRoute> { route ->
+                                    // The editor types an instrument at its scale, which
+                                    // comes with the valuation; a cold start straight
+                                    // here (no Home underneath) hasn't loaded it yet.
+                                    LaunchedEffect(Unit) { if (!ledgerState.loaded) ledgerState.refresh() }
                                     TransactionEditScreen(
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,
                                         editId = route.id,
+                                        valuation = ledgerState.valuation,
                                         onSaved = { pop() },
                                         onNavigateBack = { pop() },
                                     )

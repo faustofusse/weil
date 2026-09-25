@@ -9,14 +9,14 @@ import androidx.compose.ui.text.input.VisualTransformation
  * Money input plumbing shared by every amount field (quick entry, ledger
  * editor, import review).
  *
- * The state holds a *raw* es-AR string — `-?digits[,digits{0,2}]`, never
+ * The state holds a *raw* es-AR string — `-?digits[,digits{0,scale}]`, never
  * thousands separators — so [Money.parse] keeps working unchanged, while
  * [AmountVisualTransformation] draws the grouped form ("1.234,56") as the user
  * types. Grouping as a visual transformation instead of rewriting the state is
  * what keeps the caret where the user put it: rewriting a `String`-valued
  * TextField to insert a dot mid-string throws the cursor to the end.
  */
-fun sanitizeAmountInput(input: String, allowNegative: Boolean = true): String {
+fun sanitizeAmountInput(input: String, allowNegative: Boolean = true, maxDecimals: Int = 2): String {
     val negative = allowNegative && input.contains('-')
     // A pasted "1.234,56" has both separators: the rightmost kind is the
     // decimal one, the other is grouping noise to drop. A lone '.' or ',' is
@@ -34,14 +34,15 @@ fun sanitizeAmountInput(input: String, allowNegative: Boolean = true): String {
         when {
             c.isDigit() -> {
                 if (inFraction) {
-                    if (frac.length < 2) frac.append(c)
+                    if (frac.length < maxDecimals) frac.append(c)
                 } else {
                     whole.append(c)
                 }
             }
             c == '.' || c == ',' -> {
                 val isDecimal = if (decimalChar != null) c == decimalChar else true
-                if (isDecimal && !inFraction) inFraction = true
+                // A whole-unit quantity (scale 0) has no decimal point to type.
+                if (isDecimal && !inFraction && maxDecimals > 0) inFraction = true
             }
         }
     }
@@ -56,8 +57,16 @@ fun sanitizeAmountInput(input: String, allowNegative: Boolean = true): String {
     return (if (negative) "-" else "") + body
 }
 
-/** Raw editable text for a stored minor-unit amount (drops the grouping dots). */
-fun rawAmountText(minorUnits: Long): String = sanitizeAmountInput(formatMinorUnits(minorUnits))
+/**
+ * Raw editable text for a stored minor-unit amount (drops the grouping dots).
+ * At a quantity's scale the trailing zeros go too: "13" MELI and "0,5" TTWO,
+ * not "0,5000"; money keeps its two decimals.
+ */
+fun rawAmountText(minorUnits: Long, scale: Int = 2): String {
+    val text = formatMinorUnits(minorUnits, scale)
+    val trimmed = if (scale != 2 && text.contains(',')) text.trimEnd('0').removeSuffix(",") else text
+    return sanitizeAmountInput(trimmed, maxDecimals = scale)
+}
 
 /** Flips the sign of a raw amount string; the way to type a minus on iOS. */
 fun toggleAmountSign(raw: String): String =

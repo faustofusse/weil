@@ -870,22 +870,26 @@ private val SegmentCorner = 24.dp
 
 /** Grouped digits with the peso sign glued to their left. */
 /** Shared with the full editor, which draws the same money in the same slab. */
-internal val AmountWithSymbol = VisualTransformation { text ->
+internal val AmountWithSymbol = amountWithSymbol("$")
+
+/** Grouped digits with [symbol] glued to their left ("US$-99,98" in a dollar row). */
+internal fun amountWithSymbol(symbol: String) = VisualTransformation { text ->
     // Empty stays empty: a lone "$" counts as content and would suppress the
     // placeholder, leaving the row showing a symbol and nothing else.
     if (text.text.isEmpty()) {
         TransformedText(text, OffsetMapping.Identity)
     } else {
-    val grouped = AmountVisualTransformation.filter(text)
-    val inner = grouped.offsetMapping
-    TransformedText(
-        AnnotatedString("$") + grouped.text,
-        object : OffsetMapping {
-            override fun originalToTransformed(offset: Int) = inner.originalToTransformed(offset) + 1
-            override fun transformedToOriginal(offset: Int) =
-                inner.transformedToOriginal((offset - 1).coerceAtLeast(0))
-        },
-    )
+        val grouped = AmountVisualTransformation.filter(text)
+        val inner = grouped.offsetMapping
+        val n = symbol.length
+        TransformedText(
+            AnnotatedString(symbol) + grouped.text,
+            object : OffsetMapping {
+                override fun originalToTransformed(offset: Int) = inner.originalToTransformed(offset) + n
+                override fun transformedToOriginal(offset: Int) =
+                    inner.transformedToOriginal((offset - n).coerceAtLeast(0))
+            },
+        )
     }
 }
 
