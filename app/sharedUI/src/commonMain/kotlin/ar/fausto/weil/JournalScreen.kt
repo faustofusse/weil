@@ -552,70 +552,12 @@ fun JournalScreen(
 
     if (showDeleteSelectedDialog) {
         DeleteSelectedDialog(
-            state = state,
-            scope = scope,
+            count = state.selected.size,
+            delete = { state.deleteSelected() },
+            restore = { state.restore(it) },
             onDismiss = { showDeleteSelectedDialog = false },
         )
     }
-}
-
-/**
- * Confirm-and-delete for the multi-select run: one transaction for the whole
- * batch ([JournalState.deleteSelected]), then the Snackbar carries every
- * removed row back ([JournalState.restore]) — the same undoable-delete shape
- * the editor and the detail screen use, extended to N rows.
- */
-@Composable
-private fun DeleteSelectedDialog(
-    state: JournalState,
-    scope: CoroutineScope,
-    onDismiss: () -> Unit,
-) {
-    var deleting by remember { mutableStateOf(false) }
-    val count = state.selected.size
-    val undoLabel = stringResource(Res.string.action_undo)
-    val deletedMessage = stringResource(Res.string.journal_selected_count, count)
-    val failedMessage = stringResource(Res.string.journal_delete_failed)
-
-    AlertDialog(
-        onDismissRequest = { if (!deleting) onDismiss() },
-        title = { Text(stringResource(Res.string.journal_delete_selected_title, count)) },
-        text = {
-            Text(
-                stringResource(Res.string.journal_delete_selected_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    deleting = true
-                    scope.launch {
-                        try {
-                            val backups = state.deleteSelected()
-                            onDismiss()
-                            if (backups.isNotEmpty()) {
-                                Feedback.undoable(deletedMessage, undoLabel) {
-                                    state.restore(backups)
-                                }
-                            }
-                        } catch (e: Throwable) {
-                            if (e is kotlinx.coroutines.CancellationException) throw e
-                            Feedback.show(failedMessage)
-                            deleting = false
-                        }
-                    }
-                },
-                enabled = !deleting && count > 0,
-            ) { Text(stringResource(Res.string.action_delete)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !deleting) {
-                Text(stringResource(Res.string.action_cancel))
-            }
-        },
-    )
 }
 
 private fun matchesFilter(
@@ -747,13 +689,13 @@ private fun DeleteRangeDialog(state: JournalState, onDismiss: () -> Unit) {
 
     if (pickingFrom) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = fromText?.let { parseDateInput(it) } ?: epochMillis(),
+            initialSelectedDateMillis = pickerMillisOf(fromText),
         )
         DatePickerDialog(
             onDismissRequest = { pickingFrom = false },
             confirmButton = {
                 TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { fromText = dateInputOf(it) }
+                    pickerState.selectedDateMillis?.let { fromText = dateInputOfPicker(it) }
                     pickingFrom = false
                 }) { Text(stringResource(Res.string.action_ok)) }
             },
@@ -765,13 +707,13 @@ private fun DeleteRangeDialog(state: JournalState, onDismiss: () -> Unit) {
 
     if (pickingTo) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = toText?.let { parseDateInput(it) } ?: epochMillis(),
+            initialSelectedDateMillis = pickerMillisOf(toText),
         )
         DatePickerDialog(
             onDismissRequest = { pickingTo = false },
             confirmButton = {
                 TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { toText = dateInputOf(it) }
+                    pickerState.selectedDateMillis?.let { toText = dateInputOfPicker(it) }
                     pickingTo = false
                 }) { Text(stringResource(Res.string.action_ok)) }
             },
@@ -853,13 +795,13 @@ private fun DateRangeFilterDialog(state: JournalState, onDismiss: () -> Unit) {
 
     if (pickingFrom) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = fromText?.let { parseDateInput(it) } ?: epochMillis(),
+            initialSelectedDateMillis = pickerMillisOf(fromText),
         )
         DatePickerDialog(
             onDismissRequest = { pickingFrom = false },
             confirmButton = {
                 TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { fromText = dateInputOf(it) }
+                    pickerState.selectedDateMillis?.let { fromText = dateInputOfPicker(it) }
                     pickingFrom = false
                 }) { Text(stringResource(Res.string.action_ok)) }
             },
@@ -871,13 +813,13 @@ private fun DateRangeFilterDialog(state: JournalState, onDismiss: () -> Unit) {
 
     if (pickingTo) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = toText?.let { parseDateInput(it) } ?: epochMillis(),
+            initialSelectedDateMillis = pickerMillisOf(toText),
         )
         DatePickerDialog(
             onDismissRequest = { pickingTo = false },
             confirmButton = {
                 TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { toText = dateInputOf(it) }
+                    pickerState.selectedDateMillis?.let { toText = dateInputOfPicker(it) }
                     pickingTo = false
                 }) { Text(stringResource(Res.string.action_ok)) }
             },

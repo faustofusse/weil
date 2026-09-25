@@ -80,6 +80,26 @@ fun dateInputOf(timestamp: Long): String {
 
 fun todayInput(): String = dateInputOf(epochMillis())
 
+/**
+ * Material 3's `DatePicker` speaks UTC-midnight millis, not local instants:
+ * formatting its selection in the local zone lands on the previous day west
+ * of Greenwich (UTC-3 turns the 15th 00:00Z into the 14th 21:00). These two
+ * translate between the "YYYY-MM-DD" field and the picker in UTC only.
+ */
+fun pickerMillisOf(text: String?): Long {
+    val date = text?.let { parseDateInput(it) }?.let {
+        Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.currentSystemDefault()).date
+    } ?: Instant.fromEpochMilliseconds(epochMillis()).toLocalDateTime(TimeZone.currentSystemDefault()).date
+    return date.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
+}
+
+fun dateInputOfPicker(millis: Long): String {
+    val d = Instant.fromEpochMilliseconds(millis).toLocalDateTime(TimeZone.UTC).date
+    return d.year.toString().padStart(4, '0') + "-" +
+        (d.month.ordinal + 1).toString().padStart(2, '0') + "-" +
+        d.day.toString().padStart(2, '0')
+}
+
 /** Parses "YYYY-MM-DD" to epoch ms at local midnight; null when malformed. */
 fun parseDateInput(text: String): Long? {
     val parts = text.trim().split('-')
