@@ -34,6 +34,8 @@ import org.jetbrains.skia.Image
  *     with their icons)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=investments (the investments
  *     tab; no broker is seeded yet, so its empty state)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=broker-import (review of a
+ *     synthetic IOL plan: opening, buy, MEP, coupon, amortization, a difference)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=suggest  (the suggestion's
  *     sources: vector neighbours + the run button)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=suggest-trace (the pipeline
@@ -164,6 +166,9 @@ fun main(args: Array<String>) {
                     // sandboxed session cannot reach: both render their error
                     // state here, the layout is still what ships.
                     "profile" -> ProfileRoute
+                    // A synthetic IOL plan: the review screen can't reach IOL
+                    // from the sandbox, and a plan is plain data anyway.
+                    "broker-import" -> demoBrokerImport()
                     else -> null
                 },
             )
@@ -181,4 +186,50 @@ fun main(args: Array<String>) {
     EventQueue.invokeAndWait { scene.close() }
     println("shot: ${out.absolutePath}")
     kotlin.system.exitProcess(0)
+}
+
+
+/** A small but complete broker plan for the review screen's shot. */
+private fun demoBrokerImport(): BrokerImportRoute {
+    val accounts = BrokerAccounts(
+        cash = mapOf("ARS" to "iol-ars", "USD" to "iol-usd"),
+        holdings = "iol-cartera",
+        interest = "intereses",
+        dividends = "dividendos",
+        capitalGains = "ganancias",
+        taxes = "impuestos",
+        commissions = "comisiones",
+        opening = "saldo-inicial",
+        adjustments = "ajustes",
+    )
+    fun d(text: String) = Decimal.parse(text)!!
+    val day = 24L * 60 * 60 * 1000
+    val t0 = iolTime("2026-08-14T12:00:00")!!
+    val meli = InstrumentInfo("BCBA:MELI", "MELI", "Cedear Mercadolibre", "cedear", 0, quoteCommodity = "ARS")
+    val s13n6 = InstrumentInfo("BCBA:S13N6", "S13N6", "Letra", "letra", 0, pricePer = 100, quoteCommodity = "ARS")
+    val s14g6 = InstrumentInfo("BCBA:S14G6", "S14G6", "Letra", "letra", 0, pricePer = 100, quoteCommodity = "ARS")
+    val events = listOf(
+        BrokerEvent.Trade("185183992", t0, true, "Compra MELI", "BCBA:MELI", d("13"), d("317070"), "ARS", d("2186.83")),
+        BrokerEvent.FxConversion("140633678+140633706", t0 + day, true, "Dólar MEP (AL30)", d("497867.21"), "ARS", d("379.95"), "USD", d("2576.01")),
+        BrokerEvent.Income("172510909", t0 + 2 * day, true, "Renta AO27", IncomeKind.Interest, d("5.64"), "USD"),
+        BrokerEvent.Trade("172012506", t0 - 60 * day, true, "Compra S14G6", "BCBA:S14G6", d("2168316"), d("2178073.42"), "ARS", d("4377.93")),
+        BrokerEvent.Principal("185135140", t0 - day, true, "Amortización S14G6", "BCBA:S14G6", null, d("2342410.09"), "ARS"),
+    )
+    val snapshot = BrokerSnapshot(
+        t0 + 3 * day,
+        mapOf("ARS" to d("542573.83"), "USD" to d("3049.66")),
+        listOf(
+            SnapshotPosition("BCBA:MELI", d("13"), price = d("23420")),
+            SnapshotPosition("BCBA:S13N6", d("1923076"), price = d("106.251")),
+        ),
+    )
+    val plan = planBrokerImport(
+        BrokerBatch("iol", events, snapshot, listOf(meli, s13n6, s14g6)),
+        accounts,
+        BrokerLedgerView(),
+        emptySet(),
+    )
+    // One difference on show, as a second sync with an unreported deposit would have.
+    val shown = plan.copy(differences = listOf(BalanceDifference("iol-ars", "ARS", 54_257_383L, 74_257_383L)))
+    return BrokerImportRoute("IOL", "iol", shown, accounts, emptyMap())
 }

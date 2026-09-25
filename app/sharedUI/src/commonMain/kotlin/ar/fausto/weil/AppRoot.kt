@@ -447,7 +447,14 @@ fun RootScreen(
                                         entry<HomeRoute> { homeTab(bar) }
                                         entry<JournalRoute> { journalScreen(bar) }
                                         entry<CategoriesRoute> { categoriesScreen(bar) }
-                                        entry<InvestmentsRoute> { InvestmentsScreen(bottomBar = bar) }
+                                        entry<InvestmentsRoute> {
+                                            InvestmentsScreen(
+                                                iol = graph.iol,
+                                                brokers = graph.brokers,
+                                                onReviewImport = { navigate(it) },
+                                                bottomBar = bar,
+                                            )
+                                        }
                                     }
                                 }
                                 entry<CategoriesRoute> { categoriesScreen {} }
@@ -645,6 +652,20 @@ fun RootScreen(
                                 // Pushed from the account icon in Inicio's top
                                 // bar; no longer a tab, so it always wears the
                                 // back arrow (bottomBar = null).
+                                entry<BrokerImportRoute> { route ->
+                                    BrokerImportScreen(
+                                        route = route,
+                                        ledger = graph.ledger,
+                                        apply = { plan ->
+                                            when (route.provider) {
+                                                IOL_PROVIDER -> graph.iol.apply(plan)
+                                                else -> graph.brokers.apply(plan)
+                                            }.also { ledgerState.refresh() }
+                                        },
+                                        onDone = { pop() },
+                                        onNavigateBack = { pop() },
+                                    )
+                                }
                                 entry<ProfileRoute> {
                                     ProfileScreen(
                                         chain = graph.chain,

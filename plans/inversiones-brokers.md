@@ -504,15 +504,61 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
   deshacer).
 - Primera fuente porque no pide credenciales y el fixture ya existe.
 
-### Fase 4 — IOL conectado
+### Fase 4 — IOL conectado (hecha)
 
-- `IolClient` (Ktor, commonMain): login, refresh, re-login con la contraseña
-  del secure store cuando el refresh venció (siempre, en la práctica).
-  **Sólo GET + `/token`**: el cliente no expone `/operar/*` ni `DELETE`.
-- «Conectar InvertirOnline» en `ProfileScreen`; sync al iniciar sesión y con
-  pull-to-refresh, igual que `sweepEmails()`. Watermark de operaciones en
-  `settings` (`broker.iol.watermark`) con solapamiento de unos días.
-- Precios de `portafolio` + MEP a `prices` en cada sync.
+- [x] `IolApi.kt`: DTOs (montos decodificados del texto JSON a `Decimal`, nunca
+      por `Double`), `IolSource` (sólo lecturas) e `IolClient` (sólo `POST
+      /token` y GETs: no puede operar). Re-login con las credenciales del
+      secure store en cada sync: el refresh dura 20 min y no vale guardarlo.
+- [x] `IolConnector.kt` (puro): IOL → `BrokerBatch`. Reglas sacadas de la
+      historia real, no de la doc de IOL:
+  - compra en pesos de un bono + venta de su ticker **D** (MEP) o **C**
+    (cable) en dólares, misma cantidad, ≤ 5 días → un `FxConversion`
+    (ref `compra+venta`); AL30→AL30D da $ 497.867,21 → US$ 379,95;
+  - moneda y aranceles salen del detalle de cada orden; en un trade en
+    dólares, el derecho de mercado se cobra en **pesos** → `foreignFees`
+    (gasto desde la caja en pesos, no costo);
+  - renta/amortización llegan de a pares: la fila con monto es el evento; la
+    compañera sin monto de una amortización la vuelve rescate **total** de lo
+    que se tiene (IOL redondea la cantidad en su texto: «-2,16832e+006» por
+    2.168.316). Amortización sin compañera (parcial) → issue;
+  - instrumentos: tipo por `titulo` del portafolio o `GET
+    /{mercado}/Titulos/{simbolo}`; FCI → `FCI:SIMBOLO` escala 4; CEDEAR,
+    acción, bono, letra, ON → `BCBA:SIMBOLO` escala 0; bonos/letras/ON
+    `price_per` 100; las dos cuentas en dólares de IOL (AR y EE.UU.) se suman.
+- [x] Cambios al planner que salieron de datos reales: `foreignFees`;
+  `Principal` con cantidad nula = toda la posición (y la apertura de un
+  instrumento rescatado entero es lo justo para no quedar en corto);
+  **cobro en otra moneda que el costo** (una ON hard-dollar comprada con
+  pesos: MGC9O) → los dólares recibidos llevan como costo la base en pesos,
+  sin inventar ganancia; **cantidades exactas** (una cantidad con más
+  decimales que la escala es issue, nunca redondeo); `transfers` opcional
+  (IOL no informa depósitos).
+- [x] `Brokers.kt` (`BrokersRepository`): crea/encuentra las cuentas
+  (`IOL:{Pesos, Dólares, Cartera}`, `Rendimientos:{Intereses, Dividendos,
+  Ganancias de capital}`, `Costos de inversión:{Impuestos, Comisiones}`,
+  `Patrimonio:{Saldo inicial, Ajustes}` — raíces distintas porque un nombre
+  de raíz es único entre los cinco tipos), la vista del ledger (saldos +
+  `TransactionsRepository.holdings`: cantidad y costo por commodity), refs
+  conocidas, escalas, y `apply` (commodities, precios con id determinístico,
+  transacciones).
+- [x] `IolRepository`: `connect` (verifica antes de guardar), `preview`,
+  `apply`, ventana desde el último sync − 10 días (`broker.iol.synced_at`,
+  sincronizado).
+- [x] UI: fila de InvertirOnline en la pestaña (conectar / sincronizar /
+  mantener apretado para desconectar), sheet de conexión que dice dónde vive
+  la contraseña, y `BrokerImportScreen` (genérica): movimientos, diferencias,
+  issues, «Importar N movimientos» con deshacer. Harness:
+  `-Pshot.route=broker-import`.
+- [x] Pruebas: `IolConnectorTest` (fixtures reales scrubbeados en
+  `jvmTest/resources/iol`: **un año planeado sobre un ledger vacío cae
+  exacto en el snapshot de IOL**, sin issues), `IolImportTest` (lo mismo por
+  los repositorios y SQLite, segundo sync sin nada nuevo ni detalles
+  repedidos) e `IolLiveTest` (opt-in con `IOL_USERNAME`/`IOL_PASSWORD`,
+  contra la API real y una base descartable: 44 movimientos, 0 issues,
+  0 diferencias).
+- Pendiente: sync automático al abrir la app / pull-to-refresh de la pestaña
+  (hoy es el botón «Sincronizar»), y WorkManager en segundo plano.
 
 ### Fase 5 — valuación en la UI
 

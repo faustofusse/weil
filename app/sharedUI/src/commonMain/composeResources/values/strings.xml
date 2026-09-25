@@ -56,6 +56,26 @@
     <string name="investments_source_statement_hint">El PDF de tu cuenta comitente</string>
     <string name="investments_soon">Pronto</string>
     <string name="investments_soon_message">Todavía no está disponible</string>
+    <string name="iol_connect_title">Conectar InvertirOnline</string>
+    <string name="iol_connect_body">Tu usuario y contraseña se guardan sólo en este dispositivo y se usan únicamente para leer tu cuenta: Weil no puede operar en IOL.</string>
+    <string name="iol_username">Usuario</string>
+    <string name="iol_password">Contraseña</string>
+    <string name="iol_connect_action">Conectar</string>
+    <string name="iol_wrong_credentials">IOL rechazó el usuario o la contraseña</string>
+    <string name="iol_sync">Sincronizar</string>
+    <string name="iol_up_to_date">InvertirOnline está al día</string>
+    <string name="iol_disconnect_title">Desconectar InvertirOnline</string>
+    <string name="iol_disconnect_body">Se borra la contraseña de este dispositivo. Lo que ya importaste queda en tus cuentas.</string>
+    <string name="iol_disconnect_action">Desconectar</string>
+    <string name="broker_import_title">Importar de %1$s</string>
+    <string name="broker_import_count">%1$d movimientos para importar</string>
+    <string name="broker_import_nothing">No hay movimientos nuevos</string>
+    <string name="broker_import_action">Importar %1$d movimientos</string>
+    <string name="broker_import_done">%1$d movimientos importados</string>
+    <string name="broker_differences_title">Diferencias con el broker</string>
+    <string name="broker_differences_body">Después de importar, esto no coincidiría con lo que informa el broker. Suele ser un depósito o una extracción que el broker no reporta.</string>
+    <string name="broker_difference_row">%1$s: el broker dice %2$s, tus cuentas %3$s</string>
+    <string name="broker_issues_title">No se pudieron importar</string>
 
     <!-- Categories (expense accounts) -->
     <string name="categories_title">Categorías</string>
