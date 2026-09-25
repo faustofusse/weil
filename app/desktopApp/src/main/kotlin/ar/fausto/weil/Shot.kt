@@ -77,6 +77,14 @@ fun main(args: Array<String>) {
     val sandbox = File(System.getProperty("java.io.tmpdir"), "weil-shot").apply { mkdirs() }
     val dbFile = File(sandbox, "shot.db").apply { delete() }
     val storeFile = File(sandbox, "store.properties").apply { delete() }
+    // This device holds IOL credentials. The seed writes no synced_at, so
+    // the launch's autoSync never reaches for the network.
+    if (route == "investments-alert" || route == "investments-sheet") {
+        JvmSecureStore(storeFile, seedDevSession = true).apply {
+            write(IolRepository.USERNAME_KEY, "fausto")
+            write(IolRepository.PASSWORD_KEY, "x")
+        }
+    }
     // Today's official dollar, fixed: a shot must not depend on the BCRA.
     val fixedOfficialRate = OfficialRateSource { _, to ->
         listOf(PriceQuote("USD", "ARS", iolTime("${to}T15:00:00")!!, Decimal.parse("1525.50")!!, OFFICIAL_SOURCE))
@@ -122,6 +130,12 @@ fun main(args: Array<String>) {
     // A small IOL portfolio written through the real repositories, for the
     // routes that show investments.
     val invest = if (route in INVESTMENT_ROUTES) kotlinx.coroutines.runBlocking { seedInvestments(graph) } else null
+    // For the alert route, an unattended sync left something to review.
+    if (route == "investments-alert") {
+        graph.iol.lastAutoSync.value = BrokerAutoSync.NeedsReview(
+            BrokerPlan(List(3) { planned -> PlannedTransaction(PlannedKind.Trade, NewTransaction(0L, "x", null, emptyList()), "iol:$planned") }, emptyList(), emptyList(), emptyList(), listOf(PlanIssue("iol:9", "unknown")), emptyList()),
+        )
+    }
 
     // Same path a real Android share takes: drop a document in the inbox and
     // RootScreen navigates to the review screen once it subscribes.
@@ -148,13 +162,14 @@ fun main(args: Array<String>) {
                 // Not a route: the create panel is an overlay over whatever
                 // root is showing.
                 openCreate = route == "new",
+                openBrokerSheet = route == "investments-sheet",
                 // The four tabs render inside the shell, so they are asked
                 // for by name rather than pushed as routes.
                 initialTheme = theme,
                 startTab = when (route) {
                     "movements" -> AppTab.Movements
                     "categories" -> AppTab.Categories
-                    "investments", "investments-empty" -> AppTab.Investments
+                    "investments", "investments-empty", "investments-alert", "investments-sheet" -> AppTab.Investments
                     else -> AppTab.Home
                 },
                 initialRoute = when (route) {
@@ -207,7 +222,7 @@ fun main(args: Array<String>) {
 }
 
 
-private val INVESTMENT_ROUTES = setOf("investments", "holdings", "tx-buy", "tx-buy-detail", "instrument")
+private val INVESTMENT_ROUTES = setOf("investments", "investments-alert", "investments-sheet", "holdings", "tx-buy", "tx-buy-detail", "instrument")
 
 private class SeededInvestments(val accounts: BrokerAccounts, val fractionalBuy: String)
 

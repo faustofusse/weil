@@ -47,6 +47,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import kotlin.math.abs
 import kotlinx.coroutines.flow.merge
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.collectAsState
+import weil.app.sharedui.generated.resources.broker_change_credentials
+import weil.app.sharedui.generated.resources.broker_connect_here
+import weil.app.sharedui.generated.resources.broker_connected_as
+import weil.app.sharedui.generated.resources.broker_see_holdings
+import weil.app.sharedui.generated.resources.broker_see_movements
+import weil.app.sharedui.generated.resources.broker_sync_now
+import weil.app.sharedui.generated.resources.home_see_all
+import weil.app.sharedui.generated.resources.investments_alert_differences
+import weil.app.sharedui.generated.resources.investments_alert_password
+import weil.app.sharedui.generated.resources.investments_alert_review
 import weil.app.sharedui.generated.resources.investments_add
 import weil.app.sharedui.generated.resources.investments_brokers
 import weil.app.sharedui.generated.resources.investments_connect_here
@@ -105,9 +120,11 @@ fun InvestmentsScreen(
     iol: IolRepository,
     brokers: BrokersRepository,
     onReviewImport: (BrokerImportRoute) -> Unit,
-    onOpenAccount: (id: String, commodity: String?) -> Unit,
+    onOpenAccount: (AccountDetailRoute) -> Unit,
     onOpenTransaction: (id: String) -> Unit,
     bottomBar: @Composable () -> Unit = {},
+    /** Harness-only: opens the first broker's sheet once connections load. */
+    openFirstBroker: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val ledger = ledgerState.ledger
@@ -119,6 +136,9 @@ fun InvestmentsScreen(
     var connecting by remember { mutableStateOf(false) }
     var syncing by remember { mutableStateOf(false) }
     var confirmDisconnect by remember { mutableStateOf(false) }
+    // The broker whose sheet is open (sync, see, change credentials, disconnect).
+    var managing by remember { mutableStateOf<BrokerConnection?>(null) }
+    val autoSync by iol.lastAutoSync.collectAsState()
 
     var connections by remember { mutableStateOf<List<BrokerConnection>?>(null) }
     var holdings by remember { mutableStateOf<Map<String, Map<String, HeldPosition>>>(emptyMap()) }
@@ -138,10 +158,23 @@ fun InvestmentsScreen(
             .map { it.posting.transactionId }.distinct().take(RECENT_SHOWN)
         val byId = ledger.getAll(txIds)
         recent = txIds.mapNotNull { byId[it] }
+        if (openFirstBroker && connections == null) managing = found.firstOrNull()
         connections = found
     }
 
     LaunchedEffect(ledgerState.tree) { load() }
+    // Opening the tab is an occasion to sync, like launching the app;
+    // autoSync throttles itself, so switching tabs doesn't hammer IOL.
+    LaunchedEffect(Unit) { iol.autoSync() }
+
+    /** Opens the review for an auto sync's [plan]; the alert is settled by looking at it. */
+    fun review(plan: BrokerPlan) {
+        scope.launch {
+            val accounts = brokers.accountsFor(IOL_PROVIDER) ?: return@launch
+            iol.clearAutoSync()
+            onReviewImport(BrokerImportRoute("IOL", IOL_PROVIDER, plan, accounts, brokers.scales()))
+        }
+    }
     LaunchedEffect(Unit) {
         merge(ledger.changes, ledgerState.settings.changes).collect { load() }
     }
@@ -251,6 +284,15 @@ fun InvestmentsScreen(
                             hidden = ledgerState.amountsHidden,
                         )
                     }
+                    autoSync?.let { result ->
+                        item(key = "alert") {
+                            AutoSyncAlert(
+                                result = result,
+                                onReview = { review(it) },
+                                onReconnect = { connecting = true },
+                            )
+                        }
+                    }
                     item(key = "brokers-header") { SectionHeader(title = stringResource(Res.string.investments_brokers)) }
                     items(connected, key = { "broker-${it.provider}" }) { c ->
                         val holdingsId = c.accounts.holdings
@@ -271,10 +313,7 @@ fun InvestmentsScreen(
                                 isIol && iolUser == null -> stringResource(Res.string.investments_connect_here)
                                 else -> freshness(c.syncedAt)
                             },
-                            onClick = {
-                                if (isIol && iolUser == null) connecting = true else onOpenAccount(holdingsId, null)
-                            },
-                            onLongClick = if (isIol && iolUser != null) ({ confirmDisconnect = true }) else null,
+                            onClick = { managing = c },
                         ) {
                             Column(horizontalAlignment = Alignment.End) {
                                 value.forEachIndexed { i, (commodity, minor) ->
@@ -301,14 +340,26 @@ fun InvestmentsScreen(
                                     val holder = connected.maxByOrNull {
                                         holdings[it.provider]?.get(commodity)?.quantityMinor ?: Long.MIN_VALUE
                                     }
-                                    holder?.let { onOpenAccount(it.accounts.holdings, commodity) }
+                                    holder?.let { onOpenAccount(AccountDetailRoute(it.accounts.holdings, commodity)) }
                                 },
                             )
                         }
                     }
                     if (recent.isNotEmpty()) {
                         item(key = "recent-header") {
-                            SectionHeader(title = stringResource(Res.string.investments_recent))
+                            // The full list is a broker's register with its
+                            // subaccounts; with several brokers there is no
+                            // one account that holds them all, and each
+                            // broker's sheet opens its own.
+                            val only = connected.singleOrNull()
+                            val root = only?.let { parents[it.accounts.holdings] }
+                            SectionHeader(title = stringResource(Res.string.investments_recent)) {
+                                if (root != null) {
+                                    SeeAllLink(stringResource(Res.string.home_see_all)) {
+                                        onOpenAccount(AccountDetailRoute(root, subtree = true))
+                                    }
+                                }
+                            }
                         }
                         items(recent, key = { "tx-${it.id}" }) { tx ->
                             MovementRow(
@@ -358,6 +409,7 @@ fun InvestmentsScreen(
 
     if (connecting) {
         IolConnectSheet(
+            initialUsername = iol.username.orEmpty(),
             onConnect = { username, password -> iol.connect(username, password) },
             wrongCredentials = wrongCredentials,
             onConnected = {
@@ -367,6 +419,23 @@ fun InvestmentsScreen(
                 sync()
             },
             onDismiss = { connecting = false },
+        )
+    }
+
+    managing?.let { c ->
+        val isIol = c.provider == IOL_PROVIDER
+        val rootId = parents[c.accounts.holdings]
+        BrokerSheet(
+            title = (rootId?.let { names[it] } ?: names[c.accounts.holdings]).orEmpty(),
+            account = if (isIol) iolUser else null,
+            freshness = freshness(c.syncedAt),
+            canConnect = isIol,
+            onSync = if (isIol && iolUser != null) ({ managing = null; sync() }) else null,
+            onHoldings = { managing = null; onOpenAccount(AccountDetailRoute(c.accounts.holdings)) },
+            onMovements = rootId?.let { root -> { managing = null; onOpenAccount(AccountDetailRoute(root, subtree = true)) } },
+            onConnect = { managing = null; connecting = true },
+            onDisconnect = if (isIol && iolUser != null) ({ managing = null; confirmDisconnect = true }) else null,
+            onDismiss = { managing = null },
         )
     }
 
@@ -481,6 +550,136 @@ private fun freshness(syncedAt: Long?): String {
 }
 
 /**
+ * What an unattended sync left for a person, as one tappable card: new
+ * movements that need review, the ledger disagreeing with the broker (never
+ * settled on its own, decision 5), or a password the broker stopped taking.
+ * A clean sync shows nothing — its snackbar already said so.
+ */
+@Composable
+private fun AutoSyncAlert(
+    result: BrokerAutoSync,
+    onReview: (BrokerPlan) -> Unit,
+    onReconnect: () -> Unit,
+) {
+    val (text, onClick, error) = when (result) {
+        is BrokerAutoSync.NeedsReview -> Triple(
+            stringResource(Res.string.investments_alert_review, result.plan.transactions.size),
+            { onReview(result.plan) },
+            false,
+        )
+        is BrokerAutoSync.Applied -> {
+            if (result.differences.isEmpty()) return
+            Triple(
+                stringResource(Res.string.investments_alert_differences, result.differences.size),
+                // Already written: the review only has the differences left.
+                { onReview(result.plan.copy(transactions = emptyList())) },
+                false,
+            )
+        }
+        BrokerAutoSync.WrongCredentials -> Triple(stringResource(Res.string.investments_alert_password), onReconnect, true)
+        is BrokerAutoSync.Failed -> return
+    }
+    val container = if (error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer
+    val ink = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(container)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Icon(Icons.Filled.Warning, contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = ink, modifier = Modifier.weight(1f))
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
+    }
+}
+
+/**
+ * One broker's sheet: which account this device is connected as, when it
+ * last synced, and what can be done with it. Replaces the connect prompt a
+ * tap used to open, so a connected broker is managed rather than
+ * re-entered; a broker connected only on another device offers connecting
+ * here (credentials never sync).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BrokerSheet(
+    title: String,
+    /** The username this device syncs as, null when it has no credentials. */
+    account: String?,
+    freshness: String,
+    canConnect: Boolean,
+    onSync: (() -> Unit)?,
+    onHoldings: () -> Unit,
+    onMovements: (() -> Unit)?,
+    onConnect: () -> Unit,
+    onDisconnect: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    if (account != null) stringResource(Res.string.broker_connected_as, account)
+                    else stringResource(Res.string.investments_connect_here),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    freshness,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            HorizontalDivider(modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+            onSync?.let { SheetAction(Icons.Filled.Refresh, stringResource(Res.string.broker_sync_now), onClick = it) }
+            SheetAction(Icons.Filled.TrendingUp, stringResource(Res.string.broker_see_holdings), onClick = onHoldings)
+            onMovements?.let { SheetAction(Icons.Filled.ListAlt, stringResource(Res.string.broker_see_movements), onClick = it) }
+            if (canConnect) {
+                SheetAction(
+                    Icons.Filled.Person,
+                    stringResource(if (account != null) Res.string.broker_change_credentials else Res.string.broker_connect_here),
+                    onClick = onConnect,
+                )
+            }
+            onDisconnect?.let {
+                SheetAction(
+                    Icons.Filled.Logout,
+                    stringResource(Res.string.iol_disconnect_title),
+                    color = MaterialTheme.colorScheme.error,
+                    onClick = it,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetAction(
+    icon: ImageVector,
+    label: String,
+    color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = color)
+    }
+}
+
+/**
  * Username and password, checked against IOL before anything is stored.
  * The copy says where they live because it is the first thing anyone
  * wonders when a finance app asks for a broker's password.
@@ -488,13 +687,14 @@ private fun freshness(syncedAt: Long?): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun IolConnectSheet(
+    initialUsername: String,
     onConnect: suspend (String, String) -> Unit,
     wrongCredentials: String,
     onConnected: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var username by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(initialUsername) }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }

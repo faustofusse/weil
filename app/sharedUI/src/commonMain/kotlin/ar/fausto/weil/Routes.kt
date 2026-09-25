@@ -103,8 +103,11 @@ data class TransactionEditRoute(val id: String)
  * on the read-only detail. */
 data class TransactionSimilarRoute(val id: String)
 
-/** One account's register; [commodity] opens it narrowed to that instrument. */
-data class AccountDetailRoute(val id: String, val commodity: String? = null)
+/**
+ * One account's register; [commodity] opens it narrowed to that instrument,
+ * [subtree] with its subaccounts' movements included (a broker's root).
+ */
+data class AccountDetailRoute(val id: String, val commodity: String? = null, val subtree: Boolean = false)
 
 /**
  * One expense category: its subcategories as chips, its movements below.

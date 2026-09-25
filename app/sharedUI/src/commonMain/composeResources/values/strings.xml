@@ -65,6 +65,16 @@
     <string name="investments_synced_minutes">Actualizado hace %1$d min</string>
     <string name="investments_synced_hours">Actualizado hace %1$d h</string>
     <string name="investments_synced_days">Actualizado hace %1$d días</string>
+    <string name="investments_auto_imported">IOL: %1$d movimientos nuevos importados</string>
+    <string name="investments_alert_review">IOL tiene %1$d movimientos para revisar antes de importarlos</string>
+    <string name="investments_alert_differences">Tu registro no coincide con IOL en %1$d saldos</string>
+    <string name="investments_alert_password">IOL rechazó la contraseña guardada. Tocá para volver a conectar</string>
+    <string name="broker_connected_as">Conectado como %1$s</string>
+    <string name="broker_sync_now">Sincronizar ahora</string>
+    <string name="broker_see_holdings">Ver cartera</string>
+    <string name="broker_see_movements">Ver movimientos</string>
+    <string name="broker_change_credentials">Cambiar usuario o contraseña</string>
+    <string name="broker_connect_here">Conectar en este dispositivo</string>
     <string name="investments_soon">Pronto</string>
     <string name="investments_soon_message">Todavía no está disponible</string>
     <string name="iol_connect_title">Conectar InvertirOnline</string>

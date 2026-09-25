@@ -2,6 +2,7 @@ package ar.fausto.weil
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -418,5 +419,19 @@ class BrokerageTest {
         assertTrue("BCBA:XYZ" in result.issues.single().message)
         // …and the position still shows up as a difference to resolve.
         assertEquals(listOf(BalanceDifference("cartera", "BCBA:XYZ", 0L, 500L)), result.differences)
+    }
+
+    @Test
+    fun onlyRoutinePlansAreWrittenUnattended() {
+        fun planned(kind: PlannedKind, needsCounterpart: Boolean = false) = PlannedTransaction(
+            kind, NewTransaction(date = 0L, payee = "x", note = null, drafts = emptyList()), "iol:1", needsCounterpart,
+        )
+        fun plan(vararg txs: PlannedTransaction, issues: List<PlanIssue> = emptyList()) =
+            BrokerPlan(txs.toList(), emptyList(), emptyList(), emptyList(), issues, emptyList())
+        assertTrue(isRoutine(plan()))
+        assertTrue(isRoutine(plan(planned(PlannedKind.Trade), planned(PlannedKind.Income))))
+        assertFalse(isRoutine(plan(planned(PlannedKind.Opening))))
+        assertFalse(isRoutine(plan(planned(PlannedKind.Transfer, needsCounterpart = true))))
+        assertFalse(isRoutine(plan(planned(PlannedKind.Trade), issues = listOf(PlanIssue("iol:2", "unknown")))))
     }
 }

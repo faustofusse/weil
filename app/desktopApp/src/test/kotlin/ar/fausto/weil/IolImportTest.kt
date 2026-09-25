@@ -39,6 +39,8 @@ class IolImportTest {
             json.decodeFromString<List<IolOperationDetail>>(text("detalles.json")).associateBy { it.numero }
         private val titles: Map<String, IolInstrument> = json.decodeFromString(text("titulos.json"))
         var detailCalls = 0
+        /** IOL starts refusing the stored password (it was changed on the web). */
+        var refuse = false
 
         override suspend fun verify(candidate: IolCredentials) {
             if (candidate.password != "ok") throw IolAuthException("refused")
@@ -46,8 +48,10 @@ class IolImportTest {
         override suspend fun accountState(): IolAccountState = json.decodeFromString(text("estadocuenta.json"))
         override suspend fun portfolio(country: String): IolPortfolio =
             json.decodeFromString(text(if (country == "argentina") "portafolio_ar.json" else "portafolio_us.json"))
-        override suspend fun operations(from: String, to: String): List<IolOperation> =
-            json.decodeFromString(text("operaciones.json"))
+        override suspend fun operations(from: String, to: String): List<IolOperation> {
+            if (refuse) throw IolAuthException("refused")
+            return json.decodeFromString(text("operaciones.json"))
+        }
         override suspend fun operation(numero: Long): IolOperationDetail {
             detailCalls++
             return details.getValue(numero)
@@ -84,6 +88,39 @@ class IolImportTest {
         // Credentials are this device's; the connection is the account's.
         iol.disconnect()
         assertEquals(1, graph.brokers.connections().size)
+    }
+
+    @Test
+    fun autoSyncWritesRoutineMovementsOnlyAfterAReviewedFirstImport() = runBlocking {
+        iol.connect("user", "ok")
+        val now = epochMillis()
+        // Never imported: the opening is for a person to review.
+        assertNull(iol.autoSync(now))
+
+        // A reviewed first import that left out the newest trade, as if IOL
+        // reported it only later.
+        val first = iol.preview()
+        val late = first.transactions.last { it.kind == PlannedKind.Trade }
+        iol.apply(first, first.transactions - late)
+
+        // Just synced: nothing to do yet.
+        assertNull(iol.autoSync(now + 60_000))
+
+        val applied = iol.autoSync(now + BROKER_AUTO_SYNC_INTERVAL_MS + 60_000)
+        assertTrue(applied is BrokerAutoSync.Applied, "$applied")
+        assertEquals(1, applied.transactionIds.size)
+        assertEquals(emptyList(), applied.differences)
+        assertEquals(applied, iol.lastAutoSync.value)
+        assertEquals(emptyList(), iol.preview().transactions)
+
+        // IOL refuses the password: reported, nothing written, and a new
+        // connect clears the alert.
+        source.refuse = true
+        assertEquals(BrokerAutoSync.WrongCredentials, iol.autoSync(now, force = true))
+        assertEquals(BrokerAutoSync.WrongCredentials, iol.lastAutoSync.value)
+        source.refuse = false
+        iol.connect("user", "ok")
+        assertNull(iol.lastAutoSync.value)
     }
 
     @Test

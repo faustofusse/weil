@@ -116,6 +116,7 @@ class WeilApplication : Application() {
             )
         }
         AndroidNotificationAccess.start(this)
+        IolSyncWorker.schedule(this)
 
         // Warm the DB connection off the main thread: native lib load,
         // engine create/connect and (skipped when already applied) schema

@@ -1,5 +1,9 @@
 package ar.fausto.weil
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
 /**
  * InvertirOnline end to end (plans/inversiones-brokers.md, phase 4):
  * credentials in the device's secure store (decision 1: never synced, never
@@ -20,6 +24,17 @@ class IolRepository(
 ) {
     private val client: IolSource = client ?: IolClient({ credentials() })
 
+    /**
+     * The last unattended sync's outcome, for the investments tab's alerts.
+     * In memory on purpose: it describes this device's last attempt (the
+     * credentials are this device's too), and a stale alert surviving a
+     * restart would be worse than recomputing it on the next launch.
+     */
+    val lastAutoSync = MutableStateFlow<BrokerAutoSync?>(null)
+
+    private val autoSyncLock = Mutex()
+    private var lastAttempt = 0L
+
     /** The stored username, for the UI; the password never leaves the store. */
     val username: String? get() = store.read(USERNAME_KEY)
 
@@ -35,6 +50,7 @@ class IolRepository(
         client.verify(candidate)
         store.write(USERNAME_KEY, candidate.username)
         store.write(PASSWORD_KEY, candidate.password)
+        clearAutoSync()
         return brokers.connect(IOL_PROVIDER, "IOL", listOf("ARS", "USD"))
     }
 
@@ -45,6 +61,7 @@ class IolRepository(
     fun disconnect() {
         store.write(USERNAME_KEY, null)
         store.write(PASSWORD_KEY, null)
+        clearAutoSync()
     }
 
     /** Fetches and plans; writes nothing. */
@@ -60,7 +77,47 @@ class IolRepository(
     suspend fun apply(plan: BrokerPlan, selected: List<PlannedTransaction> = plan.transactions): List<String> {
         val ids = brokers.apply(plan, selected)
         settings.set(SYNCED_AT_KEY, epochMillis().toString())
+        // Whatever an unattended sync was waiting on has just been reviewed.
+        clearAutoSync()
         return ids
+    }
+
+    /**
+     * Sync with nobody watching (app launch, the tab opening, the Android
+     * background worker): fetch, plan, and write the plan when it is
+     * [isRoutine]; anything else is reported in [lastAutoSync] for the tab.
+     * Only after a first reviewed import (the opening is never written
+     * unattended), at most every [BROKER_AUTO_SYNC_INTERVAL_MS] since the
+     * last applied sync (a synced setting, so two devices don't both fetch)
+     * and every 10 minutes per process whatever the outcome. Serialized:
+     * the launch and the tab can fire together. Never throws.
+     */
+    suspend fun autoSync(now: Long = epochMillis(), force: Boolean = false): BrokerAutoSync? =
+        autoSyncLock.withLock {
+            if (!hasCredentials) return@withLock null
+            val syncedAt = settings.all()[SYNCED_AT_KEY]?.toLongOrNull() ?: return@withLock null
+            if (!force) {
+                if (now - syncedAt < BROKER_AUTO_SYNC_INTERVAL_MS) return@withLock null
+                if (now - lastAttempt < RETRY_MS) return@withLock null
+            }
+            lastAttempt = now
+            val result = try {
+                val plan = preview()
+                if (isRoutine(plan)) BrokerAutoSync.Applied(plan, apply(plan)) else BrokerAutoSync.NeedsReview(plan)
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                if (e is IolAuthException) BrokerAutoSync.WrongCredentials
+                else BrokerAutoSync.Failed(e.message ?: e.toString())
+            }
+            // A network failure says nothing new about the account: keep
+            // showing what the last real answer said.
+            if (result !is BrokerAutoSync.Failed) lastAutoSync.value = result
+            result
+        }
+
+    /** A reviewed import or a disconnect settles whatever the last auto sync reported. */
+    fun clearAutoSync() {
+        lastAutoSync.value = null
     }
 
     private suspend fun fetch(known: Set<String>): IolFetch {
@@ -98,6 +155,7 @@ class IolRepository(
         private const val FIRST_DAY = "2000-01-01"
         private const val DAY_MS = 24L * 60 * 60 * 1000
         private const val WINDOW_MARGIN_MS = 10 * DAY_MS
+        private const val RETRY_MS = 10L * 60 * 1000
     }
 }
 

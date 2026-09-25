@@ -518,25 +518,31 @@ private fun DashboardHeader(title: String, actionLabel: String, onAction: () -> 
             color = MaterialTheme.colorScheme.inverseSurface,
             modifier = Modifier.weight(1f),
         )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onAction)
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-        ) {
-            Text(
-                actionLabel,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.inverseSurface,
-            )
-            Icon(
-                Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.inverseSurface,
-                modifier = Modifier.size(18.dp),
-            )
-        }
+        SeeAllLink(actionLabel, onAction)
+    }
+}
+
+/** «Ver todo ›»: a section's way to the full list. */
+@Composable
+internal fun SeeAllLink(label: String, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.inverseSurface,
+        )
+        Icon(
+            Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.inverseSurface,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 

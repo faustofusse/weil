@@ -187,9 +187,12 @@ class IolClient(
 
     /**
      * Checks [candidate] against IOL without keeping anything: the connect
-     * screen calls this before the password is stored.
+     * screen calls this before the password is stored. Drops the cached
+     * token either way: after a change of user it belongs to the old one,
+     * and IOL would keep answering with that account for up to 15 minutes.
      */
     override suspend fun verify(candidate: IolCredentials) {
+        mutex.withLock { accessToken = null }
         requestToken(candidate)
     }
 

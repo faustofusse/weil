@@ -68,6 +68,7 @@ fun AccountDetailScreen(
     onOpenTransaction: (id: String) -> Unit,
     onNavigateToNew: () -> Unit,
     initialCommodity: String? = null,
+    initialSubtree: Boolean = false,
 ) {
     val ledger = ledgerState.ledger
     val accounts = ledgerState.accounts
@@ -86,7 +87,7 @@ fun AccountDetailScreen(
     // a fresh visit to the same account gets a new token and starts at the top.
     val cacheKey = rememberSaveable { Random.nextLong().toString() }
     val cached = remember(cacheKey) { RegisterCache[cacheKey] }
-    var includeSubtree by rememberSaveable { mutableStateOf(false) }
+    var includeSubtree by rememberSaveable { mutableStateOf(initialSubtree) }
     // The positions view narrows the register to one instrument.
     var commodityFilter by rememberSaveable { mutableStateOf(initialCommodity) }
     var holdings by remember { mutableStateOf(cached?.holdings ?: emptyMap()) }

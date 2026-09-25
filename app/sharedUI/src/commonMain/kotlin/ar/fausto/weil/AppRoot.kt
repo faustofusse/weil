@@ -65,6 +65,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.action_undo
+import weil.app.sharedui.generated.resources.investments_auto_imported
+import org.jetbrains.compose.resources.getString
+import kotlinx.coroutines.flow.drop
 import weil.app.sharedui.generated.resources.broker_adjust_payee
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.app_title
@@ -131,6 +135,8 @@ fun RootScreen(
      * own way to ask for it.
      */
     openCreate: Boolean = false,
+    /** Opens the first broker's sheet on the investments tab. Harness-only, like [openCreate]. */
+    openBrokerSheet: Boolean = false,
     /** Tab the shell starts on. Harness-only, like [initialRoute]. */
     startTab: AppTab = AppTab.Home,
     /**
@@ -164,6 +170,30 @@ fun RootScreen(
     // worker must not colour the first screen.
     LaunchedEffect(loggedInNow) {
         if (loggedInNow) runCatching { graph.autoRecord.sweepEmails() }
+    }
+
+    // IOL syncs itself once per launch too (plans/inversiones-brokers.md,
+    // phase 4): routine movements are written, the rest waits as an alert
+    // on the investments tab. Its own effect, so a slow mail sweep doesn't
+    // hold it back; autoSync never throws and does nothing before the first
+    // reviewed import.
+    LaunchedEffect(loggedInNow) {
+        if (loggedInNow) graph.iol.autoSync()
+    }
+    // Whoever ran it (this launch, the tab, Android's background worker while
+    // the app is open), new movements get one snackbar with an undo. The
+    // current value is skipped: a StateFlow replays it, and a recreated
+    // activity would otherwise announce the same import twice.
+    val undoLabel = stringResource(Res.string.action_undo)
+    LaunchedEffect(graph) {
+        graph.iol.lastAutoSync.drop(1).collect { result ->
+            if (result is BrokerAutoSync.Applied && result.transactionIds.isNotEmpty()) {
+                val ids = result.transactionIds
+                Feedback.undoable(getString(Res.string.investments_auto_imported, ids.size), undoLabel) {
+                    graph.ledger.deleteAll(ids)
+                }
+            }
+        }
     }
 
     // The theme wraps every state, splash included, so nothing renders unthemed.
@@ -455,7 +485,8 @@ fun RootScreen(
                                                 iol = graph.iol,
                                                 brokers = graph.brokers,
                                                 onReviewImport = { navigate(it) },
-                                                onOpenAccount = { id, commodity -> navigate(AccountDetailRoute(id, commodity)) },
+                                                onOpenAccount = { navigate(it) },
+                                                openFirstBroker = openBrokerSheet,
                                                 onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                                 bottomBar = bar,
                                             )
@@ -573,6 +604,7 @@ fun RootScreen(
                                         ledgerState = ledgerState,
                                         accountId = route.id,
                                         initialCommodity = route.commodity,
+                                        initialSubtree = route.subtree,
                                         onNavigateBack = { pop() },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                         onNavigateToNew = { navigate(TransactionNewRoute(route.id)) },
@@ -689,7 +721,10 @@ fun RootScreen(
                                         },
                                         adjust = { difference ->
                                             graph.brokers.adjustOpening(route.accounts, difference, adjustPayee)
-                                                .also { ledgerState.refresh() }
+                                                .also {
+                                                    if (route.provider == IOL_PROVIDER) graph.iol.clearAutoSync()
+                                                    ledgerState.refresh()
+                                                }
                                         },
                                         onDone = { pop() },
                                         onNavigateBack = { pop() },

@@ -597,7 +597,16 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
   contra la API real y una base descartable: 44 movimientos, 0 issues,
   0 diferencias).
 - Hecho: pull-to-refresh de la pestaña y el ícono de sincronizar del top bar.
-  Pendiente: sync automático al abrir la app y WorkManager en segundo plano.
+- [x] Sync automático (`BrokerAutoSync.kt`, `IolRepository.autoSync`): al
+  abrir la app, al abrir la pestaña y en Android cada 6 h con red
+  (`IolSyncWorker`, WorkManager). Sólo después de una primera importación
+  revisada, a lo sumo cada 30 min desde el último sync aplicado (setting
+  sincronizado) y cada 10 min por proceso. Escribe el plan sólo si es
+  rutinario (`isRoutine`: sin issues, sin apertura, sin transferencias en
+  tránsito); si no, nada y queda como aviso. Movimientos nuevos → snackbar
+  con deshacer. Las diferencias nunca se escriben: aviso que abre la
+  revisión con ellas. Contraseña rechazada → aviso que abre la conexión.
+  Pendiente: iOS en segundo plano (BGTaskScheduler).
 
 ### Fase 5 — valuación en la UI (en curso)
 
@@ -664,8 +673,16 @@ acciones) y las posiciones cerradas como «0,00».
       últimos 5 movimientos de las cuentas de caja y cartera; «Sumar otra
       fuente» abajo. Pull-to-refresh y el ícono del top bar sincronizan IOL.
       Harness: `investments` / `investments-empty`.
-- [ ] Avisos (aserción fallida, hueco de cobertura, contraseña inválida):
-      necesitan el preview de red, hoy se ven recién en la revisión.
+- [x] Avisos del último sync automático (`AutoSyncAlert`): movimientos para
+      revisar, saldos que no coinciden, contraseña rechazada. En memoria:
+      describen el último intento de este device. Falta el de hueco de
+      cobertura (IBKR, fase 3).
+- [x] Tocar un broker abre su hoja (`BrokerSheet`): con qué usuario está
+      conectado este device, frescura, sincronizar, ver cartera, ver
+      movimientos (la raíz con subcuentas), cambiar usuario o contraseña
+      (el usuario prellenado), desconectar. «Ver todo» en últimos
+      movimientos abre la raíz del broker con subcuentas cuando hay uno solo.
+      Harness: `investments-alert`, `investments-sheet`.
 - [ ] Detalle de instrumento propio (desglose por broker, historia de
       precios); hoy tocar una posición abre el registro filtrado.
 
