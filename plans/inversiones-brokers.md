@@ -187,7 +187,8 @@ alter table postings add column cost_commodity text;     -- en qué moneda
 
 - El cambio de moneda deja de ser excepción: `+US$ 100 @@ $ 154.586`. La
   excepción actual de 2 postings **queda** para leer filas viejas sin costo.
-- `migrateSchema()` con `addColumn()`, bump de `SCHEMA_VERSION` (hoy 12).
+- `migrateSchema()` con `addColumn()`, bump de `SCHEMA_VERSION` (entonces 12,
+  pasó a 13).
 
 ### 3. Precios aparte, valor al leer
 
@@ -292,19 +293,24 @@ informa. Consecuencias:
 
 ### 7. Cuentas que crea la conexión
 
-Al conectar un broker se crean (o el usuario elige existentes), y los ids se
-guardan en `settings` (`broker.<fuente>.accounts`, JSON), así un rename no
-rompe nada:
+Al conectar un broker se crean (o se reusan por nombre, `findOrCreate`), y los
+ids se guardan en `settings` (`broker.<fuente>.accounts`, JSON), así un rename
+no rompe nada. Lo que se implementó (`BrokersRepository.connect`):
 
 ```
-Activos:IOL                      (padre)
-  Activos:IOL:Pesos              commodity ARS
-  Activos:IOL:Dólares            commodity USD
-  Activos:IOL:Cartera            commodity null (multi-instrumento)
-Ingresos:Inversiones:{Intereses, Dividendos, Ganancias de capital}
-Gastos:Inversiones:{Comisiones, Impuestos}
+IOL                              (activo, raíz)
+  IOL:Pesos                      la caja en pesos
+  IOL:Dólares                    la caja en dólares
+  IOL:Cartera                    multi-instrumento
+Rendimientos:{Intereses, Dividendos, Ganancias de capital}   (ingresos)
+Costos de inversión:{Comisiones, Impuestos}                  (gastos)
 Patrimonio:{Saldo inicial, Ajustes}
 ```
+
+Raíces con nombres distintos porque un nombre de raíz es único entre los cinco
+tipos. Las cuentas no declaran moneda: la moneda por cuenta se sacó de la app
+(`accounts.commodity` queda muerta en el esquema, ver `todo.md`). Elegir
+cuentas existentes en vez de crearlas no está hecho.
 
 ---
 
@@ -326,6 +332,9 @@ Patrimonio:{Saldo inicial, Ajustes}
 - Independiente del esquema: puede ir antes que la fase 1.
 
 ### `InvestmentsScreen` (la pestaña)
+
+El diseño original, con lo que cambió al implementarlo marcado **Estado**
+(el detalle está en la fase 5).
 
 Una `LazyColumn`, mismo lenguaje que `HomeDashboardScreen`:
 
@@ -350,6 +359,22 @@ Pull-to-refresh sincroniza IOL y trae el oficial del BCRA. Overflow del top
 bar: «Conectar broker», «Importar reporte (IBKR / resumen PDF)», «Cómo
 configurar IBKR».
 
+**Estado:**
+
+- Hero, avisos, brokers, posiciones y movimientos están. Los avisos son los
+  del último sync automático (revisar, saldos que no coinciden, contraseña
+  rechazada); falta el de hueco de cobertura, que depende de IBKR.
+- Tocar un broker abre su hoja (`BrokerSheet`: usuario conectado, sincronizar,
+  ver cartera, ver movimientos, cambiar credenciales, desconectar), no la
+  `Cartera` directamente.
+- Posiciones: una fila por instrumento sumando brokers, pero **sin** el
+  desglose por broker adentro ni los chips por tipo; tocar abre el registro
+  filtrado del broker con más cantidad.
+- Movimientos con `MovementRow` (el de Inicio). «Ver todo» sólo con un broker:
+  abre su raíz con subcuentas.
+- En el top bar hay un ícono de sincronizar en vez del overflow; «Sumar otra
+  fuente» al pie de la pestaña hace de «Conectar broker».
+
 ### Detalle de instrumento (tocar una posición)
 
 Cantidad por broker, costo, valor, ganancia no realizada, último precio con
@@ -364,11 +389,14 @@ Sin broker conectado, tres botones:
 - **InvertirOnline**: sheet con usuario y contraseña («se guarda sólo en este
   dispositivo»), prueba el login, muestra las cuentas que va a crear (o deja
   elegir existentes) y corre la primera importación por la pantalla de
-  revisión, con la apertura de la decisión 6.
+  revisión, con la apertura de la decisión 6. **Estado:** hecho salvo mostrar
+  o elegir las cuentas: se crean o reusan por nombre sin preguntar.
 - **Interactive Brokers**: instrucciones paso a paso para armar la query
   (secciones, niveles, sin campos personales en *Account Information*) +
   «Importar archivo».
 - **Resumen de otro banco (PDF)**: el importador de custodia (fase 6).
+
+**Estado:** IBKR y el resumen PDF todavía dicen «Pronto».
 
 ### Inicio
 
@@ -377,8 +405,11 @@ cuentas como cualquier otra (entran en el orden de `home.account_order`).
 
 ### Harness de escritorio
 
-`-Pshot.route=investments` (y `investments-empty`), con brokers, posiciones y
-precios sembrados en `FakeDatabase`, para revisar la pestaña sin emulador.
+`-Pshot.route=investments` (y `investments-empty`, `investments-alert` con un
+aviso sembrado, `investments-sheet` con la hoja de IOL abierta), más `holdings`
+e `instrument` para la vista de posiciones y `broker-import` para la revisión,
+con brokers, posiciones y precios sembrados en `FakeDatabase`. Usar
+`-Pshot.seconds=12`: la siembra tarda.
 
 ---
 
