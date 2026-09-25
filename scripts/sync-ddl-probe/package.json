@@ -1,0 +1,11 @@
+{
+  "name": "sync-ddl-probe",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "npm install && (cd engines/pre7 && npm install) && (cd engines/pre9 && npm install)"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.0"
+  }
+}

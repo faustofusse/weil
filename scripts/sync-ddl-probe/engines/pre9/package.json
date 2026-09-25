@@ -1,0 +1,12 @@
+{
+  "name": "engine-pre9",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@tursodatabase/sync": "0.8.0-pre.9"
+  },
+  "overrides": {
+    "@tursodatabase/sync-common": "0.8.0-pre.9",
+    "@tursodatabase/database-common": "0.8.0-pre.9"
+  }
+}
