@@ -102,8 +102,7 @@ fun CategoryDetailScreen(
     val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
     val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
     val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
-    val icons = remember(nodes) { nodes.associate { it.account.id to it.account.icon } }
-    val colors = remember(nodes) { nodes.associate { it.account.id to it.account.color } }
+    val looks = ledgerState.looks
 
     // A chip means "only this child"; no chip means the whole subtree, which
     // is what the parent's own total already claims.
@@ -260,8 +259,7 @@ fun CategoryDetailScreen(
                     tx = tx,
                     names = names,
                     types = types,
-                    icons = icons,
-                    colors = colors,
+                    looks = looks,
                     hidden = false,
                     selected = tx.id in selection,
                     onLongClick = { selection.toggle(tx.id) },

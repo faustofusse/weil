@@ -74,6 +74,43 @@ data class AccountNode(
         get() = listOf(this) + children.flatMap { it.selfAndDescendants }
 }
 
+/**
+ * How an account is drawn once inheritance is applied: a subaccount with no
+ * icon (or color) of its own wears its nearest ancestor's, so "Comida:Verduras"
+ * shows Comida's glyph instead of the type's generic one. A value the account
+ * stores itself is an override and always wins.
+ *
+ * [seed] is the id a derived (unpainted) color is computed from: the account
+ * that lends the color, or the root when nobody in the chain picked one — so
+ * an unpainted subcategory lands on its parent's derived color rather than on
+ * a random one of its own.
+ */
+data class AccountLook(
+    val icon: String?,
+    val color: String?,
+    val seed: String,
+)
+
+/** id → [AccountLook] for every node of the forest, resolved top-down. */
+fun List<AccountNode>.accountLooks(): Map<String, AccountLook> {
+    val out = HashMap<String, AccountLook>()
+    fun walk(node: AccountNode, parent: AccountLook?) {
+        val account = node.account
+        val look = AccountLook(
+            icon = account.icon ?: parent?.icon,
+            color = account.color ?: parent?.color,
+            seed = when {
+                account.color != null || parent == null -> account.id
+                else -> parent.seed
+            },
+        )
+        out[account.id] = look
+        node.children.forEach { walk(it, look) }
+    }
+    forEach { walk(it, null) }
+    return out
+}
+
 /** Signed amount in minor units with its commodity; never use floats for money. */
 data class Money(val minorUnits: Long, val commodity: String) {
     fun format(): String = formatMinorUnits(minorUnits)

@@ -43,6 +43,9 @@ class LedgerState(
     val homeAccounts: List<AccountNode> by derivedStateOf {
         applyHomeOrder(tree.filter { it.account.type == AccountType.Asset }, homeOrder)
     }
+    /** Icon/color per account, subaccounts inheriting their parent's; see [accountLooks]. */
+    val looks: Map<String, AccountLook> by derivedStateOf { tree.accountLooks() }
+
     /** Survives navigation because the state lives above the nav host. */
     var expandedIds by mutableStateOf<Set<String>>(emptySet())
         private set
@@ -283,11 +286,11 @@ class LedgerState(
     fun rename(id: String, name: String) =
         mutate { accounts.rename(id, name) }
 
-    /** Icon key from the [AccountIcons] catalog; null clears it back to the type default. */
+    /** Icon key from the [AccountIcons] catalog; null inherits the parent's (the type default for a root). */
     fun setIcon(id: String, icon: String?) =
         mutate { accounts.setIcon(id, icon) }
 
-    /** Palette key from [AccountColor]; null paints the account neutral. */
+    /** Palette key from [AccountColor]; null inherits the parent's (neutral/derived for a root). */
     fun setColor(id: String, color: String?) =
         mutate { accounts.setColor(id, color) }
 

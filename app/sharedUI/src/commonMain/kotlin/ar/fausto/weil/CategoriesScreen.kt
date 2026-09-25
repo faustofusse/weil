@@ -61,7 +61,9 @@ import weil.app.sharedui.generated.resources.action_undo
 import weil.app.sharedui.generated.resources.categories_empty
 import weil.app.sharedui.generated.resources.categories_title
 import weil.app.sharedui.generated.resources.category_edit_title
+import weil.app.sharedui.generated.resources.category_icon_inherited
 import weil.app.sharedui.generated.resources.category_icon_label
+import weil.app.sharedui.generated.resources.category_icon_own
 import weil.app.sharedui.generated.resources.category_new_title
 import weil.app.sharedui.generated.resources.category_parent_label
 import weil.app.sharedui.generated.resources.category_parent_none
@@ -174,10 +176,11 @@ private fun CategoryRow(
     onOpen: () -> Unit,
 ) {
     val account = node.account
-    val paint = accountPaint(account.color, seed = account.id)
+    val look = state.looks[account.id]
+    val paint = accountPaint(look?.color, seed = look?.seed ?: account.id)
     val total = state.displayTotals[account.id].orEmpty()
     AppListRow(
-        icon = AccountIcons.resolve(account.icon, account.type),
+        icon = AccountIcons.resolve(look?.icon, account.type),
         paint = paint,
         title = account.name.censored(),
         // The name carries the color too, not just the disc: it is the wider
@@ -235,6 +238,9 @@ internal fun CategoryDialog(
     val parentName = remember(parentId, state.tree) {
         parentId?.let { findNode(state.tree, it)?.account?.name }
     }
+    // What a subcategory wears while its own icon/color is null. Looked up
+    // on the *picked* parent, so moving the category previews the new one.
+    val parentLook = parentId?.let { state.looks[it] }
 
     LaunchedEffect(Unit) { if (account == null) nameFocus.requestFocus() }
 
@@ -265,10 +271,13 @@ internal fun CategoryDialog(
             Column {
                 // A new category previews the color it would be given, so the
                 // dialog shows the same disc the list will.
-                val paint = accountPaint(color, seed = account?.id)
+                val paint = accountPaint(
+                    color ?: parentLook?.color,
+                    seed = if (color == null && parentLook != null) parentLook.seed else account?.id,
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AccountAvatar(
-                        icon = AccountIcons.resolve(icon, AccountType.Expense),
+                        icon = AccountIcons.resolve(icon ?: parentLook?.icon, AccountType.Expense),
                         size = 48.dp,
                         container = paint.tint,
                         content = paint.ink,
@@ -276,14 +285,34 @@ internal fun CategoryDialog(
                             .clickable { pickingIcon = true },
                     )
                     Spacer(Modifier.width(12.dp))
-                    TextButton(onClick = { pickingIcon = true }) {
-                        Text(stringResource(Res.string.category_icon_label))
+                    Column {
+                        TextButton(onClick = { pickingIcon = true }) {
+                            Text(stringResource(Res.string.category_icon_label))
+                        }
+                        // A subcategory says whether the glyph is its own or
+                        // borrowed, since both look the same in the avatar.
+                        if (parentName != null) {
+                            Text(
+                                if (icon == null) {
+                                    stringResource(Res.string.category_icon_inherited, parentName.censored())
+                                } else {
+                                    stringResource(Res.string.category_icon_own)
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
                 // Under the avatar it previews: picking a swatch repaints the
                 // circle right above it.
-                ColorPickerRow(selected = color, onPick = { color = it })
+                ColorPickerRow(
+                    selected = color,
+                    onPick = { color = it },
+                    inherited = parentLook?.let { accountPaint(it.color, seed = it.seed) },
+                )
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = name,
@@ -348,6 +377,7 @@ internal fun CategoryDialog(
     if (pickingIcon) {
         IconPickerDialog(
             selected = icon,
+            inherited = parentLook?.let { AccountIcons.resolve(it.icon, AccountType.Expense) },
             onDismiss = { pickingIcon = false },
             onPick = {
                 icon = it
@@ -370,6 +400,12 @@ internal fun CategoryDialog(
             } ?: emptySet(),
             rootLabel = noneLabel,
             onPickRoot = {
+                // Promoted to a top-level category: whatever it was borrowing
+                // becomes its own, or it would turn into the generic cart.
+                parentLook?.let { look ->
+                    if (icon == null) icon = look.icon
+                    if (color == null) color = look.color
+                }
                 parentId = null
                 pickingParent = false
             },

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.action_cancel
+import weil.app.sharedui.generated.resources.icon_inherit
 import weil.app.sharedui.generated.resources.icon_pick_title
 
 /**
@@ -71,6 +73,12 @@ fun ColorPickerRow(
     selected: String?,
     onPick: (String?) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * The color a subaccount gets when it picks none (its parent's). The
+     * "no color" swatch then previews that instead of the neutral pair,
+     * because for a subaccount null means "same as the parent", not "blank".
+     */
+    inherited: AccountPaint? = null,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -78,8 +86,8 @@ fun ColorPickerRow(
         modifier = modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
     ) {
         Swatch(
-            tint = MaterialTheme.colorScheme.background,
-            ink = MaterialTheme.colorScheme.inverseSurface,
+            tint = inherited?.tint ?: MaterialTheme.colorScheme.background,
+            ink = inherited?.ink ?: MaterialTheme.colorScheme.inverseSurface,
             isSelected = AccountColor.of(selected) == null,
             onClick = { onPick(null) },
         )
@@ -119,12 +127,19 @@ private fun Swatch(tint: Color, ink: Color, isSelected: Boolean, onClick: () -> 
     }
 }
 
-/** Grid of the whole [AccountIcons] catalog; tapping one picks it and closes. */
+/**
+ * Grid of the whole [AccountIcons] catalog; tapping one picks it and closes.
+ *
+ * With [inherited] set (a subaccount), the first cell is its parent's icon
+ * labelled "Heredar": picking it clears the override back to null, which is
+ * the only way out of an icon chosen by hand.
+ */
 @Composable
 fun IconPickerDialog(
     selected: String?,
     onDismiss: () -> Unit,
-    onPick: (String) -> Unit,
+    onPick: (String?) -> Unit,
+    inherited: ImageVector? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -136,6 +151,45 @@ fun IconPickerDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth().height(320.dp),
             ) {
+                if (inherited != null) {
+                    item(key = "inherit") {
+                        val isSelected = selected == null
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(2.dp)
+                                .clickable { onPick(null) },
+                        ) {
+                            AccountAvatar(
+                                icon = inherited,
+                                size = 48.dp,
+                                container = if (isSelected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
+                                content = if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                                outlined = !isSelected,
+                                modifier = if (isSelected) {
+                                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            Text(
+                                stringResource(Res.string.icon_inherit),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
                 items(AccountIcons.catalog, key = { it.key }) { entry ->
                     val isSelected = entry.key == selected
                     Box(

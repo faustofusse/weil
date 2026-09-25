@@ -91,6 +91,9 @@
     <string name="category_parent_none">Ninguna</string>
     <string name="category_pick_parent">Elegir categoría padre</string>
     <string name="icon_pick_title">Elegir ícono</string>
+    <string name="icon_inherit">Heredar</string>
+    <string name="category_icon_inherited">Usa el ícono de %1$s</string>
+    <string name="category_icon_own">Ícono propio</string>
 
     <!-- Top bar destinations -->
     <string name="open_journal">Ver diario</string>

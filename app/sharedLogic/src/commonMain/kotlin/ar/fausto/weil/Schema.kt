@@ -146,7 +146,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 13L
+private const val SCHEMA_VERSION = 14L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -386,9 +386,42 @@ fun Database.migrateSchema() {
     // exchange, which is every posting written before this column.
     addColumn("alter table postings add column cost_minor integer")
     addColumn("alter table postings add column cost_commodity text")
+    dropRedundantInheritedLooks()
     backfillTransactionSources()
     seedDefaultAccounts()
     adoptOrphanSeedPostings()
+}
+
+/**
+ * Subaccounts inherit their parent's icon and color when their own is null
+ * (see `accountLooks`). Before that existed, the only way to give
+ * "Comida:Carnicería" the fork was to pick the fork again, and a copy frozen
+ * that way would no longer follow Comida when Comida changes. So a child whose
+ * icon (or color) equals its direct parent's goes back to null: it looks
+ * exactly the same, and now it tracks the parent. A value that differs from
+ * the parent's was a deliberate choice and stays as an override.
+ *
+ * A select plus per-row updates rather than one correlated `update`: plain
+ * joins are the safe subset on the sync engine, and the row count is tiny.
+ * Idempotent, and the updates sync like any other row change.
+ */
+private fun Database.dropRedundantInheritedLooks() {
+    val rows = query(
+        "select c.id, c.icon = p.icon, c.color = p.color from accounts c " +
+            "join accounts p on p.id = c.parent_id " +
+            "where (c.icon is not null and c.icon = p.icon) " +
+            "or (c.color is not null and c.color = p.color)",
+        null,
+    )
+    for (row in rows) {
+        val id = row[0]?.toString() ?: continue
+        if ((row[1] as? Number)?.toLong() == 1L) {
+            execute("update accounts set icon = null where id = :id", mapOf(":id" to id))
+        }
+        if ((row[2] as? Number)?.toLong() == 1L) {
+            execute("update accounts set color = null where id = :id", mapOf(":id" to id))
+        }
+    }
 }
 
 /**

@@ -515,8 +515,7 @@ fun JournalScreen(
                             tx = tx,
                             names = state.names,
                             types = state.types,
-                            icons = state.icons,
-                            colors = state.colors,
+                            looks = state.looks,
                             hidden = false,
                             selected = selected,
                             // The long-press that starts a run also ticks its
@@ -906,18 +905,17 @@ internal class AccountIndex(
     val paths: Map<String, String>,
     val types: Map<String, AccountType>,
     val names: Map<String, String>,
-    val icons: Map<String, String?>,
-    val colors: Map<String, String?>,
+    val looks: Map<String, AccountLook>,
 )
 
 internal suspend fun accountIndex(accounts: AccountsRepository): AccountIndex {
-    val nodes = accounts.tree().flatMap { it.selfAndDescendants }
+    val tree = accounts.tree()
+    val nodes = tree.flatMap { it.selfAndDescendants }
     return AccountIndex(
         paths = nodes.associate { it.account.id to it.path.censored().displayPath() },
         types = nodes.associate { it.account.id to it.account.type },
         names = nodes.associate { it.account.id to it.account.name.censored() },
-        icons = nodes.associate { it.account.id to it.account.icon },
-        colors = nodes.associate { it.account.id to it.account.color },
+        looks = tree.accountLooks(),
     )
 }
 

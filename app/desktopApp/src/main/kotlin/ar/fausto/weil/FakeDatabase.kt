@@ -120,14 +120,19 @@ class FakeDatabase(
         account("seed-expense-fun", "Ocio", "expense", icon = "gift", color = "lila")
         account(salary, "Sueldo", "income")
         // Children of Comida, so the category screen has chips to filter by.
-        fun child(id: String, name: String, parent: String, icon: String) = execute(
+        // Two inherit Comida's icon and color (null); Supermercado overrides
+        // the icon, so the shots show both halves of the rule.
+        fun child(id: String, name: String, parent: String, icon: String? = null) = execute(
             "insert or ignore into accounts(id, name, parent_id, type, icon) " +
-                "values (:id, :name, :parent, 'expense', :icon)",
-            mapOf(":id" to id, ":name" to name, ":parent" to parent, ":icon" to icon),
+                "values (:id, :name, :parent, 'expense', ${if (icon == null) "null" else ":icon"})",
+            buildMap {
+                put(":id", id); put(":name", name); put(":parent", parent)
+                if (icon != null) put(":icon", icon)
+            },
         )
         child("seed-expense-food-super", "Supermercado", food, "cart")
-        child("seed-expense-food-meat", "Carnicería", food, "food")
-        child("seed-expense-food-bakery", "Panadería", food, "food")
+        child("seed-expense-food-meat", "Carnicería", food)
+        child("seed-expense-food-bakery", "Panadería", food)
 
         val now = System.currentTimeMillis()
         val day = 24 * 60 * 60 * 1000L
@@ -174,6 +179,14 @@ class FakeDatabase(
             listOf(
                 Triple(bank, -780000L, "ARS"),
                 Triple("seed-expense-food-super", 780000L, "ARS"),
+            ),
+        )
+        // On a child with no icon/color of its own: it must wear Comida's.
+        tx(
+            "seed-tx-sub-inherit", now - 6000_000, "Carnicería del barrio",
+            listOf(
+                Triple(cash, -420000L, "ARS"),
+                Triple("seed-expense-food-meat", 420000L, "ARS"),
             ),
         )
         tx(

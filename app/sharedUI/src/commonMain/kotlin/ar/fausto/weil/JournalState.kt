@@ -213,12 +213,8 @@ class JournalState(
     var names by mutableStateOf<Map<String, String>>(emptyMap())
         private set
 
-    /** Leaf icon keys, same row. */
-    var icons by mutableStateOf<Map<String, String?>>(emptyMap())
-        private set
-
-    /** Leaf palette keys, same row. */
-    var colors by mutableStateOf<Map<String, String?>>(emptyMap())
+    /** Icon/palette keys with inheritance applied, same row. */
+    var looks by mutableStateOf<Map<String, AccountLook>>(emptyMap())
         private set
 
     /** Set once a real fetch (not a Home seed) has populated [items]. */
@@ -317,7 +313,7 @@ class JournalState(
 
     /** Appends whatever comes after the seeded rows, using them as the starting cursor. */
     private suspend fun extendSeed() {
-        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons; colors = it.colors }
+        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; looks = it.looks }
         val after = cursor
         if (after != null) {
             val page = ledger.page(before = after, query = appliedQuery.ifEmpty { null }, fromDate = dateFrom, toDate = dateTo)
@@ -345,7 +341,7 @@ class JournalState(
         val page = ledger.page(limit = limit, query = appliedQuery.ifEmpty { null }, fromDate = dateFrom, toDate = dateTo)
         cursor = page.lastOrNull()?.let { LedgerCursor(it.date, it.id) }
         hasMore = page.size == limit
-        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; icons = it.icons; colors = it.colors }
+        accountIndex(accounts).let { paths = it.paths; types = it.types; names = it.names; looks = it.looks }
         items = page
         loaded = true
         fetchedOwnPage = true

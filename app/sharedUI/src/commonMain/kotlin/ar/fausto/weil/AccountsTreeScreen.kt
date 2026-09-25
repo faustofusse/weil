@@ -254,7 +254,8 @@ private fun AccountListRow(
     val account = row.node.account
     var actionsOpen by remember { mutableStateOf(false) }
     val categorical = account.type == AccountType.Expense || account.type == AccountType.Income
-    val paint = accountPaint(account.color, seed = account.id.takeIf { categorical })
+    val look = state.looks[account.id]
+    val paint = accountPaint(look?.color, seed = (look?.seed ?: account.id).takeIf { categorical })
     val sign = naturalSign(account.type)
     val totals = state.displayTotals[account.id].orEmpty()
         .mapValues { (_, v) -> v * sign }
@@ -274,7 +275,7 @@ private fun AccountListRow(
     val indent = (row.depth.coerceAtMost(3) * 20).dp
 
     AppListRow(
-        icon = if (row.depth == 0) AccountIcons.resolve(account.icon, account.type) else null,
+        icon = if (row.depth == 0) AccountIcons.resolve(look?.icon, account.type) else null,
         paint = paint,
         title = account.name.censored(),
         titleColor = if (categorical && row.depth == 0) paint.ink else Color.Unspecified,
@@ -765,6 +766,8 @@ internal fun AccountActionsSheet(
     if (pickingIcon) {
         IconPickerDialog(
             selected = account.icon,
+            inherited = account.parentId?.let { state.looks[it] }
+                ?.let { AccountIcons.resolve(it.icon, account.type) },
             onDismiss = onDismiss,
             onPick = {
                 state.setIcon(account.id, it)

@@ -74,8 +74,7 @@ fun AccountDetailScreen(
     val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
     val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
     val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
-    val icons = remember(nodes) { nodes.associate { it.account.id to it.account.icon } }
-    val colors = remember(nodes) { nodes.associate { it.account.id to it.account.color } }
+    val looks = ledgerState.looks
     // Opening a transaction takes this entry out of composition, and plain
     // `remember` state goes with it: the register came back empty, and the
     // (saveable) scroll position was clamped to the top before the reload
@@ -313,8 +312,7 @@ fun AccountDetailScreen(
                         tx = tx,
                         names = names,
                         types = types,
-                        icons = icons,
-                        colors = colors,
+                        looks = looks,
                         hidden = false,
                         selected = entry.posting.transactionId in selection,
                         onLongClick = { selection.toggle(entry.posting.transactionId) },

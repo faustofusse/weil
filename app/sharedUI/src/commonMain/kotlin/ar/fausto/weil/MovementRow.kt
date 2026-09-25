@@ -24,8 +24,8 @@ internal fun MovementRow(
     tx: Transaction,
     names: Map<String, String>,
     types: Map<String, AccountType>,
-    icons: Map<String, String?>,
-    colors: Map<String, String?>,
+    /** Icon/color per account with inheritance applied ([accountLooks]). */
+    looks: Map<String, AccountLook>,
     hidden: Boolean,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
@@ -57,7 +57,8 @@ internal fun MovementRow(
     // their derived color; an asset (a transfer between own accounts, where
     // no leg means anything the other doesn't) stays neutral.
     val categorical = types[iconId] == AccountType.Expense || types[iconId] == AccountType.Income
-    val paint = accountPaint(colors[iconId], seed = iconId.takeIf { categorical })
+    val look = iconId?.let { looks[it] }
+    val paint = accountPaint(look?.color, seed = (look?.seed ?: iconId).takeIf { categorical })
     // The selected disc's ink on a primary slab: `primary` alone is a surface
     // tone that a white glyph can wash out on, and `onPrimary` is the exact
     // pair the theme guarantees legible.
@@ -73,7 +74,7 @@ internal fun MovementRow(
                 // where a picker's mark belongs.
                 Icons.Filled.Check
             } else {
-                AccountIcons.resolve(icons[iconId], types[iconId])
+                AccountIcons.resolve(look?.icon, types[iconId])
             }
         },
         paint = if (selected) selectedPaint else paint,
