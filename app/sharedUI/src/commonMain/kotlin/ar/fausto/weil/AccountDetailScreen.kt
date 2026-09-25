@@ -97,6 +97,9 @@ fun AccountDetailScreen(
     }
     var error by remember { mutableStateOf<String?>(null) }
     var actions by remember { mutableStateOf(false) }
+    val selection = remember { TransactionSelection() }
+    var confirmDelete by remember { mutableStateOf(false) }
+    SelectionBackHandler(selection)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -113,6 +116,7 @@ fun AccountDetailScreen(
             entries = page
             transactions = ledger.getAll(page.map { it.posting.transactionId }.distinct())
             hasMore = page.size >= limit
+            selection.retain(page.mapTo(HashSet()) { it.posting.transactionId })
             loaded = true
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -173,21 +177,28 @@ fun AccountDetailScreen(
 
     Scaffold(
         topBar = {
+            val selecting = selection.isSelecting
             TopAppBar(
                 title = {
                     Text(
-                        node?.account?.name?.censored() ?: stringResource(Res.string.detail_account_fallback),
+                        if (selecting) {
+                            selectionTitle(selection)
+                        } else {
+                            node?.account?.name?.censored() ?: stringResource(Res.string.detail_account_fallback)
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = { if (selecting) selection.clear() else onNavigateBack() }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                     }
                 },
                 actions = {
-                    if (node != null) {
+                    if (selecting) {
+                        DeleteSelectionAction(selection.size) { confirmDelete = true }
+                    } else if (node != null) {
                         IconButton(onClick = { actions = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.more_options))
                         }
@@ -196,7 +207,7 @@ fun AccountDetailScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            if (!selection.isSelecting) FloatingActionButton(
                 onClick = onNavigateToNew,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -305,7 +316,12 @@ fun AccountDetailScreen(
                         icons = icons,
                         colors = colors,
                         hidden = false,
-                        onOpen = { onOpenTransaction(entry.posting.transactionId) },
+                        selected = entry.posting.transactionId in selection,
+                        onLongClick = { selection.toggle(entry.posting.transactionId) },
+                        onOpen = {
+                            val id = entry.posting.transactionId
+                            if (selection.isSelecting) selection.toggle(id) else onOpenTransaction(id)
+                        },
                         // The running balance after this row, in the same dim
                         // bodySmall caption slot other lists leave empty —
                         // here it's the number this screen exists to show.
@@ -333,6 +349,17 @@ fun AccountDetailScreen(
                 }
             }
         }
+    }
+
+    if (confirmDelete) {
+        DeleteSelectedDialog(
+            count = selection.size,
+            delete = {
+                ledger.deleteWithBackup(selection.selected).also { selection.clear() }
+            },
+            restore = { ledger.restoreBackups(it) },
+            onDismiss = { confirmDelete = false },
+        )
     }
 
     if (actions && node != null) {

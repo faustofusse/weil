@@ -370,36 +370,17 @@ class JournalState(
      * payee, note, postings, provenance), so undo is a true inverse rather
      * than the single-row approximation the editor can get away with.
      */
-    suspend fun deleteSelected(): List<Backup> {
+    suspend fun deleteSelected(): List<TransactionBackup> {
         val ids = selection.toList()
         if (ids.isEmpty()) return emptyList()
-        val backup = ids.mapNotNull { ledger.get(it) }
-        val sources = ledger.sourcesFor(ids)
-        ledger.deleteAll(ids)
+        val backups = ledger.deleteWithBackup(ids)
         selection.clear()
         loadFirst()
-        return backup.map { Backup(it, sources[it.id].orEmpty().map { s -> TransactionSource(s.kind, s.ref, s.eventKey) }) }
+        return backups
     }
-
-    /** Everything needed to re-create a deleted transaction. */
-    data class Backup(val tx: Transaction, val sources: List<TransactionSource>)
 
     /** Re-creates rows deleted by [deleteSelected]; the Deshacer half. */
-    suspend fun restore(backups: List<Backup>) {
-        if (backups.isEmpty()) return
-        ledger.addAll(
-            backups.map { b ->
-                NewTransaction(
-                    date = b.tx.date,
-                    payee = b.tx.payee,
-                    note = b.tx.note,
-                    drafts = b.tx.postings.map { it.toDraft() },
-                    timeKnown = b.tx.timeKnown,
-                    sources = b.sources,
-                )
-            },
-        )
-    }
+    suspend fun restore(backups: List<TransactionBackup>) = ledger.restoreBackups(backups)
 
     private companion object {
         /**

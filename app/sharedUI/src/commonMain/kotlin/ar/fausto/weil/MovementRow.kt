@@ -65,7 +65,7 @@ internal fun MovementRow(
     val selectedPaint = AccountPaint(primary, MaterialTheme.colorScheme.onPrimary)
 
     AppListRow(
-        icon = if (plain) null else {
+        icon = if (plain && !selected) null else {
             if (selected) {
                 // The checkbox replaces the disc while a selection run is on:
                 // a tick beside the amount is invisible against a list of
