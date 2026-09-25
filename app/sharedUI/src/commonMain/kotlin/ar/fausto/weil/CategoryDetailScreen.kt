@@ -97,6 +97,7 @@ fun CategoryDetailScreen(
     val listState = rememberLazyListState()
     val selection = remember(categoryId) { TransactionSelection() }
     var confirmDelete by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
     SelectionBackHandler(selection)
 
     val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
@@ -165,6 +166,7 @@ fun CategoryDetailScreen(
                 },
                 actions = {
                     if (selecting) {
+                        RenameSelectionAction(selection.size) { renaming = true }
                         DeleteSelectionAction(selection.size) { confirmDelete = true }
                     } else IconButton(onClick = { editing = true }) {
                         Icon(
@@ -274,6 +276,18 @@ fun CategoryDetailScreen(
                 item(key = "loading") { TransactionCardSkeleton() }
             }
         }
+    }
+
+    if (renaming) {
+        RenameSelectedDialog(
+            count = selection.size,
+            current = { ledger.payees(selection.selected) },
+            rename = { payee ->
+                ledger.renamePayees(selection.selected, payee).also { selection.clear() }
+            },
+            restore = { ledger.restorePayees(it) },
+            onDismiss = { renaming = false },
+        )
     }
 
     if (confirmDelete) {

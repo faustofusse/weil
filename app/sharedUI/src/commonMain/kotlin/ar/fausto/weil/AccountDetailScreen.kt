@@ -98,6 +98,7 @@ fun AccountDetailScreen(
     var actions by remember { mutableStateOf(false) }
     val selection = remember { TransactionSelection() }
     var confirmDelete by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
     SelectionBackHandler(selection)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -196,6 +197,7 @@ fun AccountDetailScreen(
                 },
                 actions = {
                     if (selecting) {
+                        RenameSelectionAction(selection.size) { renaming = true }
                         DeleteSelectionAction(selection.size) { confirmDelete = true }
                     } else if (node != null) {
                         IconButton(onClick = { actions = true }) {
@@ -347,6 +349,18 @@ fun AccountDetailScreen(
                 }
             }
         }
+    }
+
+    if (renaming) {
+        RenameSelectedDialog(
+            count = selection.size,
+            current = { ledger.payees(selection.selected) },
+            rename = { payee ->
+                ledger.renamePayees(selection.selected, payee).also { selection.clear() }
+            },
+            restore = { ledger.restorePayees(it) },
+            onDismiss = { renaming = false },
+        )
     }
 
     if (confirmDelete) {

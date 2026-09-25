@@ -1,6 +1,21 @@
 package ar.fausto.weil
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +43,13 @@ import weil.app.sharedui.generated.resources.journal_delete_selected
 import weil.app.sharedui.generated.resources.journal_delete_selected_body
 import weil.app.sharedui.generated.resources.journal_delete_selected_title
 import weil.app.sharedui.generated.resources.journal_selected_count
+import weil.app.sharedui.generated.resources.action_save
+import weil.app.sharedui.generated.resources.editor_payee_label
+import weil.app.sharedui.generated.resources.journal_rename_failed
+import weil.app.sharedui.generated.resources.journal_rename_selected
+import weil.app.sharedui.generated.resources.journal_rename_selected_body
+import weil.app.sharedui.generated.resources.journal_rename_selected_title
+import weil.app.sharedui.generated.resources.journal_renamed_count
 
 /**
  * A multi-select run over a list of movements: entered by long-pressing a
@@ -122,6 +144,110 @@ internal fun DeleteSelectionAction(count: Int, onClick: () -> Unit) {
             tint = MaterialTheme.colorScheme.error,
         )
     }
+}
+
+/** The top-bar rename action shown while selecting. */
+@Composable
+internal fun RenameSelectionAction(count: Int, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(
+            Icons.Filled.Edit,
+            contentDescription = stringResource(Res.string.journal_rename_selected, count),
+        )
+    }
+}
+
+/**
+ * Batch rename for a selection run: one payee for every ticked row, written
+ * in one database transaction, with the Snackbar carrying the old payees
+ * back. The field starts with the shared payee when every row already has
+ * the same one (fixing a typo), empty otherwise.
+ */
+@Composable
+internal fun RenameSelectedDialog(
+    count: Int,
+    current: suspend () -> Map<String, String>,
+    rename: suspend (String) -> Map<String, String>,
+    restore: suspend (Map<String, String>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    var payee by remember { mutableStateOf(TextFieldValue("")) }
+    var touched by remember { mutableStateOf(false) }
+    val focus = remember { FocusRequester() }
+    val undoLabel = stringResource(Res.string.action_undo)
+    val renamedMessage = stringResource(Res.string.journal_renamed_count, count)
+    val failedMessage = stringResource(Res.string.journal_rename_failed)
+
+    LaunchedEffect(Unit) {
+        val shared = runCatching { current() }.getOrNull()
+            ?.values?.distinct()?.singleOrNull()
+        if (shared != null && !touched) {
+            payee = TextFieldValue(shared, selection = TextRange(0, shared.length))
+        }
+        runCatching { focus.requestFocus() }
+    }
+
+    val submit: () -> Unit = submit@{
+        val value = payee.text.trim()
+        if (value.isEmpty() || saving) return@submit
+        saving = true
+        scope.launch {
+            try {
+                val previous = rename(value)
+                onDismiss()
+                if (previous.isNotEmpty()) {
+                    Feedback.undoable(renamedMessage, undoLabel) { restore(previous) }
+                }
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Feedback.show(failedMessage)
+                saving = false
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text(stringResource(Res.string.journal_rename_selected_title, count)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    stringResource(Res.string.journal_rename_selected_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = payee,
+                    onValueChange = {
+                        touched = true
+                        payee = it
+                    },
+                    label = { Text(stringResource(Res.string.editor_payee_label)) },
+                    singleLine = true,
+                    enabled = !saving,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = submit,
+                enabled = !saving && count > 0 && payee.text.isNotBlank(),
+            ) { Text(stringResource(Res.string.action_save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !saving) {
+                Text(stringResource(Res.string.action_cancel))
+            }
+        },
+    )
 }
 
 /**

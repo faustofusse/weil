@@ -163,6 +163,56 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         return true
     }
 
+    /** Current payee of each of [ids] that still exists. */
+    suspend fun payees(ids: List<String>): Map<String, String> {
+        val unique = ids.distinct()
+        if (unique.isEmpty()) return emptyMap()
+        return db.useForRead { d ->
+            d.query("select id, payee from transactions where id in (${quoteList(unique)})", null) { rows ->
+                rows.filter { it.size >= 2 }.mapNotNull { row ->
+                    val id = row[0]?.toString() ?: return@mapNotNull null
+                    id to (row[1]?.toString() ?: "")
+                }.toMap()
+            }
+        }
+    }
+
+    /**
+     * Batch rename: sets the payee of every one of [ids] to [payee] in one SQL
+     * transaction and returns the previous payees, so the caller's Deshacer
+     * can hand them to [restorePayees]. Only the payee changes — date,
+     * postings and provenance stay as they are.
+     */
+    suspend fun renamePayees(ids: List<String>, payee: String): Map<String, String> {
+        val previous = payees(ids)
+        if (previous.isEmpty()) return emptyMap()
+        writeAtomically {
+            execute(
+                // The payee is part of the canonical text the vector was
+                // built from; same reasoning as [update].
+                "update transactions set payee = :payee, embedding = null, embedding_model = null" +
+                    " where id in (${quoteList(previous.keys.toList())})",
+                mapOf(":payee" to payee.trim()),
+            )
+        }
+        emitChange()
+        return previous
+    }
+
+    /** The Deshacer half of [renamePayees]. */
+    suspend fun restorePayees(previous: Map<String, String>) {
+        if (previous.isEmpty()) return
+        writeAtomically {
+            for ((id, payee) in previous) {
+                execute(
+                    "update transactions set payee = :payee, embedding = null, embedding_model = null where id = :id",
+                    mapOf(":payee" to payee, ":id" to id),
+                )
+            }
+        }
+        emitChange()
+    }
+
     suspend fun delete(id: String) {
         writeAtomically {
             // postings first: cross-connection FK cascades are not enforced
