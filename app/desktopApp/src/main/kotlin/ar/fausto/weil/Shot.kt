@@ -179,6 +179,7 @@ fun main(args: Array<String>) {
                     "broker-import" -> demoBrokerImport()
                     "holdings" -> invest?.let { AccountDetailRoute(it.accounts.holdings) }
                     "tx-buy" -> invest?.let { TransactionEditRoute(it.fractionalBuy) }
+                    "tx-buy-detail" -> invest?.let { TransactionDetailRoute(it.fractionalBuy) }
                     else -> null
                 },
             )
@@ -199,7 +200,7 @@ fun main(args: Array<String>) {
 }
 
 
-private val INVESTMENT_ROUTES = setOf("investments", "holdings", "tx-buy", "instrument")
+private val INVESTMENT_ROUTES = setOf("investments", "holdings", "tx-buy", "tx-buy-detail", "instrument")
 
 private class SeededInvestments(val accounts: BrokerAccounts, val fractionalBuy: String)
 

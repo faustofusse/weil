@@ -511,6 +511,9 @@ fun RootScreen(
                                     )
                                 }
                                 entry<TransactionDetailRoute> { route ->
+                                    // Quantities and the @ price need the valuation (scales);
+                                    // a cold start straight here hasn't loaded it.
+                                    LaunchedEffect(Unit) { if (!ledgerState.loaded) ledgerState.refresh() }
                                     TransactionDetailScreen(
                                         ledger = graph.ledger,
                                         accounts = graph.accounts,

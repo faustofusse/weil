@@ -329,10 +329,8 @@ fun TransactionDetailScreen(
                                         // of the book a leg sits on is the
                                         // whole point: signed, always.
                                         formatAmount(posting.amountMinor, posting.commodity, valuation, signed = true) +
-                                            // Ledger's @@: what the leg cost, when it's an exchange.
-                                            (posting.costMinor?.let { cost ->
-                                                " @@ " + formatMoney(kotlin.math.abs(cost), posting.costCommodity ?: "")
-                                            } ?: ""),
+                                            // Ledger's @: the price per unit, when it's an exchange.
+                                            (unitPriceText(posting, valuation)?.let { " @ $it" } ?: ""),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = postingColor(types[posting.accountId], posting.amountMinor),
                                         modifier = Modifier.padding(start = 12.dp),
@@ -500,4 +498,31 @@ fun TransactionDetailScreen(
             }
         }
     }
+}
+
+/**
+ * Ledger's `@`: what one unit of [posting] cost ("13 MELI @ $ 24.558,91"),
+ * from the stored total (`cost_minor`) over the quantity. At least 2
+ * decimals, more the smaller the price: a letra's unit is a fraction of a
+ * peso and rounding it to cents would say nothing.
+ */
+internal fun unitPriceText(posting: Posting, valuation: Valuation): String? {
+    val cost = posting.costMinor ?: return null
+    val costCommodity = posting.costCommodity ?: return null
+    if (posting.amountMinor == 0L) return null
+    val scale = valuation.commodities[posting.commodity]?.scale ?: 2
+    val exact = Decimal.ofMinorUnits(kotlin.math.abs(cost), 2)
+        .divide(Decimal.ofMinorUnits(kotlin.math.abs(posting.amountMinor), scale), 6)
+    // Decimals by size: cents on a share, more on a letra's fraction of a peso.
+    val decimals = when {
+        exact >= Decimal.parse("100")!! -> 2
+        exact >= Decimal.parse("1")!! -> 4
+        else -> 6
+    }
+    val unit = exact.rescale(decimals).stripTrailingZeros()
+    val plain = unit.toPlainString()
+    val whole = plain.substringBefore('.')
+    val frac = plain.substringAfter('.', "").padEnd(2, '0')
+    val grouped = whole.reversed().chunked(3).joinToString(".").reversed()
+    return "${currencySymbol(costCommodity)} $grouped,$frac"
 }
