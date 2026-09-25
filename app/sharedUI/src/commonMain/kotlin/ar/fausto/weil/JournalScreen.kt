@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +29,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -81,6 +89,7 @@ import weil.app.sharedui.generated.resources.day_date_year
 import weil.app.sharedui.generated.resources.day_today
 import weil.app.sharedui.generated.resources.day_yesterday
 import weil.app.sharedui.generated.resources.journal_delete_failed
+import weil.app.sharedui.generated.resources.journal_scroll_top
 import weil.app.sharedui.generated.resources.journal_delete_selected
 import weil.app.sharedui.generated.resources.journal_delete_selected_body
 import weil.app.sharedui.generated.resources.journal_delete_selected_title
@@ -122,6 +131,9 @@ import weil.app.sharedui.generated.resources.new_transaction_hint
 // Enough rows to cover any screen height while loading — the list is
 // lazy, so declaring more than fit on screen costs nothing.
 private const val JOURNAL_SKELETON_COUNT = 16
+
+/** Rows scrolled past before the scroll-to-top button appears. */
+private const val SCROLL_TOP_THRESHOLD = 8
 
 private const val DAY_MILLIS = 24L * 60 * 60 * 1000
 
@@ -363,13 +375,46 @@ fun JournalScreen(
             // second one in the corner would be the same action twice. Hidden
             // mid-selection: registering a movement is the last thing the
             // gesture is reaching for, and the FAB overlaps the bottom rows.
-            if (bottomBar == null && !selecting) {
-                FloatingActionButton(
-                    onClick = onNavigateToNew,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+            val showCreate = bottomBar == null && !selecting
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Only once the top is out of reach of a flick: a few rows
+                // down, the button would cover a row to save one swipe.
+                val scrolledAway by remember {
+                    derivedStateOf { listState.firstVisibleItemIndex > SCROLL_TOP_THRESHOLD }
+                }
+                AnimatedVisibility(
+                    visible = scrolledAway,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut(),
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.new_transaction))
+                    SmallFloatingActionButton(
+                        onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        // Alone in the corner (tab root) it drops into
+                        // the Scaffold's 16 dp FAB margin, closer to the
+                        // bar; above the create FAB it keeps a gap.
+                        modifier = if (showCreate) {
+                            Modifier.padding(bottom = 12.dp)
+                        } else {
+                            Modifier.offset(y = 10.dp)
+                        },
+                    ) {
+                        Icon(
+                            Icons.Filled.ArrowUpward,
+                            contentDescription = stringResource(Res.string.journal_scroll_top),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+                if (showCreate) {
+                    FloatingActionButton(
+                        onClick = onNavigateToNew,
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.new_transaction))
+                    }
                 }
             }
         },

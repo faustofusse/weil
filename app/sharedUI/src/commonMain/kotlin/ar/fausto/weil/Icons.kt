@@ -200,6 +200,12 @@ object Icons {
             "M6 9.5l6 6 6-6",
         )
 
+        val ArrowUpward: ImageVector = lineIcon(
+            "ArrowUpward",
+            "M12 19V5",
+            "M5 12l7-7 7 7",
+        )
+
         val ChevronRight: ImageVector = lineIcon(
             "ChevronRight",
             "M9 18l6-6-6-6",

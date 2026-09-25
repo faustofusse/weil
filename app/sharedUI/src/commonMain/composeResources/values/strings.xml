@@ -202,6 +202,7 @@
     <string name="picker_create">Nueva categoría</string>
 
     <!-- Journal -->
+    <string name="journal_scroll_top">Volver arriba</string>
     <string name="journal_title">Transacciones</string>
     <string name="journal_empty">Todavía no hay transacciones</string>
     <string name="journal_more_postings">+%1$d más</string>
