@@ -318,7 +318,6 @@ fun InvestmentsScreen(
                                 looks = ledgerState.looks,
                                 hidden = ledgerState.amountsHidden,
                                 onOpen = { onOpenTransaction(tx.id) },
-                                modifier = Modifier.padding(bottom = 8.dp),
                             )
                         }
                     }
