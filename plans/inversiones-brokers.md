@@ -626,11 +626,21 @@ acciones) y las posiciones cerradas como «0,00».
       cuenta con la moneda principal grande y las demás más chicas.
 - [ ] Línea «≈ US$ X al oficial (fecha)» (setting `networth.currency`, default
       USD); fetch del oficial del BCRA al sincronizar, a `prices`.
-- [ ] Vista de posiciones en `AccountDetailScreen` de cuentas multi-commodity
-      (pregunta 3): instrumento, cantidad, último precio y fecha, valor, costo,
-      ganancia no realizada (calculada, no asentada); cerradas plegadas.
-- [ ] Escala por commodity al **mostrar y tipear** en el editor (movido desde
-      la fase 1): hoy una compra editada muestra «49,39» por 0,4939 TTWO.
+- [x] Vista de posiciones en `AccountDetailScreen` (pregunta 3):
+      `Valuation.positions(holdings)` (puro, `ValuationTest`) arma una
+      `PositionLine` por instrumento con valor al último precio y ganancia no
+      realizada = valor − costo asentado, **sólo si están en la misma moneda**
+      (una ON en dólares comprada con pesos muestra el costo, no una ganancia
+      inventada). `PositionsCard`: cantidad × precio tal como cotiza («c/100»
+      en bonos y letras), la fecha de precios una vez en el encabezado y en
+      la fila sólo si es más vieja, cerradas plegadas. Tocar una posición
+      filtra el registro por ese commodity (`register(commodity =)`; el
+      saldo corrido ya era por commodity) y `AccountDetailRoute(id, commodity)`
+      abre directo filtrado. Harness: `-Pshot.route=holdings` / `instrument`
+      (`-Pshot.seconds=12`: la siembra tarda). Sólo con la cuenta sola, no con
+      «incluir subcuentas» (el costo es por cuenta).
+- [x] Escala por commodity al **mostrar y tipear** en el editor (movido desde
+      la fase 1; 8c00094).
 - [ ] `InvestmentsScreen` completa (hero, avisos, brokers, posiciones
       consolidadas, movimientos) y detalle de instrumento; ver sección UI.
 

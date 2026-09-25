@@ -513,16 +513,27 @@ internal fun unitPriceText(posting: Posting, valuation: Valuation): String? {
     val scale = valuation.commodities[posting.commodity]?.scale ?: 2
     val exact = Decimal.ofMinorUnits(kotlin.math.abs(cost), 2)
         .divide(Decimal.ofMinorUnits(kotlin.math.abs(posting.amountMinor), scale), 6)
-    // Decimals by size: cents on a share, more on a letra's fraction of a peso.
+    return formatPrice(exact, costCommodity)
+}
+
+/**
+ * A price in [commodity] ("$ 24.558,91", "$ 106,251"): at least 2 decimals,
+ * more the smaller the price: a letra's unit is a fraction of a peso and
+ * rounding it to cents would say nothing. [exact] keeps every decimal the
+ * price already has (a quote as the market states it, "$ 106,251") instead
+ * of rounding a computed one.
+ */
+internal fun formatPrice(price: Decimal, commodity: String, exact: Boolean = false): String {
+    val magnitude = price.abs()
     val decimals = when {
-        exact >= Decimal.parse("100")!! -> 2
-        exact >= Decimal.parse("1")!! -> 4
+        exact -> maxOf(0, magnitude.scale)
+        magnitude >= Decimal.of(100) -> 2
+        magnitude >= Decimal.of(1) -> 4
         else -> 6
     }
-    val unit = exact.rescale(decimals).stripTrailingZeros()
-    val plain = unit.toPlainString()
+    val plain = magnitude.rescale(decimals).stripTrailingZeros().toPlainString()
     val whole = plain.substringBefore('.')
     val frac = plain.substringAfter('.', "").padEnd(2, '0')
     val grouped = whole.reversed().chunked(3).joinToString(".").reversed()
-    return "${currencySymbol(costCommodity)} $grouped,$frac"
+    return "${if (price.signum < 0) "-" else ""}${currencySymbol(commodity)} $grouped,$frac"
 }

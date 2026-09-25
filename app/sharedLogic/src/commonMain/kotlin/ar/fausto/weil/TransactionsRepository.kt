@@ -702,18 +702,26 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         subtreeIds: List<String>,
         limit: Int = LIST_PAGE_SIZE,
         before: LedgerCursor? = null,
+        commodity: String? = null,
     ): List<RegisterEntry> {
         if (subtreeIds.isEmpty()) return emptyList()
         val idList = quoteList(subtreeIds)
+        // One instrument's register (the positions view): its running
+        // balance is already per commodity, so only the rows narrow.
+        val commodityFilter = if (commodity == null) "" else " and p.commodity = :commodity"
+        fun params(cursor: LedgerCursor?): Map<String, Any>? {
+            val base = cursorParams(cursor)
+            return if (commodity == null) base else (base.orEmpty() + (":commodity" to commodity))
+        }
         return db.useForRead { d ->
             val entries = d.query(
                 "select p.id, p.transaction_id, p.account_id, p.amount_minor, p.commodity," +
                     " p.cost_minor, p.cost_commodity, t.date, t.payee, t.time_known" +
                     " from postings p join transactions t on p.transaction_id = t.id" +
-                    " where p.account_id in ($idList)" +
+                    " where p.account_id in ($idList)$commodityFilter" +
                     (if (before == null) "" else " and ($TX_CURSOR_FILTER)") +
                     " order by t.date desc, t.id desc limit $limit",
-                cursorParams(before),
+                params(before),
             ) { rows ->
                 rows.filter { it.size >= 10 }.mapNotNull { row ->
                     val posting = postingOf(row) ?: return@mapNotNull null
@@ -737,9 +745,9 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 d.query(
                     "select p.commodity, sum(p.amount_minor) from postings p" +
                         " join transactions t on p.transaction_id = t.id" +
-                        " where p.account_id in ($idList) and ($TX_CURSOR_FILTER)" +
+                        " where p.account_id in ($idList)$commodityFilter and ($TX_CURSOR_FILTER)" +
                         " group by p.commodity",
-                    cursorParams(oldest),
+                    params(oldest),
                 ) { rows ->
                     rows.mapNotNull { row ->
                         val commodity = row.getOrNull(0)?.toString() ?: return@mapNotNull null

@@ -63,4 +63,40 @@ class ValuationTest {
         // A code nobody described is a currency as far as this knows.
         assertEquals(mapOf("EUR" to 100L), valuation.value(mapOf("EUR" to 100L)))
     }
+
+    @Test
+    fun positionsCarryValueCostAndUnrealizedGain() {
+        val lines = valuation.positions(
+            mapOf(
+                "ARS" to HeldPosition(54_257_383L, 0L, null),
+                // 13 MELI that cost $ 319.256,83 (commission capitalized).
+                "BCBA:MELI" to HeldPosition(13L, 31_925_683L, "ARS"),
+                "BCBA:S13N6" to HeldPosition(1_923_076L, 200_000_000L, "ARS"),
+                // Bought with pesos, quoted in dollars: no gain without a rate.
+                "NASDAQ:TTWO" to HeldPosition(4939L, 15_000_000L, "ARS"),
+                "BCBA:XYZ" to HeldPosition(5L, 1_000L, "ARS"),
+                "FCI:IOLCAMA" to HeldPosition(0L, 0L, null),
+            ),
+        )
+        // Cash is not a position; open by currency then value, unpriced, then closed.
+        assertEquals(
+            listOf("BCBA:S13N6", "BCBA:MELI", "NASDAQ:TTWO", "BCBA:XYZ", "FCI:IOLCAMA"),
+            lines.map { it.commodity },
+        )
+        val meli = lines.first { it.commodity == "BCBA:MELI" }
+        assertEquals("ARS", meli.valueCommodity)
+        assertEquals(30_446_000L, meli.valueMinor)
+        assertEquals(30_446_000L - 31_925_683L, meli.unrealizedMinor)
+        assertEquals(-0.0463, meli.unrealizedRatio!!, 0.0001)
+        val ttwo = lines.first { it.commodity == "NASDAQ:TTWO" }
+        assertEquals("USD", ttwo.valueCommodity)
+        assertNull(ttwo.unrealizedMinor)
+        val xyz = lines.first { it.commodity == "BCBA:XYZ" }
+        assertNull(xyz.valueMinor)
+        assertNull(xyz.unrealizedMinor)
+        val closed = lines.last()
+        assertEquals(true, closed.closed)
+        assertNull(closed.valueMinor)
+        assertNull(closed.costMinor)
+    }
 }

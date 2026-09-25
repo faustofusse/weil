@@ -253,6 +253,13 @@
     <string name="detail_account_fallback">Cuenta</string>
     <string name="detail_include_subaccounts">Incluir subcuentas</string>
     <string name="detail_no_postings">Todavía no hay movimientos</string>
+    <string name="positions_title">Posiciones</string>
+    <string name="positions_closed">Cerradas (%1$d)</string>
+    <string name="positions_prices_at">Precios al %1$s</string>
+    <string name="positions_no_price">Sin precio</string>
+    <string name="positions_cost">Costo %1$s</string>
+    <string name="positions_only">Sólo %1$s</string>
+    <string name="positions_show_all">Ver todos</string>
 
     <!-- Login -->
     <string name="login_subtitle">Tus cuentas, un solo lugar</string>

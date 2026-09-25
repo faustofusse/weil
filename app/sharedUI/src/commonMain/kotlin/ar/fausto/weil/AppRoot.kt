@@ -561,9 +561,14 @@ fun RootScreen(
                                     )
                                 }
                                 entry<AccountDetailRoute> { route ->
+                                    // Title, balance, quantities and positions all come
+                                    // from the ledger state; a cold start straight here
+                                    // hasn't loaded it.
+                                    LaunchedEffect(Unit) { if (!ledgerState.loaded) ledgerState.refresh() }
                                     AccountDetailScreen(
                                         ledgerState = ledgerState,
                                         accountId = route.id,
+                                        initialCommodity = route.commodity,
                                         onNavigateBack = { pop() },
                                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                         onNavigateToNew = { navigate(TransactionNewRoute(route.id)) },

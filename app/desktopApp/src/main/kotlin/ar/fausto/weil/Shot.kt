@@ -178,6 +178,7 @@ fun main(args: Array<String>) {
                     // from the sandbox, and a plan is plain data anyway.
                     "broker-import" -> demoBrokerImport()
                     "holdings" -> invest?.let { AccountDetailRoute(it.accounts.holdings) }
+                    "instrument" -> invest?.let { AccountDetailRoute(it.accounts.holdings, "BCBA:MELI") }
                     "tx-buy" -> invest?.let { TransactionEditRoute(it.fractionalBuy) }
                     "tx-buy-detail" -> invest?.let { TransactionDetailRoute(it.fractionalBuy) }
                     else -> null
@@ -236,7 +237,7 @@ private suspend fun seedInvestments(graph: AppGraph): SeededInvestments {
             add(PriceQuote("BCBA:MELI", "ARS", at, d("24000").plus(d((i * 120).toString())), "iol"))
             add(PriceQuote("BCBA:S13N6", "ARS", at, d("106.251"), "iol"))
             add(PriceQuote("NASDAQ:TTWO", "USD", at, d("231.40").minus(d((i * 2).toString())), "iol"))
-            add(PriceQuote("BCBA:AL30", "ARS", at, d("79.10"), "iol"))
+            add(PriceQuote("BCBA:AL30", "ARS", at, d("83910"), "iol"))
         }
     }
     val snapshot = BrokerSnapshot(

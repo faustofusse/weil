@@ -50,6 +50,8 @@ import weil.app.sharedui.generated.resources.detail_include_subaccounts
 import weil.app.sharedui.generated.resources.detail_no_postings
 import weil.app.sharedui.generated.resources.more_options
 import weil.app.sharedui.generated.resources.new_transaction
+import weil.app.sharedui.generated.resources.positions_only
+import weil.app.sharedui.generated.resources.positions_show_all
 
 /**
  * Per-account register: postings of the account (or its whole subtree, via the
@@ -65,6 +67,7 @@ fun AccountDetailScreen(
     onNavigateBack: () -> Unit,
     onOpenTransaction: (id: String) -> Unit,
     onNavigateToNew: () -> Unit,
+    initialCommodity: String? = null,
 ) {
     val ledger = ledgerState.ledger
     val accounts = ledgerState.accounts
@@ -84,6 +87,12 @@ fun AccountDetailScreen(
     val cacheKey = rememberSaveable { Random.nextLong().toString() }
     val cached = remember(cacheKey) { RegisterCache[cacheKey] }
     var includeSubtree by rememberSaveable { mutableStateOf(false) }
+    // The positions view narrows the register to one instrument.
+    var commodityFilter by rememberSaveable { mutableStateOf(initialCommodity) }
+    var holdings by remember { mutableStateOf(cached?.holdings ?: emptyMap()) }
+    val positions = remember(holdings, ledgerState.valuation) {
+        ledgerState.valuation.positions(holdings)
+    }
     var entries by remember { mutableStateOf(cached?.entries ?: emptyList()) }
     var transactions by remember { mutableStateOf(cached?.transactions ?: emptyMap()) }
     var loaded by remember { mutableStateOf(cached != null) }
@@ -91,7 +100,7 @@ fun AccountDetailScreen(
     var hasMore by remember { mutableStateOf(cached?.hasMore ?: true) }
     DisposableEffect(cacheKey) {
         onDispose {
-            if (loaded) RegisterCache[cacheKey] = RegisterSnapshot(entries, transactions, hasMore)
+            if (loaded) RegisterCache[cacheKey] = RegisterSnapshot(entries, transactions, hasMore, holdings)
         }
     }
     var error by remember { mutableStateOf<String?>(null) }
@@ -112,7 +121,10 @@ fun AccountDetailScreen(
             // As deep as the user has already scrolled: a plain first page
             // would cut the list short and clamp the position upwards.
             val limit = maxOf(LIST_PAGE_SIZE, entries.size)
-            val page = ledger.register(subtreeIds = ids(), limit = limit)
+            val page = ledger.register(subtreeIds = ids(), limit = limit, commodity = commodityFilter)
+            // Positions are one account's: a subtree mixes brokers' carteras
+            // and the booked cost is per account.
+            holdings = if (includeSubtree) emptyMap() else ledger.holdings(accountId)
             entries = page
             transactions = ledger.getAll(page.map { it.posting.transactionId }.distinct())
             hasMore = page.size >= limit
@@ -125,11 +137,15 @@ fun AccountDetailScreen(
     }
 
     // Toggling the subtree is a different list; start it from one page.
+    // Same for narrowing to one instrument.
     var shownSubtree by remember { mutableStateOf(includeSubtree) }
-    LaunchedEffect(includeSubtree) {
-        if (shownSubtree != includeSubtree) {
+    var shownFilter by remember { mutableStateOf(commodityFilter) }
+    LaunchedEffect(includeSubtree, commodityFilter) {
+        if (shownSubtree != includeSubtree || shownFilter != commodityFilter) {
             entries = emptyList()
             shownSubtree = includeSubtree
+            shownFilter = commodityFilter
+            selection.clear()
         }
         loadAll()
     }
@@ -148,6 +164,7 @@ fun AccountDetailScreen(
                 val nextPage = ledger.register(
                     subtreeIds = ids(),
                     before = LedgerCursor(last.date, last.posting.transactionId),
+                    commodity = commodityFilter,
                 )
                 hasMore = nextPage.size >= LIST_PAGE_SIZE
                 // A concurrent loadAll() (ledger.changes) can have replaced
@@ -288,6 +305,34 @@ fun AccountDetailScreen(
                     }
                 }
             }
+            if (!includeSubtree && positions.isNotEmpty()) {
+                item(key = "positions") {
+                    PositionsCard(
+                        lines = positions,
+                        selected = commodityFilter,
+                        onSelect = { commodityFilter = it },
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+            }
+            commodityFilter?.let { filter ->
+                item(key = "filter") {
+                    val symbol = ledgerState.valuation.commodities[filter]?.symbol ?: filter
+                    FilterChip(
+                        selected = true,
+                        onClick = { commodityFilter = null },
+                        label = { Text(stringResource(Res.string.positions_only, symbol)) },
+                        trailingIcon = {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = stringResource(Res.string.positions_show_all),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        },
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
             if (entries.isEmpty() && loaded && error == null) {
                 item(key = "empty") {
                     EmptyHint(title = stringResource(Res.string.detail_no_postings))
@@ -388,6 +433,7 @@ private class RegisterSnapshot(
     val entries: List<RegisterEntry>,
     val transactions: Map<String, Transaction>,
     val hasMore: Boolean,
+    val holdings: Map<String, HeldPosition>,
 )
 
 /**
