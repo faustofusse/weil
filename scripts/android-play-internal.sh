@@ -4,7 +4,7 @@
 #
 # Usage: scripts/android-play-internal.sh [options]
 #   --build N         versionCode. Default: git commit count (same as iOS).
-#   --version X.Y     versionName. Default: 1.0.<build>.
+#   --version X.Y.Z   versionName. Default: $(cat VERSION).<build>, same as iOS.
 #   --track NAME      internal (default) | alpha | beta | production.
 #   --draft           create the release as a draft (required while the app
 #                     has never been published: Play rejects "completed").
@@ -81,7 +81,7 @@ fi
 if [[ -z "$BUILD_NUMBER" ]]; then
   BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || date +%y%m%d%H)"
 fi
-[[ -z "$VERSION_NAME" ]] && VERSION_NAME="1.0.$BUILD_NUMBER"
+[[ -z "$VERSION_NAME" ]] && VERSION_NAME="$(tr -d '[:space:]' < VERSION).$BUILD_NUMBER"
 [[ -z "$NOTES" ]] && NOTES="$(git log -1 --format=%s 2>/dev/null || echo "Build $BUILD_NUMBER")"
 
 # ---- build -------------------------------------------------------------------

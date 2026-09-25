@@ -4,8 +4,8 @@
 #
 # Usage: scripts/ios-testflight.sh [options]
 #   --build N        build number (CFBundleVersion). Default: git commit count.
-#   --version X.Y    marketing version (CFBundleShortVersionString).
-#                    Default: whatever the project already declares.
+#   --version X.Y.Z  marketing version (CFBundleShortVersionString).
+#                    Default: $(cat VERSION).<build>, same as Android.
 #   --validate-only  run altool validation, don't upload.
 #   --no-upload      archive + export only, print the IPA path.
 #   --skip-archive   reuse the existing archive (export/upload only).
@@ -70,8 +70,9 @@ if [[ -z "$BUILD_NUMBER" ]]; then
   BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || date +%Y%m%d%H%M)"
 fi
 
-SETTINGS_OVERRIDES=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER")
-[[ -n "$MARKETING_VERSION" ]] && SETTINGS_OVERRIDES+=("MARKETING_VERSION=$MARKETING_VERSION")
+[[ -z "$MARKETING_VERSION" ]] && MARKETING_VERSION="$(tr -d '[:space:]' < VERSION).$BUILD_NUMBER"
+
+SETTINGS_OVERRIDES=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER" "MARKETING_VERSION=$MARKETING_VERSION")
 
 mkdir -p "$OUT_DIR"
 
