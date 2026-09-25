@@ -30,3 +30,6 @@ node_modules/
 
 # iOS Turso staticlibs (~170 MB each) — build with scripts/build-turso-ios.sh
 app/sharedLogic/src/iosMain/nativeLibs/*/*.a
+
+# Signing keys + Play service account (scripts/android-play-internal.sh)
+secrets/
