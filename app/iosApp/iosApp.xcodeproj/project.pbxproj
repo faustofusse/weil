@@ -8,11 +8,37 @@
 
 /* Begin PBXBuildFile section */
 		96CCC6F286C759F9787CE03D /* KotlinMultiplatformLinkedPackage in Frameworks */ = {isa = PBXBuildFile; productRef = B3B09636FF8F7334D7EB588B /* KotlinMultiplatformLinkedPackage */; };
+		A1E5A0000000000000000002 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1E5A0000000000000000001 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		623FAE0BAC231483C7347F65 /* Weil.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Weil.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1E5A0000000000000000001 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXContainerItemProxy section */
+		A1E5A000000000000000000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 67DDFF4536F3A184435CE08C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1E5A0000000000000000005;
+			remoteInfo = ShareExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A1E5A000000000000000000E /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A1E5A0000000000000000002 /* ShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		9F1281D0D67242E75B31B745 /* Exceptions for "iosApp" folder in "iosApp" target */ = {
@@ -21,6 +47,13 @@
 				Info.plist,
 			);
 			target = D252E79C0608E3DA735EBDF9 /* iosApp */;
+		};
+		A1E5A0000000000000000004 /* Exceptions for "ShareExtension" folder in "ShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A1E5A0000000000000000005 /* ShareExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -38,6 +71,14 @@
 			path = Configuration;
 			sourceTree = "<group>";
 		};
+		A1E5A0000000000000000003 /* ShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A1E5A0000000000000000004 /* Exceptions for "ShareExtension" folder in "ShareExtension" target */,
+			);
+			path = ShareExtension;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,6 +90,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1E5A0000000000000000007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -57,6 +105,7 @@
 			children = (
 				586CA7C138DF6D7610B4CB6A /* Configuration */,
 				44EB1CEF830D1EE2E41A2151 /* iosApp */,
+				A1E5A0000000000000000003 /* ShareExtension */,
 				E559DC7FB80EDA3194AB1747 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -65,6 +114,7 @@
 			isa = PBXGroup;
 			children = (
 				623FAE0BAC231483C7347F65 /* Weil.app */,
+				A1E5A0000000000000000001 /* ShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -80,10 +130,12 @@
 				ABE392C834B0D99B01AF8BF9 /* Sources */,
 				8107B2F7D51C8DB292EFF5BF /* Frameworks */,
 				B2AB9EF9F164E4DC6A4712EB /* Resources */,
+				A1E5A000000000000000000E /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A1E5A000000000000000000D /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				44EB1CEF830D1EE2E41A2151 /* iosApp */,
@@ -95,6 +147,26 @@
 			productName = iosApp;
 			productReference = 623FAE0BAC231483C7347F65 /* Weil.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A1E5A0000000000000000005 /* ShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1E5A0000000000000000009 /* Build configuration list for PBXNativeTarget "ShareExtension" */;
+			buildPhases = (
+				A1E5A0000000000000000006 /* Sources */,
+				A1E5A0000000000000000007 /* Frameworks */,
+				A1E5A0000000000000000008 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1E5A0000000000000000003 /* ShareExtension */,
+			);
+			name = ShareExtension;
+			productName = ShareExtension;
+			productReference = A1E5A0000000000000000001 /* ShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -108,6 +180,9 @@
 				TargetAttributes = {
 					D252E79C0608E3DA735EBDF9 = {
 						CreatedOnToolsVersion = 16.2;
+					};
+					A1E5A0000000000000000005 = {
+						CreatedOnToolsVersion = 26.0;
 					};
 				};
 			};
@@ -129,12 +204,20 @@
 			projectRoot = "";
 			targets = (
 				D252E79C0608E3DA735EBDF9 /* iosApp */,
+				A1E5A0000000000000000005 /* ShareExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		B2AB9EF9F164E4DC6A4712EB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1E5A0000000000000000008 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -173,7 +256,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1E5A0000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A1E5A000000000000000000D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1E5A0000000000000000005 /* ShareExtension */;
+			targetProxy = A1E5A000000000000000000C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		2F5ABE34C8FBE8E03D1D922C /* Debug */ = {
@@ -362,6 +460,56 @@
 			};
 			name = Release;
 		};
+		A1E5A000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RUD5LX7W3Y;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Weil;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = ar.fausto.finance.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A1E5A000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RUD5LX7W3Y;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Weil;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = ar.fausto.finance.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -379,6 +527,15 @@
 			buildConfigurations = (
 				30B92945672F7736F5A7CFC5 /* Debug */,
 				93887F7659156D89B57AE0B3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1E5A0000000000000000009 /* Build configuration list for PBXNativeTarget "ShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1E5A000000000000000000A /* Debug */,
+				A1E5A000000000000000000B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
