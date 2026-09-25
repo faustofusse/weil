@@ -42,6 +42,20 @@
     <string name="nav_movements">Movimientos</string>
     <string name="nav_categories">Categorías</string>
     <string name="nav_profile">Mi perfil</string>
+    <string name="nav_investments">Inversiones</string>
+
+    <!-- Investments tab -->
+    <string name="investments_title">Inversiones</string>
+    <string name="investments_empty_title">Conectá tus inversiones</string>
+    <string name="investments_empty_body">Traé tus compras, ventas, rentas y tenencias al mismo lugar que el resto de tu plata. Elegí de dónde:</string>
+    <string name="investments_source_iol">InvertirOnline</string>
+    <string name="investments_source_iol_hint">Con tu usuario y contraseña</string>
+    <string name="investments_source_ibkr">Interactive Brokers</string>
+    <string name="investments_source_ibkr_hint">Importando el reporte Flex de tu cuenta</string>
+    <string name="investments_source_statement">Resumen de otro banco</string>
+    <string name="investments_source_statement_hint">El PDF de tu cuenta comitente</string>
+    <string name="investments_soon">Pronto</string>
+    <string name="investments_soon_message">Todavía no está disponible</string>
 
     <!-- Categories (expense accounts) -->
     <string name="categories_title">Categorías</string>
@@ -226,7 +240,6 @@
     <string name="login_qr_not_invite_but_request">Ese código QR es una solicitud de vinculación, no una invitación</string>
 
     <!-- Profile -->
-    <string name="profile_title">Perfil</string>
     <string name="profile_sign_out">Cerrar sesión</string>
     <string name="profile_sync_chain_title">Cadena de sincronización</string>
     <string name="profile_sync_chain_subtitle">Tus dispositivos comparten una cuenta y su base de datos. Cada dispositivo inicia sesión con su propio passkey.</string>

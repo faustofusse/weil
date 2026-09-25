@@ -38,12 +38,16 @@ import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.nav_categories
 import weil.app.sharedui.generated.resources.nav_home
+import weil.app.sharedui.generated.resources.nav_investments
 import weil.app.sharedui.generated.resources.nav_movements
-import weil.app.sharedui.generated.resources.nav_profile
 import weil.app.sharedui.generated.resources.new_transaction
 
-/** The four root destinations of the bottom bar. */
-enum class AppTab { Home, Movements, Categories, Profile }
+/**
+ * The four root destinations of the bottom bar. The profile used to be the
+ * fourth; it is an icon in Inicio's top bar now, and the slot went to the
+ * investments, which are looked at far more often than settings.
+ */
+enum class AppTab { Home, Movements, Categories, Investments }
 
 /** How far the create button rides above the bar's top edge. */
 private val FabOverlap = 26.dp
@@ -118,9 +122,9 @@ fun AppBottomBar(current: AppTab, onSelect: (AppTab) -> Unit, onNew: () -> Unit)
                     Modifier.weight(1f).padding(start = InnerTabGap),
                 )
                 TabItem(
-                    AppTab.Profile,
-                    Icons.Filled.Person,
-                    stringResource(Res.string.nav_profile),
+                    AppTab.Investments,
+                    Icons.Filled.TrendingUp,
+                    stringResource(Res.string.nav_investments),
                     current,
                     onSelect,
                     Modifier.weight(1f),

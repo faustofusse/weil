@@ -237,14 +237,14 @@ fun RootScreen(
                                 AppTab.Home -> HomeRoute
                                 AppTab.Movements -> JournalRoute
                                 AppTab.Categories -> CategoriesRoute
-                                AppTab.Profile -> ProfileRoute
+                                AppTab.Investments -> InvestmentsRoute
                             },
                         )
                     }
                     val currentTab = when (tabStack.lastOrNull()) {
                         JournalRoute -> AppTab.Movements
                         CategoriesRoute -> AppTab.Categories
-                        ProfileRoute -> AppTab.Profile
+                        InvestmentsRoute -> AppTab.Investments
                         else -> AppTab.Home
                     }
 
@@ -280,7 +280,7 @@ fun RootScreen(
                             AppTab.Home -> HomeRoute
                             AppTab.Movements -> JournalRoute
                             AppTab.Categories -> CategoriesRoute
-                            AppTab.Profile -> ProfileRoute
+                            AppTab.Investments -> InvestmentsRoute
                         }
                         if (tabStack.lastOrNull() == route) return
                         tabStack.clear()
@@ -374,11 +374,12 @@ fun RootScreen(
                         onNavigateToAccount = { navigate(AccountDetailRoute(it)) },
                         onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                         onNavigateToAddAccount = { navigate(AccountAddRoute(AccountType.Asset)) },
+                        onNavigateToProfile = { navigate(ProfileRoute) },
                         bottomBar = bar,
                     )
                     }
 
-                    // Journal, Categorías and Profile are each both a tab and
+                    // Journal and Categorías are each both a tab and
                     // a pushable destination, so each is written once here:
                     // `bar` is the shell's reserved strip when it renders as
                     // a tab and null when pushed (which is what makes the
@@ -399,19 +400,6 @@ fun RootScreen(
                             // chips + movements), not the asset register.
                             onNavigateToAccount = { navigate(CategoryDetailRoute(it)) },
                             bottomBar = bar,
-                        )
-                    }
-                    val profileScreen: @Composable ((@Composable () -> Unit)?) -> Unit = { bar ->
-                        ProfileScreen(
-                            chain = graph.chain,
-                            chainState = chainState,
-                            whatsappState = whatsappState,
-                            embeddings = graph.embeddings,
-                            userState = userState,
-                            settings = graph.settings,
-                            onNavigateBack = { pop() },
-                            bottomBar = bar,
-                            onSignOut = { scope.launch { graph.auth.signOut() } },
                         )
                     }
 
@@ -459,7 +447,7 @@ fun RootScreen(
                                         entry<HomeRoute> { homeTab(bar) }
                                         entry<JournalRoute> { journalScreen(bar) }
                                         entry<CategoriesRoute> { categoriesScreen(bar) }
-                                        entry<ProfileRoute> { profileScreen(bar) }
+                                        entry<InvestmentsRoute> { InvestmentsScreen(bottomBar = bar) }
                                     }
                                 }
                                 entry<CategoriesRoute> { categoriesScreen {} }
@@ -654,7 +642,21 @@ fun RootScreen(
                                         onNavigateBack = { pop() },
                                     )
                                 }
-                                entry<ProfileRoute> { profileScreen(null) }
+                                // Pushed from the account icon in Inicio's top
+                                // bar; no longer a tab, so it always wears the
+                                // back arrow (bottomBar = null).
+                                entry<ProfileRoute> {
+                                    ProfileScreen(
+                                        chain = graph.chain,
+                                        chainState = chainState,
+                                        whatsappState = whatsappState,
+                                        embeddings = graph.embeddings,
+                                        userState = userState,
+                                        settings = graph.settings,
+                                        onNavigateBack = { pop() },
+                                        onSignOut = { scope.launch { graph.auth.signOut() } },
+                                    )
+                                }
                             },
                             // Every move on *this* stack is a step into
                             // something; sideways moves happen a level down,

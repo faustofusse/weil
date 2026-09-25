@@ -415,10 +415,13 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
 - [ ] Sacar los campos personales de *Account Information* de la query
       (dejar Account ID, Currency, Name, Account Type, Date Opened).
 
-### Fase 0.5 — navegación
+### Fase 0.5 — navegación (hecha)
 
-- Pestaña «Inversiones» en la barra (pantalla con el estado vacío y el
-  harness), Perfil al top bar de Inicio. No depende del esquema.
+- [x] Pestaña «Inversiones» en la barra (`InvestmentsScreen` con el estado
+      vacío; las tres entradas marcadas «Pronto»), ícono `TrendingUp`.
+- [x] Perfil al ícono `AccountCircle` del top bar de Inicio; `ProfileScreen`
+      queda sólo empujada (se borró su modo pestaña).
+- [x] Harness: `-Pshot.route=investments`. Compila en desktop, Android e iOS.
 
 ### Fase 1 — esquema y aritmética
 

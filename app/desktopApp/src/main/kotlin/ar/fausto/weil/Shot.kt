@@ -32,6 +32,8 @@ import org.jetbrains.skia.Image
  *                                                       its movements)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=categories (expense categories
  *     with their icons)
+ *   ./gradlew :app:desktopApp:shot -Pshot.route=investments (the investments
+ *     tab; no broker is seeded yet, so its empty state)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=suggest  (the suggestion's
  *     sources: vector neighbours + the run button)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=suggest-trace (the pipeline
@@ -136,7 +138,7 @@ fun main(args: Array<String>) {
                 startTab = when (route) {
                     "movements" -> AppTab.Movements
                     "categories" -> AppTab.Categories
-                    "profile-tab" -> AppTab.Profile
+                    "investments" -> AppTab.Investments
                     else -> AppTab.Home
                 },
                 initialRoute = when (route) {

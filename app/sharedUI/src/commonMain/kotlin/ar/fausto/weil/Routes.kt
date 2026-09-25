@@ -53,7 +53,14 @@ data class EmailDetailRoute(val id: String)
 /** El original (foto o PDF) del que se leyó un movimiento; solo lectura. */
 data class DocumentRoute(val docId: String)
 
+/**
+ * Not a tab any more: pushed from the account icon in Inicio's top bar. The
+ * bar slot went to [InvestmentsRoute].
+ */
 object ProfileRoute
+
+/** The investments tab: brokers, consolidated positions, their movements. */
+object InvestmentsRoute
 
 object JournalRoute
 

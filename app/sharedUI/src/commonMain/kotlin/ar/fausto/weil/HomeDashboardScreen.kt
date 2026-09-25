@@ -74,6 +74,7 @@ import weil.app.sharedui.generated.resources.import_menu
 import weil.app.sharedui.generated.resources.import_no_picker
 import weil.app.sharedui.generated.resources.import_unsupported
 import weil.app.sharedui.generated.resources.more_options
+import weil.app.sharedui.generated.resources.nav_profile
 import weil.app.sharedui.generated.resources.new_transaction
 import weil.app.sharedui.generated.resources.open_account_tree
 import weil.app.sharedui.generated.resources.open_emails
@@ -105,6 +106,8 @@ fun HomeDashboardScreen(
     onNavigateToAccount: (id: String) -> Unit,
     onOpenTransaction: (id: String) -> Unit,
     onNavigateToAddAccount: () -> Unit,
+    /** The account icon in the top bar: the profile left the bottom bar. */
+    onNavigateToProfile: () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
 ) {
     if (!ledgerState.loaded) {
@@ -167,6 +170,16 @@ fun HomeDashboardScreen(
                     stringResource(Res.string.home_greeting_named, userState.name!!)
                 },
                 actions = {
+                    // The profile's only door since it gave its bar slot to
+                    // Inversiones. Here and not on every tab: it sits beside
+                    // the greeting that already names the user, and the other
+                    // tabs' headers carry their own actions.
+                    IconButton(onClick = onNavigateToProfile) {
+                        Icon(
+                            Icons.Filled.AccountCircle,
+                            contentDescription = stringResource(Res.string.nav_profile),
+                        )
+                    }
                     HomeOverflow(
                         onNavigateToNotifications = onNavigateToNotifications,
                         onNavigateToEmails = onNavigateToEmails,
