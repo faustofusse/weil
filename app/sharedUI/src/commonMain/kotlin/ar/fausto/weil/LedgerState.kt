@@ -33,6 +33,14 @@ class LedgerState(
         private set
     var tree by mutableStateOf<List<AccountNode>>(emptyList())
         private set
+    /** Stored order of Home's account tiles; see [HOME_ACCOUNT_ORDER_KEY]. */
+    var homeOrder by mutableStateOf<List<String>>(emptyList())
+        private set
+
+    /** Root asset accounts in the user's Home order; Home shows the first few. */
+    val homeAccounts: List<AccountNode> by derivedStateOf {
+        applyHomeOrder(tree.filter { it.account.type == AccountType.Asset }, homeOrder)
+    }
     /** Survives navigation because the state lives above the nav host. */
     var expandedIds by mutableStateOf<Set<String>>(emptySet())
         private set
@@ -128,7 +136,10 @@ class LedgerState(
             ledger.changes.collect { refresh() }
         }
         scope.launch {
-            settings.changes.collect { defaultAccounts = settings.defaultAccounts() }
+            settings.changes.collect {
+                defaultAccounts = settings.defaultAccounts()
+                homeOrder = settings.homeAccountOrder()
+            }
         }
     }
 
@@ -166,6 +177,7 @@ class LedgerState(
         tree = newTree
         storedLeafTotals = leafs
         defaultAccounts = settings.defaultAccounts()
+        homeOrder = settings.homeAccountOrder()
         storedRecent = ledger.page(limit = RECENT_COUNT)
     }
 
@@ -284,6 +296,26 @@ class LedgerState(
     /** Only meaningful for Asset/Liability; see [excludedFromNetWorth]. */
     fun setInNetWorth(id: String, included: Boolean) =
         mutate { accounts.setInNetWorth(id, included) }
+
+    /**
+     * Saves the full order of Home's account tiles. Applied to the screen
+     * first: the write syncs, and a drag that snaps back until the network
+     * answers reads as a drag that failed.
+     */
+    fun saveHomeOrder(ids: List<String>) {
+        homeOrder = ids
+        scope.launch {
+            try {
+                settings.setHomeAccountOrder(ids)
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                // The write is local and the sync after it is what usually
+                // fails (offline), so show whatever the file actually holds
+                // rather than assume the edit was lost.
+                homeOrder = runCatching { settings.homeAccountOrder() }.getOrDefault(homeOrder)
+            }
+        }
+    }
 
     fun toggleAmountsHidden() {
         amountsHidden = !amountsHidden

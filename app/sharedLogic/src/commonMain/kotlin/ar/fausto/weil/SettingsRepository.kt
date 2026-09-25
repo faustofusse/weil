@@ -14,6 +14,35 @@ fun defaultAccountKey(type: AccountType): String = "default_account.${type.db}"
 const val PROFILE_NAME_KEY = "profile.name"
 
 /**
+ * The order of Home's account tiles, as comma-separated account ids (uuids,
+ * so no comma can appear inside one). Only the first [HOME_ACCOUNT_SLOTS]
+ * are shown, so the order *is* the choice of which accounts Home summarizes.
+ * One row, not a column on `accounts`: it is a single preference, a
+ * last-writer-wins row is the right merge, and it needs no migration.
+ */
+const val HOME_ACCOUNT_ORDER_KEY = "home.account_order"
+
+/** How many account tiles Home shows; the rest are one tap away in the tree. */
+const val HOME_ACCOUNT_SLOTS = 4
+
+/**
+ * [accounts] sorted by the stored [order]: ids the user placed come first, in
+ * their order, and everything else keeps its natural position after them. An
+ * id that no longer exists (deleted on another device) is skipped, and an
+ * account created after the order was saved lands at the end instead of
+ * pushing one the user picked off Home.
+ */
+fun applyHomeOrder(accounts: List<AccountNode>, order: List<String>): List<AccountNode> {
+    if (order.isEmpty()) return accounts
+    val rank = order.withIndex().associate { (i, id) -> id to i }
+    val (placed, rest) = accounts.partition { it.account.id in rank }
+    return placed.sortedBy { rank.getValue(it.account.id) } + rest
+}
+
+fun parseHomeOrder(raw: String?): List<String> =
+    raw?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.distinct().orEmpty()
+
+/**
  * User preferences stored in the user's own Turso database (the secure store
  * is device-local and holds tokens), so a default set on the phone is the
  * default on every paired device. One row per key: the sync engine resolves
@@ -65,6 +94,13 @@ class SettingsRepository(private val db: DatabaseProvider) {
             rows[defaultAccountKey(type)]?.let { type to it }
         }.toMap()
     }
+
+    /** See [HOME_ACCOUNT_ORDER_KEY]; empty when never set. */
+    suspend fun homeAccountOrder(): List<String> = parseHomeOrder(all()[HOME_ACCOUNT_ORDER_KEY])
+
+    /** An empty [ids] clears the order back to the tree's own. */
+    suspend fun setHomeAccountOrder(ids: List<String>) =
+        set(HOME_ACCOUNT_ORDER_KEY, ids.takeIf { it.isNotEmpty() }?.joinToString(","))
 
     /** A null [accountId] clears the default for [type]. */
     suspend fun setDefaultAccount(type: AccountType, accountId: String?) =

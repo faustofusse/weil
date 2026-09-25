@@ -66,6 +66,7 @@ import weil.app.sharedui.generated.resources.home_greeting
 import weil.app.sharedui.generated.resources.home_greeting_named
 import weil.app.sharedui.generated.resources.home_no_accounts_yet
 import weil.app.sharedui.generated.resources.home_no_recent
+import weil.app.sharedui.generated.resources.home_order_action
 import weil.app.sharedui.generated.resources.home_pay_qr
 import weil.app.sharedui.generated.resources.home_recent_title
 import weil.app.sharedui.generated.resources.home_see_all
@@ -114,6 +115,7 @@ fun HomeDashboardScreen(
     val noPickerMessage = stringResource(Res.string.import_no_picker)
     val unsupportedMessage = stringResource(Res.string.import_unsupported)
     val qrScanner = scanner()
+    var orderOpen by remember { mutableStateOf(false) }
 
     // Same two handoffs as the classic Home; see HomeScreen.kt for why the
     // QR one records only after the wallet actually opened.
@@ -170,6 +172,7 @@ fun HomeDashboardScreen(
                         onNavigateToEmails = onNavigateToEmails,
                         onImport = { importDocument() },
                         onPayWithQr = qrScanner?.let { { payWithQr(it) } },
+                        onOrderAccounts = { orderOpen = true },
                     )
                 },
             )
@@ -183,9 +186,9 @@ fun HomeDashboardScreen(
             onRefresh = { ledgerState.refresh(userInitiated = true) },
             modifier = Modifier.fillMaxSize().padding(innerPadding),
         ) {
-            val assets = remember(ledgerState.tree) {
-                ledgerState.tree.filter { it.account.type == AccountType.Asset }
-            }
+            // Roots in the user's order (see HomeOrderSheet): the first
+            // HOME_ACCOUNT_SLOTS are the ones this screen summarizes.
+            val assets = ledgerState.homeAccounts
             val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
             val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
             val types = remember(nodes) { nodes.associate { it.account.id to it.account.type } }
@@ -194,8 +197,10 @@ fun HomeDashboardScreen(
             // Computed in composition, not inside the LazyListScope builder
             // (which isn't composable and would redo the work on every pass).
             // Four at most: Home is a glance, and a fifth tile pushes the
-            // movements off the first screen. "Ver todo" is right there.
-            val accountPairs = remember(assets) { assets.take(4).chunked(2) }
+            // movements off the first screen. "Ver todo" is right there, and
+            // which four is the user's call (long-press a tile, or the
+            // overflow's "Ordenar cuentas").
+            val accountPairs = remember(assets) { assets.take(HOME_ACCOUNT_SLOTS).chunked(2) }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -243,6 +248,7 @@ fun HomeDashboardScreen(
                                     // enough to break the grid.
                                     dark = (accountPairs.indexOf(pair) + column) % 2 == 0,
                                     onClick = { onNavigateToAccount(node.account.id) },
+                                    onLongClick = { orderOpen = true },
                                     modifier = Modifier.weight(1f),
                                 )
                             }
@@ -284,6 +290,9 @@ fun HomeDashboardScreen(
             }
         }
     }
+    if (orderOpen) {
+        HomeOrderSheet(state = ledgerState, onDismiss = { orderOpen = false })
+    }
 }
 
 /** The overflow that holds every secondary destination. */
@@ -293,6 +302,7 @@ private fun HomeOverflow(
     onNavigateToEmails: () -> Unit,
     onImport: () -> Unit,
     onPayWithQr: (() -> Unit)?,
+    onOrderAccounts: () -> Unit,
 ) {
     Box {
         run {
@@ -311,6 +321,10 @@ private fun HomeOverflow(
                 MenuRow(Icons.Filled.Email, stringResource(Res.string.open_emails)) {
                     menuOpen = false
                     onNavigateToEmails()
+                }
+                MenuRow(Icons.Filled.DragHandle, stringResource(Res.string.home_order_action)) {
+                    menuOpen = false
+                    onOrderAccounts()
                 }
                 MenuRow(Icons.Filled.DocumentScanner, stringResource(Res.string.import_menu)) {
                     menuOpen = false
@@ -504,6 +518,7 @@ private fun AccountTile(
     hidden: Boolean,
     dark: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val entry = totals.entries.maxByOrNull { abs(it.value) }
@@ -517,7 +532,7 @@ private fun AccountTile(
                     MaterialTheme.colorScheme.secondary
                 },
             )
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .heightIn(min = 84.dp)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),

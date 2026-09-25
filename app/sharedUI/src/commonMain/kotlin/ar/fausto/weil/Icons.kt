@@ -255,6 +255,12 @@ object Icons {
             "M12 2.8l2.85 5.77 6.37.93-4.61 4.49 1.09 6.34L12 17.33l-5.7 3-1.09-6.34L.6 9.5l6.37-.93z",
         )
 
+        val DragHandle: ImageVector = lineIcon(
+            "DragHandle",
+            "M4 9h16",
+            "M4 15h16",
+        )
+
         val Tune: ImageVector = lineIcon(
             "Tune",
             "M4 21v-7",
