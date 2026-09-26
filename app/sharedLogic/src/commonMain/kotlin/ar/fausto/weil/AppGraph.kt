@@ -1,6 +1,11 @@
 package ar.fausto.weil
 
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 object AuthConfig {
     const val BASE_URL = "https://auth.fausto.ar"
@@ -93,7 +98,20 @@ class AppGraph(
      * or an email receipt is written to the ledger — no queue, no
      * confirmation step.
      */
-    val autoRecord = AutoRecordRepository(accounts, emails, ledger, settings, suggestions)
+    val autoRecord = AutoRecordRepository(accounts, emails, ledger, settings, suggestions, embeddings)
+
+    /**
+     * Edits drop a transaction's vector (see [TransactionsRepository.staleVectors]);
+     * this puts it back in the background. A correction made by hand is the
+     * most useful precedent there is, and it only counts once it has a vector.
+     */
+    private val embeddingScope = CoroutineScope(SupervisorJob() + CoroutineName("embeddings-refresh"))
+
+    init {
+        ledger.staleVectors
+            .onEach { ids -> embeddings.refresh(ids.map { EmbedKind.Transaction to it }) }
+            .launchIn(embeddingScope)
+    }
 
     /** Broker imports: the DB half every broker shares (plans/inversiones-brokers.md). */
     val brokers = BrokersRepository(db, accounts, ledger, settings)

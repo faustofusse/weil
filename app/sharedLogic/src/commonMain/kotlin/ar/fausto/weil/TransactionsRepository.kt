@@ -17,6 +17,14 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     /** Emitted after every local mutation; screens collect it to refresh. */
     val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
+    /**
+     * Ids of transactions whose vector a write just dropped (payee, note or
+     * accounts changed, and those make up the embedded text). [AppGraph]
+     * re-embeds them in the background, so a corrected row can be found
+     * again as a precedent without waiting for the manual sweep.
+     */
+    val staleVectors = MutableSharedFlow<List<String>>(extraBufferCapacity = 64)
+
     suspend fun syncNow() {
         db.use { it.sync() }
     }
@@ -117,6 +125,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             insertPostings(postings)
         }
         emitChange()
+        staleVectors.tryEmit(listOf(id))
     }
 
     /**
@@ -160,6 +169,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             )
         }
         emitChange()
+        staleVectors.tryEmit(listOf(transactionId))
         return true
     }
 
@@ -196,6 +206,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             )
         }
         emitChange()
+        staleVectors.tryEmit(previous.keys.toList())
         return previous
     }
 
@@ -211,6 +222,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             }
         }
         emitChange()
+        staleVectors.tryEmit(previous.keys.toList())
     }
 
     suspend fun delete(id: String) {
@@ -280,10 +292,15 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                         "update postings set account_id = :account where id = :id",
                         mapOf(":account" to op.retargetAccountId, ":id" to op.retargetPostingId),
                     )
+                    dropVector(op.transactionId)
                 }
             }
         }
         emitChange()
+        ops.filter { it.retargetPostingId != null && it.retargetAccountId != null }
+            .map { it.transactionId }
+            .takeIf { it.isNotEmpty() }
+            ?.let { staleVectors.tryEmit(it) }
         return ops.map { op ->
             AssociationUndo(
                 transactionId = op.transactionId,
@@ -315,10 +332,15 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                         "update postings set account_id = :account where id = :id",
                         mapOf(":account" to undo.previousAccountId, ":id" to undo.postingId),
                     )
+                    dropVector(undo.transactionId)
                 }
             }
         }
         emitChange()
+        undos.filter { it.postingId != null && it.previousAccountId != null }
+            .map { it.transactionId }
+            .takeIf { it.isNotEmpty() }
+            ?.let { staleVectors.tryEmit(it) }
     }
 
     /**
@@ -891,6 +913,14 @@ class TransactionsRepository(private val db: DatabaseProvider) {
      * Provenance rows. `insert or ignore`: re-recording the same origin for the
      * same transaction is a no-op, which keeps association idempotent.
      */
+    /** Repointing a leg changes the accounts in the embedded text; see [update]. */
+    private fun Database.dropVector(txId: String) {
+        execute(
+            "update transactions set embedding = null, embedding_model = null where id = :id",
+            mapOf(":id" to txId),
+        )
+    }
+
     private fun Database.insertSources(txId: String, sources: List<TransactionSource>) {
         if (sources.isEmpty()) return
         val now = epochMillis()

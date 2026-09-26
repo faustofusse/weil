@@ -34,6 +34,7 @@ class AutoRecordRepository(
     private val ledger: TransactionsRepository,
     private val settings: SettingsRepository,
     private val suggestions: SuggestTracer,
+    private val embeddings: EmbeddingsRepository,
 ) {
     /** One sweep at a time; two would pay twice for the same mail. */
     private val sweepMutex = Mutex()
@@ -65,15 +66,38 @@ class AutoRecordRepository(
             is AutoRecordPlan.Skip -> AutoRecordOutcome.Skipped(plan.reason)
             is AutoRecordPlan.Attach -> {
                 ledger.associate(listOf(plan.op))
+                embedRecorded(source, ref, plan.op.transactionId)
                 syncQuietly()
                 AutoRecordOutcome.Associated(plan.op.transactionId)
             }
             is AutoRecordPlan.Create -> {
                 val id = ledger.addAll(listOf(plan.entry)).first()
+                embedRecorded(source, ref, id)
                 syncQuietly()
                 AutoRecordOutcome.Created(id)
             }
         }
+    }
+
+    /**
+     * Stores vectors for the message and the transaction it now belongs to,
+     * in one call. Without this, neither row is visible to the next run's
+     * precedent search until someone runs the manual sweep, so the pipeline
+     * could not learn from what it had just recorded. The vectors are
+     * computed from each row's canonical text, not from the reader's
+     * sentence, which the run already embedded for its query: storing that
+     * one would put two kinds of text in the same column. It happens before
+     * the sync so the vectors travel with the rows.
+     */
+    private suspend fun embedRecorded(source: EventSource, ref: String, transactionId: String) {
+        val message = when (source) {
+            EventSource.Email -> EmbedKind.Email
+            EventSource.Notification -> EmbedKind.Notification
+            else -> null
+        }
+        embeddings.refresh(
+            listOfNotNull(message?.let { it to ref }, EmbedKind.Transaction to transactionId),
+        )
     }
 
     /**

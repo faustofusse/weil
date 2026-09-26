@@ -195,6 +195,35 @@ class EmbeddingsRepository(
         return true
     }
 
+    /**
+     * Re-embeds specific rows from their canonical text, all in one call, and
+     * never throws. This is how rows get vectors without the manual sweep:
+     * the message→transaction path calls it for the message it just recorded
+     * and the transaction it wrote or attached to, and the graph calls it for
+     * every transaction whose vector an edit dropped. That is what lets a
+     * hand-corrected row serve as a precedent on the next run, because
+     * precedent search only sees rows with a vector.
+     *
+     * Best-effort by design. Offline, an expired session or an overloaded
+     * worker leaves the rows stale, and the Profile sweep picks them up later.
+     * The row is already written and must not be blocked on a vector.
+     */
+    suspend fun refresh(rows: List<Pair<EmbedKind, String>>) {
+        val unique = rows.distinct()
+        if (unique.isEmpty()) return
+        try {
+            val work = db.useForRead { d -> unique.mapNotNull { (kind, id) -> textOf(d, kind, id) } }
+            // A batch rename can touch many rows; chunk like the sweep does.
+            for (batch in work.chunked(BATCH)) {
+                val vectors = embedder.embed(batch.map { it.text })
+                db.use { d -> batch.forEachIndexed { i, row -> vectors.getOrNull(i)?.let { store(d, row, it) } } }
+            }
+        } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            println("embeddings refresh failed for ${unique.size} rows: ${e.message}")
+        }
+    }
+
     /** True when this row already has a vector under the current model. */
     suspend fun isEmbedded(kind: EmbedKind, id: String): Boolean = db.useForRead { d ->
         d.query(
