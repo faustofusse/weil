@@ -162,14 +162,18 @@ fun main(args: Array<String>) {
                 // Not a route: the create panel is an overlay over whatever
                 // root is showing.
                 openCreate = route == "new",
-                openBrokerSheet = route == "investments-sheet",
+                openBrokerSheet = when (route) {
+                    "investments-sheet" -> "broker"
+                    "ibkr-connect" -> "ibkr"
+                    else -> null
+                },
                 // The four tabs render inside the shell, so they are asked
                 // for by name rather than pushed as routes.
                 initialTheme = theme,
                 startTab = when (route) {
                     "movements" -> AppTab.Movements
                     "categories" -> AppTab.Categories
-                    "investments", "investments-empty", "investments-alert", "investments-sheet" -> AppTab.Investments
+                    "investments", "investments-empty", "investments-alert", "investments-sheet", "ibkr-connect" -> AppTab.Investments
                     else -> AppTab.Home
                 },
                 initialRoute = when (route) {

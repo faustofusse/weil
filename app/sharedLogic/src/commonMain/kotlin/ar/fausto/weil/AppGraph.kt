@@ -102,7 +102,7 @@ class AppGraph(
     val iol = IolRepository(store, brokers, settings)
 
     /** Interactive Brokers: Flex reports picked or shared into the app. */
-    val ibkr = IbkrRepository(brokers, settings)
+    val ibkr = IbkrRepository(brokers, settings, store)
 
     /** BCRA official USD rate into `prices`, for «≈ US$ X al oficial». */
     val officialRates = OfficialRatesRepository(brokers, officialRates ?: BcraClient())

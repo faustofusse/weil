@@ -72,6 +72,8 @@ import weil.app.sharedui.generated.resources.action_undo
 import weil.app.sharedui.generated.resources.investments_auto_imported
 import org.jetbrains.compose.resources.getString
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import weil.app.sharedui.generated.resources.broker_adjust_payee
 import weil.app.sharedui.generated.resources.action_cancel
 import weil.app.sharedui.generated.resources.app_title
@@ -138,8 +140,8 @@ fun RootScreen(
      * own way to ask for it.
      */
     openCreate: Boolean = false,
-    /** Opens the first broker's sheet on the investments tab. Harness-only, like [openCreate]. */
-    openBrokerSheet: Boolean = false,
+    /** "broker" opens the first broker's sheet on the investments tab, "ibkr" IBKR's connect sheet. Harness-only. */
+    openBrokerSheet: String? = null,
     /** Tab the shell starts on. Harness-only, like [initialRoute]. */
     startTab: AppTab = AppTab.Home,
     /**
@@ -183,16 +185,22 @@ fun RootScreen(
     LaunchedEffect(loggedInNow) {
         if (loggedInNow) graph.iol.autoSync()
     }
+    LaunchedEffect(loggedInNow) {
+        if (loggedInNow) graph.ibkr.autoSync()
+    }
     // Whoever ran it (this launch, the tab, Android's background worker while
     // the app is open), new movements get one snackbar with an undo. The
     // current value is skipped: a StateFlow replays it, and a recreated
     // activity would otherwise announce the same import twice.
     val undoLabel = stringResource(Res.string.action_undo)
     LaunchedEffect(graph) {
-        graph.iol.lastAutoSync.drop(1).collect { result ->
+        merge(
+            graph.iol.lastAutoSync.drop(1).map { "IOL" to it },
+            graph.ibkr.lastAutoSync.drop(1).map { "IBKR" to it },
+        ).collect { (broker, result) ->
             if (result is BrokerAutoSync.Applied && result.transactionIds.isNotEmpty()) {
                 val ids = result.transactionIds
-                Feedback.undoable(getString(Res.string.investments_auto_imported, ids.size), undoLabel) {
+                Feedback.undoable(getString(Res.string.investments_auto_imported, broker, ids.size), undoLabel) {
                     graph.ledger.deleteAll(ids)
                 }
             }
@@ -516,6 +524,7 @@ fun RootScreen(
                                             InvestmentsScreen(
                                                 ledgerState = ledgerState,
                                                 iol = graph.iol,
+                                                ibkr = graph.ibkr,
                                                 brokers = graph.brokers,
                                                 onReviewImport = { navigate(it) },
                                                 onOpenAccount = { navigate(it) },
@@ -527,7 +536,8 @@ fun RootScreen(
                                                         picker.pick()?.let { openDocument(it) }
                                                     }
                                                 },
-                                                openFirstBroker = openBrokerSheet,
+                                                openFirstBroker = openBrokerSheet == "broker",
+                                                openIbkrHelp = openBrokerSheet == "ibkr",
                                                 onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                                 bottomBar = bar,
                                             )
@@ -765,6 +775,7 @@ fun RootScreen(
                                             graph.brokers.adjustOpening(route.accounts, difference, adjustPayee)
                                                 .also {
                                                     if (route.provider == IOL_PROVIDER) graph.iol.clearAutoSync()
+                                                    if (route.provider == IBKR_PROVIDER) graph.ibkr.clearAutoSync()
                                                     ledgerState.refresh()
                                                 }
                                         },

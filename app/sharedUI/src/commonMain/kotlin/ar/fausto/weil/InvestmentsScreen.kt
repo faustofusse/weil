@@ -47,6 +47,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import kotlin.math.abs
 import kotlinx.coroutines.flow.merge
+import androidx.compose.foundation.verticalScroll
+import weil.app.sharedui.generated.resources.broker_ibkr_api_status
+import weil.app.sharedui.generated.resources.broker_ibkr_change_token
+import weil.app.sharedui.generated.resources.broker_ibkr_connect_api
+import weil.app.sharedui.generated.resources.broker_connect_here
+import weil.app.sharedui.generated.resources.ibkr_api_body
+import weil.app.sharedui.generated.resources.ibkr_api_title
+import weil.app.sharedui.generated.resources.ibkr_connect_action
+import weil.app.sharedui.generated.resources.ibkr_disconnect_body
+import weil.app.sharedui.generated.resources.ibkr_disconnect_title
+import weil.app.sharedui.generated.resources.ibkr_query_id
+import weil.app.sharedui.generated.resources.ibkr_token
+import weil.app.sharedui.generated.resources.ibkr_up_to_date
+import weil.app.sharedui.generated.resources.ibkr_wrong_token
+import weil.app.sharedui.generated.resources.investments_alert_token
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
@@ -58,7 +73,6 @@ import weil.app.sharedui.generated.resources.broker_import_report
 import weil.app.sharedui.generated.resources.ibkr_help_body
 import weil.app.sharedui.generated.resources.ibkr_help_title
 import weil.app.sharedui.generated.resources.ibkr_pick_file
-import weil.app.sharedui.generated.resources.broker_connect_here
 import weil.app.sharedui.generated.resources.broker_connected_as
 import weil.app.sharedui.generated.resources.broker_see_holdings
 import weil.app.sharedui.generated.resources.broker_see_movements
@@ -123,6 +137,7 @@ import weil.app.sharedui.generated.resources.iol_wrong_credentials
 fun InvestmentsScreen(
     ledgerState: LedgerState,
     iol: IolRepository,
+    ibkr: IbkrRepository,
     brokers: BrokersRepository,
     onReviewImport: (BrokerImportRoute) -> Unit,
     onOpenAccount: (AccountDetailRoute) -> Unit,
@@ -132,6 +147,8 @@ fun InvestmentsScreen(
     pickReport: suspend () -> Unit = {},
     /** Harness-only: opens the first broker's sheet once connections load. */
     openFirstBroker: Boolean = false,
+    /** Harness-only: opens IBKR's how-to/connect sheet. */
+    openIbkrHelp: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val ledger = ledgerState.ledger
@@ -143,9 +160,15 @@ fun InvestmentsScreen(
     var connecting by remember { mutableStateOf(false) }
     var syncing by remember { mutableStateOf(false) }
     var confirmDisconnect by remember { mutableStateOf(false) }
+    // IBKR's token, like IOL's password: this device's only, re-read after changes here.
+    var ibkrQuery by remember { mutableStateOf(ibkr.queryId.takeIf { ibkr.hasToken }) }
+    var ibkrSyncing by remember { mutableStateOf(false) }
+    var confirmIbkrDisconnect by remember { mutableStateOf(false) }
+    val wrongToken = stringResource(Res.string.ibkr_wrong_token)
+    val ibkrUpToDate = stringResource(Res.string.ibkr_up_to_date)
     // The broker whose sheet is open (sync, see, change credentials, disconnect).
     var managing by remember { mutableStateOf<BrokerConnection?>(null) }
-    var ibkrHelp by remember { mutableStateOf(false) }
+    var ibkrHelp by remember { mutableStateOf(openIbkrHelp) }
     fun importReport() {
         scope.launch {
             try {
@@ -157,6 +180,7 @@ fun InvestmentsScreen(
         }
     }
     val autoSync by iol.lastAutoSync.collectAsState()
+    val ibkrAutoSync by ibkr.lastAutoSync.collectAsState()
 
     var connections by remember { mutableStateOf<List<BrokerConnection>?>(null) }
     var holdings by remember { mutableStateOf<Map<String, Map<String, HeldPosition>>>(emptyMap()) }
@@ -183,14 +207,44 @@ fun InvestmentsScreen(
     LaunchedEffect(ledgerState.tree) { load() }
     // Opening the tab is an occasion to sync, like launching the app;
     // autoSync throttles itself, so switching tabs doesn't hammer IOL.
-    LaunchedEffect(Unit) { iol.autoSync() }
+    LaunchedEffect(Unit) {
+        iol.autoSync()
+        ibkr.autoSync()
+    }
 
     /** Opens the review for an auto sync's [plan]; the alert is settled by looking at it. */
-    fun review(plan: BrokerPlan) {
+    fun review(provider: String, plan: BrokerPlan) {
         scope.launch {
-            val accounts = brokers.accountsFor(IOL_PROVIDER) ?: return@launch
-            iol.clearAutoSync()
-            onReviewImport(BrokerImportRoute("IOL", IOL_PROVIDER, plan, accounts, brokers.scales()))
+            val accounts = brokers.accountsFor(provider) ?: return@launch
+            if (provider == IBKR_PROVIDER) ibkr.clearAutoSync() else iol.clearAutoSync()
+            onReviewImport(BrokerImportRoute(provider.uppercase(), provider, plan, accounts, brokers.scales()))
+        }
+    }
+
+    /** Plans a fetched IBKR report: the review, or a «todo al día». */
+    fun showIbkr(preview: IbkrPreview) {
+        val plan = preview.plan
+        if (plan.transactions.isEmpty() && plan.differences.isEmpty() && plan.issues.isEmpty()) {
+            Feedback.show(ibkrUpToDate)
+        } else {
+            scope.launch {
+                onReviewImport(BrokerImportRoute("IBKR", IBKR_PROVIDER, plan, preview.accounts, brokers.scales()))
+            }
+        }
+    }
+
+    fun syncIbkr() {
+        if (ibkrSyncing) return
+        ibkrSyncing = true
+        scope.launch {
+            try {
+                showIbkr(ibkr.sync())
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Feedback.show(if (e is IbkrAuthException) wrongToken else e.message ?: e.toString())
+            } finally {
+                ibkrSyncing = false
+            }
         }
     }
     LaunchedEffect(Unit) {
@@ -233,14 +287,17 @@ fun InvestmentsScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             AppTopBar(title = stringResource(Res.string.investments_title)) {
-                if (iolUser != null) {
-                    if (syncing) {
+                if (iolUser != null || ibkrQuery != null) {
+                    if (syncing || ibkrSyncing) {
                         CircularProgressIndicator(
                             modifier = Modifier.padding(horizontal = 14.dp).size(20.dp),
                             strokeWidth = 2.dp,
                         )
                     } else {
-                        IconButton(onClick = { sync() }) {
+                        IconButton(onClick = {
+                            if (iolUser != null) sync()
+                            if (ibkrQuery != null) syncIbkr()
+                        }) {
                             Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.iol_sync))
                         }
                     }
@@ -250,10 +307,11 @@ fun InvestmentsScreen(
         bottomBar = bottomBar,
     ) { innerPadding ->
         PullToRefreshBox(
-            isRefreshing = ledgerState.pullRefreshing || syncing,
+            isRefreshing = ledgerState.pullRefreshing || syncing || ibkrSyncing,
             onRefresh = {
                 ledgerState.refresh(userInitiated = true)
                 if (iolUser != null) sync()
+                if (ibkrQuery != null) syncIbkr()
             },
             modifier = Modifier.fillMaxSize().padding(innerPadding),
         ) {
@@ -303,11 +361,22 @@ fun InvestmentsScreen(
                         )
                     }
                     autoSync?.let { result ->
-                        item(key = "alert") {
+                        item(key = "alert-iol") {
                             AutoSyncAlert(
+                                broker = "IOL",
                                 result = result,
-                                onReview = { review(it) },
+                                onReview = { review(IOL_PROVIDER, it) },
                                 onReconnect = { connecting = true },
+                            )
+                        }
+                    }
+                    ibkrAutoSync?.let { result ->
+                        item(key = "alert-ibkr") {
+                            AutoSyncAlert(
+                                broker = "IBKR",
+                                result = result,
+                                onReview = { review(IBKR_PROVIDER, it) },
+                                onReconnect = { ibkrHelp = true },
                             )
                         }
                     }
@@ -449,30 +518,67 @@ fun InvestmentsScreen(
         BrokerSheet(
             title = (rootId?.let { names[it] } ?: names[c.accounts.holdings]).orEmpty(),
             status = when {
+                !isIol && ibkrQuery != null -> stringResource(Res.string.broker_ibkr_api_status, ibkrQuery!!)
                 !isIol -> stringResource(Res.string.broker_ibkr_status)
                 iolUser != null -> stringResource(Res.string.broker_connected_as, iolUser!!)
                 else -> stringResource(Res.string.investments_connect_here)
             },
-            connectedHere = isIol && iolUser != null,
+            connectLabel = when {
+                isIol && iolUser != null -> stringResource(Res.string.broker_change_credentials)
+                isIol -> stringResource(Res.string.broker_connect_here)
+                ibkrQuery != null -> stringResource(Res.string.broker_ibkr_change_token)
+                else -> stringResource(Res.string.broker_ibkr_connect_api)
+            },
+            disconnectLabel = stringResource(if (isIol) Res.string.iol_disconnect_title else Res.string.ibkr_disconnect_title),
             freshness = freshness(c.syncedAt),
-            canConnect = isIol,
             onSync = when {
                 isIol && iolUser != null -> ({ managing = null; sync() })
+                !isIol && ibkrQuery != null -> ({ managing = null; syncIbkr() })
                 else -> null
             },
             onImport = if (c.provider == IBKR_PROVIDER) ({ managing = null; importReport() }) else null,
             onHoldings = { managing = null; onOpenAccount(AccountDetailRoute(c.accounts.holdings)) },
             onMovements = rootId?.let { root -> { managing = null; onOpenAccount(AccountDetailRoute(root, subtree = true)) } },
-            onConnect = { managing = null; connecting = true },
-            onDisconnect = if (isIol && iolUser != null) ({ managing = null; confirmDisconnect = true }) else null,
+            onConnect = { managing = null; if (isIol) connecting = true else ibkrHelp = true },
+            onDisconnect = when {
+                isIol && iolUser != null -> ({ managing = null; confirmDisconnect = true })
+                !isIol && ibkrQuery != null -> ({ managing = null; confirmIbkrDisconnect = true })
+                else -> null
+            },
             onDismiss = { managing = null },
         )
     }
 
     if (ibkrHelp) {
         IbkrHelpSheet(
+            initialQuery = ibkr.queryId.orEmpty(),
+            wrongToken = wrongToken,
             onPick = { ibkrHelp = false; importReport() },
+            onConnect = { token, query -> ibkr.connect(token, query) },
+            onConnected = { preview ->
+                ibkrHelp = false
+                ibkrQuery = ibkr.queryId
+                showIbkr(preview)
+            },
             onDismiss = { ibkrHelp = false },
+        )
+    }
+
+    if (confirmIbkrDisconnect) {
+        AlertDialog(
+            onDismissRequest = { confirmIbkrDisconnect = false },
+            title = { Text(stringResource(Res.string.ibkr_disconnect_title)) },
+            text = { Text(stringResource(Res.string.ibkr_disconnect_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    ibkr.disconnect()
+                    ibkrQuery = null
+                    confirmIbkrDisconnect = false
+                }) { Text(stringResource(Res.string.iol_disconnect_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmIbkrDisconnect = false }) { Text(stringResource(Res.string.action_cancel)) }
+            },
         )
     }
 
@@ -594,26 +700,31 @@ private fun freshness(syncedAt: Long?): String {
  */
 @Composable
 private fun AutoSyncAlert(
+    broker: String,
     result: BrokerAutoSync,
     onReview: (BrokerPlan) -> Unit,
     onReconnect: () -> Unit,
 ) {
     val (text, onClick, error) = when (result) {
         is BrokerAutoSync.NeedsReview -> Triple(
-            stringResource(Res.string.investments_alert_review, result.plan.transactions.size),
+            stringResource(Res.string.investments_alert_review, broker, result.plan.transactions.size),
             { onReview(result.plan) },
             false,
         )
         is BrokerAutoSync.Applied -> {
             if (result.differences.isEmpty()) return
             Triple(
-                stringResource(Res.string.investments_alert_differences, result.differences.size),
+                stringResource(Res.string.investments_alert_differences, broker, result.differences.size),
                 // Already written: the review only has the differences left.
                 { onReview(result.plan.copy(transactions = emptyList())) },
                 false,
             )
         }
-        BrokerAutoSync.WrongCredentials -> Triple(stringResource(Res.string.investments_alert_password), onReconnect, true)
+        BrokerAutoSync.WrongCredentials -> Triple(
+            stringResource(if (broker == "IBKR") Res.string.investments_alert_token else Res.string.investments_alert_password),
+            onReconnect,
+            true,
+        )
         is BrokerAutoSync.Failed -> return
     }
     val container = if (error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer
@@ -648,10 +759,10 @@ private fun BrokerSheet(
     title: String,
     /** «Conectado como fausto», «Sin conectar en este dispositivo», how IBKR updates. */
     status: String,
-    /** This device holds credentials (the connect action reads «cambiar»). */
-    connectedHere: Boolean,
+    /** «Cambiar usuario o contraseña», «Conectar por API», «Cambiar token»… */
+    connectLabel: String,
+    disconnectLabel: String,
     freshness: String,
-    canConnect: Boolean,
     onSync: (() -> Unit)?,
     onImport: (() -> Unit)?,
     onHoldings: () -> Unit,
@@ -680,17 +791,11 @@ private fun BrokerSheet(
             onImport?.let { SheetAction(Icons.Filled.DocumentScanner, stringResource(Res.string.broker_import_report), onClick = it) }
             SheetAction(Icons.Filled.TrendingUp, stringResource(Res.string.broker_see_holdings), onClick = onHoldings)
             onMovements?.let { SheetAction(Icons.Filled.ListAlt, stringResource(Res.string.broker_see_movements), onClick = it) }
-            if (canConnect) {
-                SheetAction(
-                    Icons.Filled.Person,
-                    stringResource(if (connectedHere) Res.string.broker_change_credentials else Res.string.broker_connect_here),
-                    onClick = onConnect,
-                )
-            }
+            SheetAction(Icons.Filled.Person, connectLabel, onClick = onConnect)
             onDisconnect?.let {
                 SheetAction(
                     Icons.Filled.Logout,
-                    stringResource(Res.string.iol_disconnect_title),
+                    disconnectLabel,
                     color = MaterialTheme.colorScheme.error,
                     onClick = it,
                 )
@@ -726,7 +831,19 @@ private fun SheetAction(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun IbkrHelpSheet(onPick: () -> Unit, onDismiss: () -> Unit) {
+private fun IbkrHelpSheet(
+    initialQuery: String,
+    wrongToken: String,
+    onPick: () -> Unit,
+    onConnect: suspend (token: String, query: String) -> IbkrPreview,
+    onConnected: (IbkrPreview) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var token by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(initialQuery) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -734,6 +851,8 @@ private fun IbkrHelpSheet(onPick: () -> Unit, onDismiss: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
+                .verticalScroll(androidx.compose.foundation.rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
         ) {
@@ -747,6 +866,63 @@ private fun IbkrHelpSheet(onPick: () -> Unit, onDismiss: () -> Unit) {
             Spacer(Modifier.height(20.dp))
             Button(onClick = onPick, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(Res.string.ibkr_pick_file))
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(stringResource(Res.string.ibkr_api_title), style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                stringResource(Res.string.ibkr_api_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = token,
+                onValueChange = { token = it; error = null },
+                label = { Text(stringResource(Res.string.ibkr_token)) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it.filter { c -> c.isDigit() }; error = null },
+                label = { Text(stringResource(Res.string.ibkr_query_id)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            error?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            Spacer(Modifier.height(12.dp))
+            // Tonal: the file is the way that always works, the token the upgrade.
+            androidx.compose.material3.FilledTonalButton(
+                onClick = {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        try {
+                            onConnected(onConnect(token, query))
+                        } catch (e: Throwable) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            error = if (e is IbkrAuthException) wrongToken else e.message ?: e.toString()
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+                enabled = !busy && token.isNotBlank() && query.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (busy) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(stringResource(Res.string.ibkr_connect_action))
+                }
             }
         }
     }

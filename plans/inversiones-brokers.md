@@ -672,7 +672,7 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
 - Hecho: pull-to-refresh de la pestaña y el ícono de sincronizar del top bar.
 - [x] Sync automático (`BrokerAutoSync.kt`, `IolRepository.autoSync`): al
   abrir la app, al abrir la pestaña y en Android cada 6 h con red
-  (`IolSyncWorker`, WorkManager). Sólo después de una primera importación
+  (`BrokerSyncWorker`, WorkManager; IBKR se sumó en la fase 7). Sólo después de una primera importación
   revisada, a lo sumo cada 30 min desde el último sync aplicado (setting
   sincronizado) y cada 10 min por proceso. Escribe el plan sólo si es
   rutinario (`isRoutine`: sin issues, sin apertura, sin transferencias en
@@ -771,11 +771,39 @@ acciones) y las posiciones cerradas como «0,00».
   (`{asOf, accountNumber, positions[{name, ticker?, kind, qty, price, value}]}`)
   y rechazo de filas donde `qty × price ≠ value`.
 
-### Fase 7 — IBKR Flex por API (opcional)
+### Fase 7 — IBKR Flex por API (hecha, adelantada a la fase 6)
 
-- Sólo si hace falta algo más fresco que el mail diario o backfill a demanda.
-  Token + query id en el secure store (o en el worker), `SendRequest` →
-  `GetStatement` con reintento en 1019, respetando 1 req/s.
+- [x] `IbkrFlexApi.kt`: `FlexWebServiceClient` (`SendRequest` →
+  `GetStatement` en `ndcdyn.interactivebrokers.com/AccountManagement/
+  FlexWebService`, `v=3`, User-Agent obligatorio) y `fetchFlexReport` puro:
+  espera mientras IBKR genera (1019 y hermanos; 3 s, 5 s, 8 s… hasta ~2 min),
+  respeta 1018 (rate limit), token vencido/inválido (1011, 1012, 1015, 1020)
+  → `IbkrAuthException`. Verificado en vivo: todo error llega como HTTP 200
+  con `<Status>Fail</Status>` (1020 con un token falso).
+- [x] `IbkrRepository`: token y número de consulta en el secure store
+  (`ibkr.token`, `ibkr.query`, nunca sincronizados); `connect` los guarda
+  sólo si el primer reporte llega, y ese primero pide **un año** (`fd`/`td`,
+  el máximo de un pedido) para traer los depósitos en vez de abrir con un
+  remanente. `sync` usa el período de la consulta (30 días) si sigue a la
+  cobertura, o pide desde el día siguiente a la cobertura hasta ayer (datos
+  de fin de día) si hay un hueco. Un rango que la consulta rechace reintenta
+  sin fechas. `autoSync` como el de IOL: sólo tras una importación revisada,
+  cada 6 h, rutinario se escribe, lo demás queda como aviso; token
+  rechazado → aviso que abre la hoja de conexión.
+- [x] UI: la hoja de IBKR suma «O conectalo por API» (token + número de
+  consulta); la hoja del broker muestra «Conectado por API, consulta N»,
+  sincronizar, cambiar token, desconectar, y sigue ofreciendo importar
+  archivo. Pull-to-refresh, el ícono del top bar, el inicio de la app, abrir
+  la pestaña y el worker de Android (`BrokerSyncWorker`, ex
+  `IolSyncWorker`) sincronizan los dos brokers. Avisos y snackbar por broker.
+  Harness: `-Pshot.route=ibkr-connect`.
+- [x] Pruebas: `IbkrFlexApiTest` (espera, errores, abandono), `IbkrApiTest`
+  (SQLite con un servicio falso que sirve el reporte real: token malo no
+  guarda nada, primer pedido de un año, sync que sigue sin fechas, hueco de
+  dos meses pedido explícito, autoSync y token rotado) e `IbkrLiveTest`
+  (opt-in: `IBKR_TOKEN=… IBKR_QUERY=…`).
+- Sin probar contra la API real con un token válido: el primer pedido con
+  `fd`/`td` de un año y cuánto tarda en generarse.
 
 ---
 
