@@ -760,10 +760,15 @@ fun RootScreen(
                                 // bar; no longer a tab, so it always wears the
                                 // back arrow (bottomBar = null).
                                 entry<BrokerImportRoute> { route ->
+                                    // Connecting a broker creates its accounts right before
+                                    // this opens: re-read the tree so the deposit's source
+                                    // shows a path and the picker lists them.
+                                    LaunchedEffect(route) { ledgerState.refresh() }
                                     val adjustPayee = stringResource(Res.string.broker_adjust_payee, route.brokerName)
                                     BrokerImportScreen(
                                         route = route,
                                         ledger = graph.ledger,
+                                        tree = ledgerState.tree,
                                         apply = { plan ->
                                             when (route.provider) {
                                                 IOL_PROVIDER -> graph.iol.apply(plan)

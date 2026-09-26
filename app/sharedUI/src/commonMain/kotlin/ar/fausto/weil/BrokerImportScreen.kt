@@ -39,6 +39,11 @@ import weil.app.sharedui.generated.resources.action_undo
 import weil.app.sharedui.generated.resources.broker_adjust
 import weil.app.sharedui.generated.resources.broker_adjusted
 import weil.app.sharedui.generated.resources.broker_all_match
+import weil.app.sharedui.generated.resources.broker_counterpart_from
+import weil.app.sharedui.generated.resources.broker_counterpart_from_title
+import weil.app.sharedui.generated.resources.broker_counterpart_to
+import weil.app.sharedui.generated.resources.broker_counterpart_hint
+import weil.app.sharedui.generated.resources.broker_counterpart_to_title
 import weil.app.sharedui.generated.resources.broker_difference_row
 import weil.app.sharedui.generated.resources.broker_differences_body
 import weil.app.sharedui.generated.resources.broker_differences_title
@@ -62,6 +67,8 @@ import weil.app.sharedui.generated.resources.broker_issues_title
 fun BrokerImportScreen(
     route: BrokerImportRoute,
     ledger: TransactionsRepository,
+    /** The account tree, for picking where a deposit came from. */
+    tree: List<AccountNode>,
     apply: suspend (BrokerPlan) -> List<String>,
     /** Settles a cash difference against the opening balance; returns the new transaction's id. */
     adjust: suspend (BalanceDifference) -> String,
@@ -81,6 +88,20 @@ fun BrokerImportScreen(
     var adjusted by remember { mutableStateOf<Set<BalanceDifference>>(emptySet()) }
     var adjusting by remember { mutableStateOf<BalanceDifference?>(null) }
     val differences = plan.differences.filter { it !in adjusted }
+    // Where each deposit/withdrawal really came from or went to, by ref.
+    // Unpicked ones stay on the opening balance (the planner's fallback).
+    var counterparts by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var picking by remember { mutableStateOf<PlannedTransaction?>(null) }
+    // Shortest unique names, like the journal's rows: "Saldo inicial", or
+    // "Banco › Dólares" only when another "Dólares" exists.
+    val paths = remember(tree) {
+        val nodes = tree.flatMap { it.selfAndDescendants }
+        val repeated = nodes.groupingBy { it.account.name.lowercase() }.eachCount().filterValues { it > 1 }.keys
+        nodes.associate { n ->
+            n.account.id to (if (n.account.name.lowercase() in repeated) n.path.displayPath() else n.account.name).censored()
+        }
+    }
+    val needCounterpart = plan.transactions.count { it.needsCounterpart }
     val scales = route.scales + plan.newCommodities.associate { it.id to it.scale }
     val symbols = plan.newCommodities.associate { it.id to it.symbol }
 
@@ -115,7 +136,13 @@ fun BrokerImportScreen(
                                 error = null
                                 scope.launch {
                                     try {
-                                        val ids = apply(plan)
+                                        val chosen = plan.copy(
+                                            transactions = plan.transactions.map { p ->
+                                                p.ref?.let { counterparts[it] }
+                                                    ?.let { p.withCounterpart(route.accounts.opening, it) } ?: p
+                                            },
+                                        )
+                                        val ids = apply(chosen)
                                         onDone()
                                         Feedback.undoable(doneMessage, undoLabel) { ledger.deleteAll(ids) }
                                     } catch (e: Throwable) {
@@ -246,12 +273,61 @@ fun BrokerImportScreen(
                     Spacer(Modifier.height(16.dp))
                 }
             }
+            if (needCounterpart > 0) {
+                item(key = "counterpart-hint") {
+                    Text(
+                        stringResource(Res.string.broker_counterpart_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 12.dp),
+                    )
+                }
+            }
             items(plan.transactions.sortedByDescending { it.transaction.date }, key = { it.ref ?: "opening" }) { planned ->
-                PlannedRow(planned, route.accounts, scales, symbols)
+                val other = if (planned.needsCounterpart) {
+                    planned.ref?.let { counterparts[it] } ?: route.accounts.opening
+                } else {
+                    null
+                }
+                PlannedRow(
+                    planned, route.accounts, scales, symbols,
+                    counterpart = other?.let { id -> paths[id]?.let { stringResource(if (planned.isDeposit(route.accounts)) Res.string.broker_counterpart_from else Res.string.broker_counterpart_to, it) } },
+                    onClick = if (planned.needsCounterpart) ({ picking = planned }) else null,
+                )
             }
         }
     }
+
+    picking?.let { planned ->
+        val deposit = planned.isDeposit(route.accounts)
+        // The broker's own accounts would make the movement a no-op.
+        val own = route.accounts.cash.values.toSet() + route.accounts.holdings
+        AccountPickerSheet(
+            tree = tree.filter { it.account.type in COUNTERPART_TYPES },
+            title = stringResource(if (deposit) Res.string.broker_counterpart_from_title else Res.string.broker_counterpart_to_title),
+            subtitle = planned.transaction.payee,
+            exclude = own,
+            typeOptions = COUNTERPART_TYPES,
+            initialType = AccountType.Asset,
+            onDismiss = { picking = null },
+            onPick = { node ->
+                val ref = planned.ref
+                if (ref != null) {
+                    counterparts = if (node.account.id == route.accounts.opening) counterparts - ref
+                    else counterparts + (ref to node.account.id)
+                }
+                picking = null
+            },
+        )
+    }
 }
+
+/** Money into the broker (its cash leg is positive), as opposed to a withdrawal. */
+private fun PlannedTransaction.isDeposit(accounts: BrokerAccounts): Boolean =
+    transaction.drafts.any { it.accountId in accounts.cash.values && !it.amountText.trim().startsWith("-") }
+
+/** Where a broker's deposit can come from: an own account, or the opening balance. */
+private val COUNTERPART_TYPES = listOf(AccountType.Asset, AccountType.Liability, AccountType.Equity)
 
 @Composable
 private fun Section(title: String) {
@@ -273,6 +349,9 @@ private fun PlannedRow(
     accounts: BrokerAccounts,
     scales: Map<String, Int>,
     symbols: Map<String, String>,
+    /** Display path of a transfer's other account ("Patrimonio › Saldo inicial"), null for the rest. */
+    counterpart: String? = null,
+    onClick: (() -> Unit)? = null,
 ) {
     val postings = remember(planned) { runCatching { resolvePostings(planned.transaction.drafts) }.getOrDefault(emptyList()) }
     val cashAccounts = accounts.cash.values.toSet()
@@ -289,8 +368,8 @@ private fun PlannedRow(
         icon = if (planned.kind == PlannedKind.Opening) Icons.Filled.AccountTree else Icons.Filled.TrendingUp,
         paint = accountPaint(null),
         title = planned.transaction.payee,
-        subtitle = listOf(day, holdings).filter { it.isNotBlank() }.joinToString(" · "),
-        onClick = {},
+        subtitle = listOf(day, holdings, counterpart.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
+        onClick = onClick ?: {},
     ) {
         // One line per currency: a MEP or an opening moves two, and side by
         // side they squeezed the payee down to a few letters.

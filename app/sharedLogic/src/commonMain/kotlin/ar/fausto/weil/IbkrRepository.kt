@@ -140,7 +140,7 @@ class IbkrRepository(
         val started = epochMillis()
         val statements = withContext(Dispatchers.Default) { parseFlexReport(bytes.decodeToString()) }
         val statement = statements.first()
-        val accounts = brokers.connect(IBKR_PROVIDER, "IBKR", ibkrCurrencies(statement), withTransfers = true)
+        val accounts = brokers.connect(IBKR_PROVIDER, "IBKR", ibkrCurrencies(statement))
         val known = brokers.knownRefs(IBKR_PROVIDER)
         val batch = withContext(Dispatchers.Default) { ibkrBatch(statement) }
         val gap = coverageGap(coverage(), statement.fromDate)

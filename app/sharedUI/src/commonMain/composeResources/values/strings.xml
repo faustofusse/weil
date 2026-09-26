@@ -119,6 +119,11 @@
     <string name="broker_adjust">Ajustar</string>
     <string name="broker_adjusted">Saldo inicial ajustado</string>
     <string name="broker_adjust_payee">Ajuste de saldo inicial %1$s</string>
+    <string name="broker_counterpart_hint">El broker no dice de qué cuenta salió la plata de cada depósito. Tocalo para elegirla; si no, queda contra el saldo inicial.</string>
+    <string name="broker_counterpart_from">desde %1$s</string>
+    <string name="broker_counterpart_to">hacia %1$s</string>
+    <string name="broker_counterpart_from_title">¿De qué cuenta salió la plata?</string>
+    <string name="broker_counterpart_to_title">¿A qué cuenta fue la plata?</string>
     <string name="broker_all_match">Todo coincide con el broker</string>
 
     <!-- Categories (expense accounts) -->

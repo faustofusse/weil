@@ -207,6 +207,11 @@ fun main(args: Array<String>) {
                         val preview = graph.ibkr.preview(File("../sharedLogic/src/jvmTest/resources/ibkr/trade-ttwo.xml").readBytes())
                         BrokerImportRoute("IBKR", IBKR_PROVIDER, preview.plan, preview.accounts, graph.brokers.scales())
                     }
+                    // The deposit backfill: a transfer whose source the user picks.
+                    "ibkr-deposit" -> kotlinx.coroutines.runBlocking {
+                        val preview = graph.ibkr.preview(File("../sharedLogic/src/jvmTest/resources/ibkr/backfill-deposit.xml").readBytes())
+                        BrokerImportRoute("IBKR", IBKR_PROVIDER, preview.plan, preview.accounts, graph.brokers.scales())
+                    }
                     "holdings" -> invest?.let { AccountDetailRoute(it.accounts.holdings) }
                     "instrument" -> invest?.let { AccountDetailRoute(it.accounts.holdings, "BCBA:MELI") }
                     "tx-buy" -> invest?.let { TransactionEditRoute(it.fractionalBuy) }

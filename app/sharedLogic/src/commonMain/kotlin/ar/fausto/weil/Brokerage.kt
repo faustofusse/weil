@@ -124,10 +124,11 @@ sealed interface BrokerEvent {
     ) : BrokerEvent
 
     /**
-     * Money in (+) or out (−) of the broker. The other side is a bank account
-     * the planner can't see: the transaction is booked against the
-     * transfers-in-transit account and flagged, so the review screen can
-     * match it with the bank's movement (Reconcile's Mirror).
+     * Money in (+) or out (−) of the broker. The other side is an account the
+     * broker never names (IBKR's Flex has no sender field): the planner books
+     * it against the opening balance and flags it, and the review screen lets
+     * the user point it at the account the money really came from or went to
+     * ([PlannedTransaction.withCounterpart]).
      */
     data class CashTransfer(
         override val ref: String,
@@ -218,12 +219,6 @@ data class BrokerAccounts(
     val commissions: String,
     val opening: String,
     val adjustments: String,
-    /**
-     * Counterpart of deposits/withdrawals until they are matched with the
-     * bank. Null for a broker that never reports them (IOL): a transfer
-     * event then becomes an issue instead of a guess.
-     */
-    val transfers: String? = null,
 )
 
 /** A holding as the ledger has it: quantity and total cost, both minor units. */
@@ -252,9 +247,28 @@ data class PlannedTransaction(
     val transaction: NewTransaction,
     /** The namespaced source ref ("ibkr:42307900416"); null for the opening. */
     val ref: String?,
-    /** A transfer whose other side is still the in-transit account. */
+    /**
+     * A deposit or withdrawal whose other side is the fallback
+     * ([BrokerAccounts.opening]): the broker doesn't say which account the
+     * money came from, so a person should.
+     */
     val needsCounterpart: Boolean = false,
-)
+) {
+    /**
+     * The same transaction with its [fallback] leg (the opening balance)
+     * moved to [accountId]: the bank account a deposit came from, or the one
+     * a withdrawal went to. Amounts, dates and sources are untouched; a
+     * transaction that doesn't need a counterpart is returned as is.
+     */
+    fun withCounterpart(fallback: String, accountId: String): PlannedTransaction {
+        if (!needsCounterpart || accountId == fallback) return this
+        return copy(
+            transaction = transaction.copy(
+                drafts = transaction.drafts.map { if (it.accountId == fallback) it.copy(accountId = accountId) else it },
+            ),
+        )
+    }
+}
 
 /** An event the planner could not turn into a transaction, and why (developer text). */
 data class PlanIssue(val ref: String?, val message: String)
@@ -498,12 +512,14 @@ private class BrokerPlanner(
         val cashAccount = cashAccount(e.cashCommodity)
         val amount = minor(e.amount, e.cashCommodity)
         if (amount == 0L) throw PlanException("zero transfer")
-        val transfers = accounts.transfers ?: throw PlanException("no transfers account for this broker")
+        // Against the opening balance until someone says where it came from:
+        // money that existed before the ledger knew about it is exactly what
+        // that account means, and it moves no net worth twice.
         add(
             PlannedKind.Transfer, e, ref,
             listOf(
                 draft(cashAccount, amount, e.cashCommodity),
-                draft(transfers, -amount, e.cashCommodity),
+                draft(accounts.opening, -amount, e.cashCommodity),
             ),
             needsCounterpart = true,
         )

@@ -22,7 +22,6 @@ class BrokerageTest {
         commissions = "comisiones",
         opening = "saldo-inicial",
         adjustments = "ajustes",
-        transfers = "en-transito",
     )
 
     private fun d(text: String) = Decimal.parse(text)!!
@@ -69,7 +68,8 @@ class BrokerageTest {
         val transfer = result.transactions.single()
         assertEquals(PlannedKind.Transfer, transfer.kind)
         assertTrue(transfer.needsCounterpart)
-        assertEquals(setOf(listOf("cash-usd", 189507L, "USD", null), listOf("en-transito", -189507L, "USD", null)), transfer.lines())
+        // Against the opening balance until the user names the source.
+        assertEquals(setOf(listOf("cash-usd", 189507L, "USD", null), listOf("saldo-inicial", -189507L, "USD", null)), transfer.lines())
         assertEquals(listOf(TransactionSource(EventSource.Broker, "ibkr:42307900416")), transfer.transaction.sources)
         // Everything the snapshot holds is explained by the batch: no opening.
         assertTrue(result.differences.isEmpty())
@@ -212,13 +212,15 @@ class BrokerageTest {
     }
 
     @Test
-    fun aTransferWithoutATransfersAccountIsAnIssue() {
-        val result = planBrokerImport(
-            BrokerBatch("iol", listOf(deposit)),
-            accounts.copy(transfers = null), BrokerLedgerView(), emptySet(),
-        )
-        assertTrue(result.transactions.isEmpty())
-        assertEquals("iol:42307900416", result.issues.single().ref)
+    fun theUserCanPointADepositAtTheAccountItCameFrom() {
+        val transfer = plan(listOf(deposit)).transactions.single()
+        val fromBank = transfer.withCounterpart(accounts.opening, "banco-usd")
+        assertEquals(setOf(listOf("cash-usd", 189507L, "USD", null), listOf("banco-usd", -189507L, "USD", null)), fromBank.lines())
+        assertEquals(transfer.transaction.sources, fromBank.transaction.sources)
+        // Picking the fallback again, or a row that isn't a transfer, changes nothing.
+        assertEquals(transfer, transfer.withCounterpart(accounts.opening, accounts.opening))
+        val buy = plan(listOf(deposit, ttwoBuy)).transactions.single { it.kind == PlannedKind.Trade }
+        assertEquals(buy, buy.withCounterpart(accounts.opening, "banco-usd"))
     }
 
     /**

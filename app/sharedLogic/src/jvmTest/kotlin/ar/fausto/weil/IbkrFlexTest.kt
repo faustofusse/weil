@@ -26,7 +26,6 @@ class IbkrFlexTest {
         commissions = "comisiones",
         opening = "saldo-inicial",
         adjustments = "ajustes",
-        transfers = "en-transito",
     )
 
     @Test

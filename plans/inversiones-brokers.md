@@ -557,8 +557,9 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
       `Patrimonio:Saldo inicial` cuando el ledger está vacío y hay snapshot
       (snapshot − efecto del lote; costo de apertura: el del broker pro rata, o
       la base de una venta posterior, o el primer precio del lote, o el precio
-      del snapshot respetando `price_per`), transferencias contra la cuenta en
-      tránsito marcadas `needsCounterpart`, diferencias como datos, y toda
+      del snapshot respetando `price_per`), transferencias contra
+      `Patrimonio:Saldo inicial` marcadas `needsCounterpart` (antes una cuenta
+      en tránsito, ver fase 3), diferencias como datos, y toda
       transacción planeada pasa por `resolvePostings` (un bug del planner es un
       issue, nunca una fila desbalanceada).
 - [x] `BrokerageTest` (16): depósito de IBKR, compra de TTWO con comisión
@@ -583,7 +584,16 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
     del ledger es la de IBKR.
   - Forex (`assetCategory="CASH"`, `EUR.USD`) → `FxConversion`.
   - Cash transactions: depósitos/extracciones → `CashTransfer` contra
-    `Transferencias en tránsito` (una raíz compartida, no bajo el broker);
+    `Patrimonio:Saldo inicial`, marcadas `needsCounterpart`. El Flex no dice
+    de qué cuenta salió la plata (ninguna fila de `CashTransaction` trae
+    remitente, banco ni cuenta), así que la revisión lo pregunta: tocar el
+    depósito abre el selector de cuentas (activo, pasivo, patrimonio; las del
+    broker excluidas) y `PlannedTransaction.withCounterpart` mueve esa pata;
+    sin elegir, queda contra el saldo inicial. Reemplaza la cuenta
+    `Transferencias en tránsito` de la primera versión, que dejaba un saldo
+    negativo en el árbol hasta que alguien lo arreglara a mano (ya no se
+    crea; una existente se borra editando el depósito). Pendiente: proponer
+    la pata del banco (`Reconcile`, `Mirror`) como opción preseleccionada;
     un grupo con el mismo `clientReference` que suma cero (adelanto +
     cancelación) se descarta; si la cancelación viene en el reporte
     siguiente entran fila por fila y se completan solas. Dividendos con la
@@ -596,7 +606,7 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
   - `BrokerBatch.since`: la apertura se fecha en el `fromDate` del reporte,
     no un minuto antes del primer trade.
 - [x] `IbkrRepository`: `preview(bytes)` (crea/reusa `IBKR:{Dólares, …,
-  Cartera}` y la cuenta en tránsito; una moneda nueva en un reporte
+  Cartera}`; una moneda nueva en un reporte
   posterior agrega su caja), `apply`, y **cobertura** en
   `broker.ibkr.coverage` (rangos fusionados): un reporte que empieza después
   del día siguiente al último cubierto trae una nota con los días que faltan.
@@ -675,8 +685,8 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
   (`BrokerSyncWorker`, WorkManager; IBKR se sumó en la fase 7). Sólo después de una primera importación
   revisada, a lo sumo cada 30 min desde el último sync aplicado (setting
   sincronizado) y cada 10 min por proceso. Escribe el plan sólo si es
-  rutinario (`isRoutine`: sin issues, sin apertura, sin transferencias en
-  tránsito); si no, nada y queda como aviso. Movimientos nuevos → snackbar
+  rutinario (`isRoutine`: sin issues, sin apertura, sin depósitos ni
+  extracciones: su cuenta de origen la elige una persona); si no, nada y queda como aviso. Movimientos nuevos → snackbar
   con deshacer. Las diferencias nunca se escriben: aviso que abre la
   revisión con ellas. Contraseña rechazada → aviso que abre la conexión.
   Pendiente: iOS en segundo plano (BGTaskScheduler).

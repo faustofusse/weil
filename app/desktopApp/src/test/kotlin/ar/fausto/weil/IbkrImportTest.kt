@@ -35,7 +35,9 @@ class IbkrImportTest {
         assertEquals(emptyList(), backfill.plan.issues)
         val paths = graph.accounts.tree().flatMap { it.selfAndDescendants }.associate { it.account.id to it.path }
         assertEquals("IBKR:Dólares", paths[backfill.accounts.cash.getValue("USD")])
-        assertEquals(TRANSFERS_ACCOUNT_NAME, paths[backfill.accounts.transfers])
+        // No in-transit account: the deposit waits on the opening balance.
+        val deposit = backfill.plan.transactions.single { it.kind == PlannedKind.Transfer }
+        assertTrue(deposit.transaction.drafts.any { it.accountId == backfill.accounts.opening })
         graph.ibkr.apply(backfill.plan)
 
         val trade = graph.ibkr.preview(bytes("trade-ttwo.xml"))
