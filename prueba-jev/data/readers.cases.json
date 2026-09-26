@@ -263,5 +263,35 @@
     "expect": {
       "isMovement": false
     }
+  },
+  {
+    "id": "topup-in-wallet",
+    "origin": "Mercado Pago",
+    "title": "Tu dinero ya está disponible",
+    "text": "Ingresaste $ 30.000 y ya están generando rendimientos en tu cuenta.",
+    "when": 1790300762395,
+    "kind": "notification",
+    "userName": "Fausto",
+    "expect": {
+      "isMovement": true,
+      "direction": "transfer",
+      "amountMinor": 3000000,
+      "account": "Mercado Pago",
+      "destination": "Mercado Pago"
+    }
+  },
+  {
+    "id": "topup-out-bank",
+    "origin": "Santander",
+    "title": "Transferiste con éxito",
+    "text": "Enviaste $ 30.000,00 a Fausto Fusse.",
+    "when": 1790300758935,
+    "kind": "notification",
+    "userName": "Fausto",
+    "expect": {
+      "isMovement": true,
+      "amountMinor": 3000000,
+      "account": "Santander Pesos"
+    }
   }
 ]

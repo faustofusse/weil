@@ -349,6 +349,70 @@ class AutoRecordTest {
         )
     }
 
+    /**
+     * "Ingresaste $ 30.000" from the wallet the user topped up from their
+     * bank: the reader answers a transfer whose source and destination are
+     * both the wallet. It used to be signed like an outgoing transfer, which
+     * took the money *out* of the wallet and wrote a second row next to the
+     * bank's "Enviaste".
+     */
+    private fun topUpRead() = read(
+        direction = "transfer",
+        account = "Billetera",
+        destination = "Billetera",
+        payee = "",
+    )
+
+    @Test
+    fun aTransferThatArrivedIsMoneyIn() {
+        val created = assertIs<AutoRecordPlan.Create>(
+            planAutoRecord(EventSource.Notification, "notif-3", trace(read = topUpRead()), tree, emptyMap()),
+        )
+        // +X on the account it landed in; the source is unknown, so the far
+        // leg is the income fallback, which a Mirror later repoints.
+        assertEquals(listOf("cash", "salary"), created.entry.drafts.map { it.accountId })
+        assertEquals("21.389,00", created.entry.drafts[0].amountText)
+        assertEquals("-21.389,00", created.entry.drafts[1].amountText)
+    }
+
+    @Test
+    fun aTransferThatArrivedCompletesTheBanksSideOfIt() {
+        // The bank's push came first: Banco \u2192 Comida (destination unknown).
+        val sent = recentExpense(payee = "Fausto Fusse")
+        val candidate = trace(read = topUpRead()).candidate()!!
+        val event = candidate.toEvent("notif-3", null).copy(source = EventSource.Notification)
+        val outcome = assertIs<MatchOutcome.Confident>(matchEvent(event, listOf(sent)))
+        assertEquals(MatchRelation.Mirror, outcome.match.relation)
+
+        val attach = assertIs<AutoRecordPlan.Attach>(
+            planAutoRecord(
+                EventSource.Notification,
+                "notif-3",
+                trace(read = topUpRead(), match = outcome, facts = listOf(sent)),
+                tree,
+                emptyMap(),
+            ),
+        )
+        // One transfer Banco \u2192 Billetera instead of two rows.
+        assertEquals("tx-0", attach.op.transactionId)
+        assertEquals("p-1", attach.op.retargetPostingId)
+        assertEquals("cash", attach.op.retargetAccountId)
+    }
+
+    @Test
+    fun anOutgoingTransferIsNotMistakenForOneThatArrived() {
+        val created = assertIs<AutoRecordPlan.Create>(
+            planAutoRecord(
+                EventSource.Email,
+                "mail-1",
+                trace(read = read(direction = "transfer", destination = "Billetera"), category = null),
+                tree,
+                emptyMap(),
+            ),
+        )
+        assertEquals("-21.389,00", created.entry.drafts[0].amountText)
+    }
+
     @Test
     fun theGateItself() {
         val movement = read()

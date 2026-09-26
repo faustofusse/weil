@@ -198,7 +198,15 @@ class SuggestRepository(
         val amount = read.amount.takeIf { it.isNotBlank() }
             ?.let { Money.parse(it, read.commodity.ifBlank { Money.DEFAULT_COMMODITY })?.minorUnits }
         val ownAccountId = read.account?.let { path -> flat.firstOrNull { it.path == path }?.account?.id }
-        val direction = ImportDirection.fromWire(read.direction)
+        // Money arriving from another account of the user's is +X on the
+        // account the message is about. Signing it like an outgoing transfer
+        // hides the other half of the transfer from the matcher (see
+        // [isIncomingTransfer]).
+        val direction = if (read.isIncomingTransfer()) {
+            ImportDirection.Income
+        } else {
+            ImportDirection.fromWire(read.direction)
+        }
         val signed = when (direction) {
             ImportDirection.Income -> amount ?: 0L
             else -> -(amount ?: 0L)
@@ -433,6 +441,15 @@ data class ReadResponse(
     val readerMs: Long = 0,
 )
 
+/**
+ * A transfer that *arrived* in the account the message is about. The reader
+ * reports it with the same account as source and destination: the message
+ * only knows where the money landed. The worker's `ownDestination` keeps that
+ * pair for this reason.
+ */
+fun ReadResponse.isIncomingTransfer(): Boolean =
+    direction == "transfer" && destination != null && destination == account
+
 /** One Choice answer, flattened: null [path] means "none of these fits". */
 @Serializable
 data class PickedAccount(
@@ -562,6 +579,33 @@ data class SuggestTrace(
             picked?.path?.takeIf { picked.confidence >= MIN_CONFIDENCE }?.let { byPath[it] }
 
         val own = pick(decision?.myAccount) ?: read.account?.let { byPath[it] }
+
+        // Money that arrived from another of the user's accounts: "Ingresaste
+        // $ 30.000" on the wallet the user just topped up from their bank. The
+        // reader marks it as a transfer whose destination is the account the
+        // message is about. It is recorded as +X on that account with the
+        // income fallback as the far leg, which is what lets the matcher find
+        // the bank's "Enviaste" row as a Mirror and turn the pair into one
+        // transfer. Recording it like an outgoing transfer took the money
+        // *out* of the wallet and wrote a second row.
+        val landed = read.destination?.let { byPath[it] }
+        if (direction == ImportDirection.Transfer && landed != null &&
+            (read.isIncomingTransfer() || landed == own)
+        ) {
+            return ImportCandidate(
+                date = message?.at ?: epochMillis(),
+                payee = read.payee,
+                note = read.note,
+                commodity = read.commodity.ifBlank { Money.DEFAULT_COMMODITY },
+                direction = ImportDirection.Income,
+                accountId = landed,
+                accountPath = accountPaths[landed],
+                // No category: the source account is unknown, so the far leg
+                // is the income fallback, the leg a Mirror repoints.
+                splits = listOf(ImportSplit(amountMinor = amount, categoryAccountId = null, categoryPath = null)),
+            )
+        }
+
         val category = when (direction) {
             ImportDirection.Income -> pick(decision?.incomeCategory)
             // Jev's pick when it is sure, else the account the reader named

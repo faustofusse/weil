@@ -154,7 +154,9 @@ export function messagePrompt(body: MessageBody): string {
     'Direction is from the recipient point of view: "expense" when they paid or were charged, "income" when they',
     'received money, "transfer" only when BOTH sides are accounts they own (topping up a wallet, paying their own',
     'card, buying dollars, withdrawing cash when one of their accounts holds physical cash). Money they send to',
-    'themselves is a transfer, and destination is the account of theirs it lands in.',
+    'themselves is a transfer, and destination is the account of theirs it lands in. When the message is from the',
+    'account the money arrived in and only says it arrived from another of their accounts (a top-up, "Ingresaste"),',
+    'account and destination are both that account.',
     'Be strict with isMovement: most messages carrying a "$" are promotions ("¡15% OFF! Compra mínima: $15.000").',
     'A movement says money already left or entered an account: "Pagaste", "Se debitó", "Recibiste", "Compra aprobada".',
     own.length > 0
@@ -397,10 +399,15 @@ function normalizeReading(reading: ReadMessage, accounts: MessageAccount[] = [])
 }
 
 /**
- * The reader's destination, only when it is one of the user's own accounts
- * and not the one the money left: a transfer lands on an asset or a card, and
- * a category or the source account here would post a leg nobody meant. Given
- * as the account's path, which is what the app looks accounts up by.
+ * The reader's destination, only when it is one of the user's own accounts: a
+ * transfer lands on an asset or a card, and a category here would post a leg
+ * nobody meant. Given as the account's path, which is what the app looks
+ * accounts up by.
+ *
+ * A destination equal to the source account is kept. It is how the reader
+ * reports money that *arrived* ("Ingresaste $ 30.000" from the wallet the user
+ * topped up), and the app records it as +X there (`isIncomingTransfer`).
+ * Dropping it made the app take the money out of that account instead.
  */
 function ownDestination(reading: ReadMessage, accounts: MessageAccount[]): string | null {
   if (reading.direction !== 'transfer' || reading.destination == null) return null;
@@ -408,8 +415,6 @@ function ownDestination(reading: ReadMessage, accounts: MessageAccount[]): strin
   const own = accounts.filter((a) => a.type === 'asset' || a.type === 'liability');
   const hit = own.find((a) => a.path === named || a.label === named);
   if (!hit) return null;
-  const from = reading.account == null ? '' : String(reading.account).trim();
-  if (hit.path === from || hit.label === from) return null;
   return hit.path;
 }
 
