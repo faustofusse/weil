@@ -65,6 +65,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
+import weil.app.sharedui.generated.resources.ibkr_not_a_report
+import weil.app.sharedui.generated.resources.ibkr_up_to_date
+import weil.app.sharedui.generated.resources.import_no_picker
 import weil.app.sharedui.generated.resources.action_undo
 import weil.app.sharedui.generated.resources.investments_auto_imported
 import org.jetbrains.compose.resources.getString
@@ -302,6 +305,34 @@ fun RootScreen(
                         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
                     }
 
+                    // An IBKR Flex report, from whichever door it came in
+                    // (the investments tab, Home's import, a share): planned
+                    // here and reviewed like an IOL sync. Parsing and planning
+                    // are local and quick; a bad file is a snackbar.
+                    fun openIbkrReport(bytes: ByteArray) {
+                        scope.launch {
+                            try {
+                                val preview = graph.ibkr.preview(bytes)
+                                val plan = preview.plan
+                                if (plan.transactions.isEmpty() && plan.differences.isEmpty() && plan.issues.isEmpty()) {
+                                    Feedback.show(getString(Res.string.ibkr_up_to_date))
+                                } else {
+                                    navigate(BrokerImportRoute("IBKR", IBKR_PROVIDER, plan, preview.accounts, graph.brokers.scales()))
+                                }
+                            } catch (e: Throwable) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                Feedback.show(
+                                    if (e is FlexParseException) getString(Res.string.ibkr_not_a_report) else e.message ?: e.toString(),
+                                )
+                            }
+                        }
+                    }
+
+                    /** A document picked or shared: a Flex report goes to IBKR, anything else to the AI import. */
+                    fun openDocument(document: PickedDocument) {
+                        if (isFlexReport(document.bytes)) openIbkrReport(document.bytes) else navigate(ImportReviewRoute(document))
+                    }
+
                     // Tabs are roots, not pushes: selecting one replaces the
                     // nested stack's single entry, so the bar never
                     // accumulates a back trail of sideways moves (Inicio →
@@ -333,7 +364,7 @@ fun RootScreen(
                         ledgerState = ledgerState,
                         userState = userState,
                         documents = { graph.documents },
-                        onImportDocument = { navigate(ImportReviewRoute(it)) },
+                        onImportDocument = { openDocument(it) },
                         scanner = { graph.scanner },
                         // Hand off first — the user is standing
                         // at a counter — then write the row from
@@ -442,7 +473,9 @@ fun RootScreen(
                     if (loggedIn) {
                         androidx.compose.runtime.DisposableEffect(Unit) {
                             SharedImportInbox.observe { document ->
-                                if (backStack.lastOrNull() !is ImportReviewRoute) {
+                                if (isFlexReport(document.bytes)) {
+                                    openIbkrReport(document.bytes)
+                                } else if (backStack.lastOrNull() !is ImportReviewRoute) {
                                     backStack.add(ImportReviewRoute(document))
                                 }
                             }
@@ -486,6 +519,14 @@ fun RootScreen(
                                                 brokers = graph.brokers,
                                                 onReviewImport = { navigate(it) },
                                                 onOpenAccount = { navigate(it) },
+                                                pickReport = {
+                                                    val picker = graph.documents
+                                                    if (picker == null) {
+                                                        Feedback.show(getString(Res.string.import_no_picker))
+                                                    } else {
+                                                        picker.pick()?.let { openDocument(it) }
+                                                    }
+                                                },
                                                 openFirstBroker = openBrokerSheet,
                                                 onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                                 bottomBar = bar,
@@ -716,6 +757,7 @@ fun RootScreen(
                                         apply = { plan ->
                                             when (route.provider) {
                                                 IOL_PROVIDER -> graph.iol.apply(plan)
+                                                IBKR_PROVIDER -> graph.ibkr.apply(plan)
                                                 else -> graph.brokers.apply(plan)
                                             }.also { ledgerState.refresh() }
                                         },

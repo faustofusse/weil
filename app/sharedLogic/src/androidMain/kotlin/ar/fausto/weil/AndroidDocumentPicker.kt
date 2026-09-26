@@ -34,7 +34,7 @@ class AndroidDocumentPicker(private val activity: Activity) : DocumentPicker {
             // The aliases are only for the *filter*: a CSV written by a
             // spreadsheet app is often advertised under a legacy type, and a
             // filter of exactly "text/csv" greys it out in the picker.
-            launcher.launch((IMPORTABLE_MIME_TYPES + CSV_MIME_ALIASES).distinct().toTypedArray())
+            launcher.launch((IMPORTABLE_MIME_TYPES + CSV_MIME_ALIASES + FLEX_MIME_TYPES).distinct().toTypedArray())
         } ?: return null
         return activity.readDocument(uri)
     }
@@ -60,6 +60,9 @@ internal fun Context.readDocument(uri: Uri): PickedDocument? {
     // signal, and the worker only knows one spelling.
     val looksLikeCsv = name?.endsWith(".csv", ignoreCase = true) == true
     val mime = when {
+        // An IBKR report, whatever the provider called it (Downloads says
+        // text/xml, a mail app octet-stream): the content decides.
+        isFlexReport(bytes) -> "application/xml"
         reported in CSV_MIME_ALIASES -> "text/csv"
         looksLikeCsv && (reported == "text/plain" || reported == "application/octet-stream") -> "text/csv"
         else -> reported
@@ -77,7 +80,7 @@ fun Context.handleSharedDocument(intent: Intent?): Boolean {
     @Suppress("DEPRECATION")
     val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) ?: return false
     val document = readDocument(uri) ?: return false
-    if (document.mimeType !in IMPORTABLE_MIME_TYPES) return false
+    if (document.mimeType !in IMPORTABLE_MIME_TYPES && !isFlexReport(document.bytes)) return false
     SharedImportInbox.offer(document)
     return true
 }

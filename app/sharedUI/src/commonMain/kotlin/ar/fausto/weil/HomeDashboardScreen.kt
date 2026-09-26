@@ -137,7 +137,7 @@ fun HomeDashboardScreen(
                 Feedback.show(e.message ?: e.toString())
                 null
             } ?: return@launch
-            if (document.mimeType !in IMPORTABLE_MIME_TYPES) {
+            if (document.mimeType !in IMPORTABLE_MIME_TYPES && !isFlexReport(document.bytes)) {
                 Feedback.show(unsupportedMessage)
                 return@launch
             }

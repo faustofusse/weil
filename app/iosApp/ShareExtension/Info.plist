@@ -19,6 +19,7 @@
 					ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image"
 					|| ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf"
 					|| ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.comma-separated-values-text"
+					|| ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.xml"
 				).@count == 1
 			).@count == 1</string>
 		</dict>

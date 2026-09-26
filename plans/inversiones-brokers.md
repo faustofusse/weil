@@ -396,7 +396,8 @@ Sin broker conectado, tres botones:
   «Importar archivo».
 - **Resumen de otro banco (PDF)**: el importador de custodia (fase 6).
 
-**Estado:** IBKR y el resumen PDF todavía dicen «Pronto».
+**Estado:** IBKR funciona por archivo (fase 3); el resumen PDF todavía dice
+«Pronto».
 
 ### Inicio
 
@@ -486,11 +487,17 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
       recursos en tests multiplataforma no es trivial; el código que prueban es
       común.
 - [x] IBKR: backfill con cash transactions, cash report, conversion rates.
-- [ ] IBKR: XML con la compra de TTWO (`Trades`, `OpenPositions`,
-      `SecuritiesInfo`). Correr `weil` con Last 30 Days el día hábil siguiente.
-      Guardarlo scrubbeado (sin nombre, dirección, fecha de nacimiento, mail,
-      DNI/CUIT; números de cuenta reemplazados) en
-      `app/sharedLogic/src/jvmTest/resources/ibkr/`. Nunca el crudo en el repo.
+- [x] IBKR: XML con la compra de TTWO, scrubbeado en
+      `jvmTest/resources/ibkr/trade-ttwo.xml` (`AccountInformation` reducida a
+      id y moneda, número de cuenta `U0000000`, `ConversionRates` recortadas).
+      Lo que confirmó: la compra llegó como **dos ejecuciones** de una orden
+      (0,0002 @ 202,54 + 0,4937 @ 202,43), `proceeds` negativo, comisión
+      negativa en `ibCommission`, `cost` = `-netCash`, `costBasisMoney`
+      100,980002 = bruto + comisión, `markPrice` 201,44, `endingCash`
+      1.794,089997528 con una fila `BASE_SUMMARY` duplicada. La compra fue el
+      25/09, no antes. El backfill del depósito no se había guardado:
+      `backfill-deposit.xml` lo reconstruye con los montos y fechas anotados
+      acá.
 - [ ] Sacar los campos personales de *Account Information* de la query
       (dejar Account ID, Currency, Name, Account Type, Date Opened).
 
@@ -565,14 +572,49 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
   IOL, y armar `BrokerLedgerView` desde la base (saldos por cuenta y posición
   con costo de la cartera).
 
-### Fase 3 — IBKR por archivo
+### Fase 3 — IBKR por archivo (hecha)
 
-- Parser Flex XML en commonMain (el XML es plano, todo atributos: un lector
-  chico alcanza; si no, `xmlutil`).
-- Entrada por `DocumentPicker` / compartir → pantalla de revisión (reusar el
-  patrón de `ImportReviewScreen`: crear / asociar / omitir, un Snackbar con
-  deshacer).
-- Primera fuente porque no pide credenciales y el fixture ya existe.
+- [x] `IbkrFlex.kt` (puro): `parseFlexReport` (un escáner de tags con
+  atributos, sin dependencia XML) e `ibkrBatch` → `BrokerBatch`.
+  - Las ejecuciones de una orden en un día son **un** trade (ref
+    `ibOrderID-tradeDate`: una orden GTC que se llena mañana es otro trade).
+    Comisión y `taxes` capitalizados; comisión en otra moneda →
+    `foreignFees`. Venta: base = `netCash − fifoPnlRealized`, así la ganancia
+    del ledger es la de IBKR.
+  - Forex (`assetCategory="CASH"`, `EUR.USD`) → `FxConversion`.
+  - Cash transactions: depósitos/extracciones → `CashTransfer` contra
+    `Transferencias en tránsito` (una raíz compartida, no bajo el broker);
+    un grupo con el mismo `clientReference` que suma cero (adelanto +
+    cancelación) se descarta; si la cancelación viene en el reporte
+    siguiente entran fila por fila y se completan solas. Dividendos con la
+    retención del mismo `conid` y día; intereses. Otros tipos → nota.
+  - Instrumentos `MERCADO:SÍMBOLO` (`NASDAQ:TTWO`, el mismo id que IOL),
+    acciones/ETF escala 4, bonos por 100 VN; opciones y futuros → nota.
+  - Snapshot: `CashReportCurrency` sin `BASE_SUMMARY` + `OpenPositions`;
+    precios: `markPrice` a las 16:00 de Nueva York. Horas en hora del Este
+    con DST de EE.UU.; fechas solas a medianoche ART.
+  - `BrokerBatch.since`: la apertura se fecha en el `fromDate` del reporte,
+    no un minuto antes del primer trade.
+- [x] `IbkrRepository`: `preview(bytes)` (crea/reusa `IBKR:{Dólares, …,
+  Cartera}` y la cuenta en tránsito; una moneda nueva en un reporte
+  posterior agrega su caja), `apply`, y **cobertura** en
+  `broker.ibkr.coverage` (rangos fusionados): un reporte que empieza después
+  del día siguiente al último cubierto trae una nota con los días que faltan.
+- [x] Entradas: la fila de IBKR en la pestaña abre una hoja con los pasos
+  para armar la query y «Elegir archivo»; la hoja del broker conectado tiene
+  «Importar reporte»; compartir un `.xml` o elegirlo desde Inicio también
+  funciona (el contenido decide, `isFlexReport`, no el tipo MIME). Android:
+  filtro del picker y del SEND con `text/xml`/`application/xml`; iOS:
+  picker, share extension e Info.plist con `public.xml`; desktop: `.xml`.
+- [x] Pruebas: `IbkrFlexTest` (el reporte real: una compra, apertura de US$
+  1.895,07 el 27/08, costo 100,98, **cero diferencias** contra IBKR; el
+  adelanto neteado; dividendo con retención; venta con base FIFO; forex; DST)
+  e `IbkrImportTest` (SQLite: depósito y después la compra caen en los
+  números de IBKR, cobertura sin hueco, reimportar no agrega nada, hueco
+  detectado). Harness: `-Pshot.route=ibkr-import`.
+- Sin ver todavía en un reporte real: dividendos, retenciones, forex,
+  ventas, splits (`CorporateActions` se ignora: una acción corporativa hoy
+  aparece como diferencia de cantidad).
 
 ### Fase 4 — IOL conectado (hecha)
 

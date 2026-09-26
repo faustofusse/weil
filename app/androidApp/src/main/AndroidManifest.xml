@@ -50,6 +50,8 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="text/csv" />
                 <data android:mimeType="text/comma-separated-values" />
+                <data android:mimeType="text/xml" />
+                <data android:mimeType="application/xml" />
             </intent-filter>
         </activity>
 

@@ -13,6 +13,9 @@ import kotlinx.serialization.json.Json
 /** Synced setting holding a provider's [BrokerAccounts] as JSON. */
 fun brokerAccountsKey(provider: String) = "broker.$provider.accounts"
 
+/** Counterpart of a broker's reported deposits until the bank's movement is matched. */
+const val TRANSFERS_ACCOUNT_NAME = "Transferencias en tránsito"
+
 /** Synced setting: epoch ms of a provider's last applied import. */
 fun brokerSyncedAtKey(provider: String) = "broker.$provider.synced_at"
 
@@ -61,13 +64,29 @@ class BrokersRepository(
      * or from a second device, reuses what is there — the income, expense
      * and equity branches are shared by every broker.
      */
-    suspend fun connect(provider: String, label: String, currencies: List<String>): BrokerAccounts {
+    suspend fun connect(
+        provider: String,
+        label: String,
+        currencies: List<String>,
+        /**
+         * The broker reports deposits and withdrawals (IBKR; IOL doesn't):
+         * they need a counterpart until matched with the bank's side, the
+         * shared `Transferencias en tránsito` asset. A root of its own, not
+         * under the broker, or money on its way in would lower the broker's
+         * value until the bank's half is recorded.
+         */
+        withTransfers: Boolean = false,
+    ): BrokerAccounts {
         accountsFor(provider)?.let { existing ->
             val ids = accounts.tree().flatMap { it.selfAndDescendants }.map { it.account.id }.toSet()
-            if (existing.holdings in ids) return existing
+            // A report that brings a new currency (IBKR converting to EUR)
+            // falls through: findOrCreate reuses everything and adds its cash.
+            val complete = currencies.all { it in existing.cash } && (!withTransfers || existing.transfers != null)
+            if (existing.holdings in ids && complete) return existing
         }
+        val known = accountsFor(provider)?.cash?.keys.orEmpty()
         val root = findOrCreate(label, AccountType.Asset, null)
-        val cash = currencies.associateWith { currency ->
+        val cash = (known + currencies).distinct().associateWith { currency ->
             findOrCreate(cashAccountName(currency), AccountType.Asset, root)
         }
         val holdings = findOrCreate("Cartera", AccountType.Asset, root)
@@ -87,6 +106,7 @@ class BrokersRepository(
             commissions = findOrCreate("Comisiones", AccountType.Expense, expense),
             opening = findOrCreate("Saldo inicial", AccountType.Equity, equity),
             adjustments = findOrCreate("Ajustes", AccountType.Equity, equity),
+            transfers = if (withTransfers) findOrCreate(TRANSFERS_ACCOUNT_NAME, AccountType.Asset, null) else null,
         )
         settings.set(brokerAccountsKey(provider), json.encodeToString(BrokerAccounts.serializer(), result))
         return result

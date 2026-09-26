@@ -34,7 +34,7 @@ final class DocumentPickerManager: NSObject, DocumentPicker, UIDocumentPickerDel
     private func runPicker() async throws -> PickedDocument? {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
-            let types: [UTType] = [.pdf, .jpeg, .png, .webP, .heic, .heif, .commaSeparatedText]
+            let types: [UTType] = [.pdf, .jpeg, .png, .webP, .heic, .heif, .commaSeparatedText, .xml]
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
             picker.delegate = self
             picker.allowsMultipleSelection = false

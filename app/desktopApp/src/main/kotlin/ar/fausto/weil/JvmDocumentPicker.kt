@@ -32,6 +32,7 @@ class JvmDocumentPicker : DocumentPicker {
             "heic" -> "image/heic"
             "heif" -> "image/heif"
             "csv" -> "text/csv"
+            "xml" -> "application/xml"
             else -> null
         }
 }

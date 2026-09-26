@@ -1,0 +1,28 @@
+<!--
+  Rebuilt from the real backfill described in plans/inversiones-brokers.md
+  (the raw file was never kept): the deposit advance, its cancellation and
+  the cash receipt with the real amounts and dates, in the Flex v3 shape of
+  trade-ttwo.xml, whose starting cash it ends on.
+-->
+<FlexQueryResponse queryName="weil" type="AF">
+<FlexStatements count="1">
+<FlexStatement accountId="U0000000" fromDate="20260801" toDate="20260826" period="Custom" whenGenerated="20260826;090000">
+<AccountInformation accountId="U0000000" currency="USD" accountType="Individual" />
+<CashReport>
+<CashReportCurrency accountId="U0000000" currency="BASE_SUMMARY" levelOfDetail="BaseCurrency" fromDate="20260801" toDate="20260826" startingCash="0" endingCash="1895.07" />
+<CashReportCurrency accountId="U0000000" currency="USD" levelOfDetail="Currency" fromDate="20260801" toDate="20260826" startingCash="0" endingCash="1895.07" />
+</CashReport>
+<OpenPositions>
+</OpenPositions><Trades>
+</Trades><CorporateActions>
+</CorporateActions><CashTransactions>
+<CashTransaction accountId="U0000000" currency="USD" assetCategory="" symbol="" description="DEPOSIT ADVANCE" conid="" dateTime="20260819" settleDate="20260819" amount="1000" type="Deposits/Withdrawals" transactionID="42307900001" reportDate="20260819" clientReference="First 1,000.00 of 1,895.07 Deposit" levelOfDetail="DETAIL" />
+<CashTransaction accountId="U0000000" currency="USD" assetCategory="" symbol="" description="CANCELLATION" conid="" dateTime="20260819" settleDate="20260825" amount="-1000" type="Deposits/Withdrawals" transactionID="42307900002" reportDate="20260825" clientReference="First 1,000.00 of 1,895.07 Deposit" levelOfDetail="DETAIL" />
+<CashTransaction accountId="U0000000" currency="USD" assetCategory="" symbol="" description="CASH RECEIPTS / ELECTRONIC FUND TRANSFERS" conid="" dateTime="20260825" settleDate="20260825" amount="1895.07" type="Deposits/Withdrawals" transactionID="42307900416" reportDate="20260825" clientReference="" levelOfDetail="DETAIL" />
+</CashTransactions><Transfers>
+</Transfers><SecuritiesInfo>
+</SecuritiesInfo><ConversionRates>
+</ConversionRates>
+</FlexStatement>
+</FlexStatements>
+</FlexQueryResponse>

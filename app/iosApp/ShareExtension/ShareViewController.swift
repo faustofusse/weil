@@ -69,6 +69,11 @@ final class ShareViewController: UIViewController {
             let data = try await provider.data(for: .pdf)
             return SharedDocument(data: data, mimeType: "application/pdf", name: named(name, .pdf))
         }
+        // An IBKR Flex report; the app sniffs the content, the type is a label.
+        if provider.hasItemConformingToTypeIdentifier(UTType.xml.identifier) {
+            let data = try await provider.data(for: .xml)
+            return SharedDocument(data: data, mimeType: "application/xml", name: named(name, .xml))
+        }
         if provider.hasItemConformingToTypeIdentifier(UTType.commaSeparatedText.identifier) {
             let data = try await provider.data(for: .commaSeparatedText)
             return SharedDocument(data: data, mimeType: "text/csv", name: named(name, .commaSeparatedText))

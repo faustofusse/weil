@@ -101,6 +101,9 @@ class AppGraph(
     /** InvertirOnline: credentials in this device's secure store, read-only API. */
     val iol = IolRepository(store, brokers, settings)
 
+    /** Interactive Brokers: Flex reports picked or shared into the app. */
+    val ibkr = IbkrRepository(brokers, settings)
+
     /** BCRA official USD rate into `prices`, for «≈ US$ X al oficial». */
     val officialRates = OfficialRatesRepository(brokers, officialRates ?: BcraClient())
     val scanner: QrScanner? get() = qrScannerProvider()

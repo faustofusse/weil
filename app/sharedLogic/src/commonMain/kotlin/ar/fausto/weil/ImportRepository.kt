@@ -71,6 +71,12 @@ val IMPORTABLE_MIME_TYPES = listOf(
 )
 
 /**
+ * What an IBKR Flex report arrives as. Not something the worker takes: a
+ * picked or shared file is sniffed with [isFlexReport] and read on-device.
+ */
+val FLEX_MIME_TYPES = setOf("application/xml", "text/xml")
+
+/**
  * What providers hand back for a `.csv`: SAF asks the app that wrote the file,
  * and spreadsheet apps routinely answer with a legacy alias or `text/plain`.
  * Normalized to `text/csv` on the way in, which is the only spelling the

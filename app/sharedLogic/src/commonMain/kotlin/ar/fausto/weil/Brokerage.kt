@@ -190,6 +190,13 @@ data class BrokerBatch(
     val prices: List<PriceQuote> = emptyList(),
     /** What the connector itself couldn't translate; passed through as plan issues. */
     val notes: List<PlanIssue> = emptyList(),
+    /**
+     * Start of the period the batch reports on, when the source states one
+     * (an IBKR statement's fromDate). The opening is dated there: it is what
+     * the account held when the report starts, not a minute before its first
+     * trade, or the register would show the account empty until then.
+     */
+    val since: Long? = null,
 )
 
 /**
@@ -620,7 +627,8 @@ private class BrokerPlanner(
         for ((commodity, amount) in equity) {
             if (amount != 0L) drafts += draft(accounts.opening, -amount, commodity)
         }
-        val at = (events.minOfOrNull { it.at } ?: snapshot.at) - 1
+        val beforeFirst = (events.minOfOrNull { it.at } ?: snapshot.at) - 1
+        val at = batch.since?.let { minOf(it, beforeFirst) } ?: beforeFirst
         val transaction = NewTransaction(
             date = at,
             payee = "Saldo inicial ${batch.provider.uppercase()}",

@@ -53,6 +53,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.collectAsState
 import weil.app.sharedui.generated.resources.broker_change_credentials
+import weil.app.sharedui.generated.resources.broker_ibkr_status
+import weil.app.sharedui.generated.resources.broker_import_report
+import weil.app.sharedui.generated.resources.ibkr_help_body
+import weil.app.sharedui.generated.resources.ibkr_help_title
+import weil.app.sharedui.generated.resources.ibkr_pick_file
 import weil.app.sharedui.generated.resources.broker_connect_here
 import weil.app.sharedui.generated.resources.broker_connected_as
 import weil.app.sharedui.generated.resources.broker_see_holdings
@@ -123,6 +128,8 @@ fun InvestmentsScreen(
     onOpenAccount: (AccountDetailRoute) -> Unit,
     onOpenTransaction: (id: String) -> Unit,
     bottomBar: @Composable () -> Unit = {},
+    /** Opens the platform picker for an IBKR report; AppRoot routes what comes back. */
+    pickReport: suspend () -> Unit = {},
     /** Harness-only: opens the first broker's sheet once connections load. */
     openFirstBroker: Boolean = false,
 ) {
@@ -138,6 +145,17 @@ fun InvestmentsScreen(
     var confirmDisconnect by remember { mutableStateOf(false) }
     // The broker whose sheet is open (sync, see, change credentials, disconnect).
     var managing by remember { mutableStateOf<BrokerConnection?>(null) }
+    var ibkrHelp by remember { mutableStateOf(false) }
+    fun importReport() {
+        scope.launch {
+            try {
+                pickReport()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Feedback.show(e.message ?: e.toString())
+            }
+        }
+    }
     val autoSync by iol.lastAutoSync.collectAsState()
 
     var connections by remember { mutableStateOf<List<BrokerConnection>?>(null) }
@@ -385,15 +403,18 @@ fun InvestmentsScreen(
                         )
                     }
                 }
-                if (connections != null) {
+                if (connections != null && connected.none { it.provider == IBKR_PROVIDER }) {
                     item(key = "source-ibkr") {
-                        SoonRow(
+                        AppListRow(
                             icon = Icons.Filled.TrendingUp,
+                            paint = accountPaint(null),
                             title = stringResource(Res.string.investments_source_ibkr),
-                            hint = stringResource(Res.string.investments_source_ibkr_hint),
-                            onClick = { Feedback.show(soon) },
+                            subtitle = stringResource(Res.string.investments_source_ibkr_hint),
+                            onClick = { ibkrHelp = true },
                         )
                     }
+                }
+                if (connections != null) {
                     item(key = "source-statement") {
                         SoonRow(
                             icon = Icons.Filled.DocumentScanner,
@@ -427,15 +448,31 @@ fun InvestmentsScreen(
         val rootId = parents[c.accounts.holdings]
         BrokerSheet(
             title = (rootId?.let { names[it] } ?: names[c.accounts.holdings]).orEmpty(),
-            account = if (isIol) iolUser else null,
+            status = when {
+                !isIol -> stringResource(Res.string.broker_ibkr_status)
+                iolUser != null -> stringResource(Res.string.broker_connected_as, iolUser!!)
+                else -> stringResource(Res.string.investments_connect_here)
+            },
+            connectedHere = isIol && iolUser != null,
             freshness = freshness(c.syncedAt),
             canConnect = isIol,
-            onSync = if (isIol && iolUser != null) ({ managing = null; sync() }) else null,
+            onSync = when {
+                isIol && iolUser != null -> ({ managing = null; sync() })
+                else -> null
+            },
+            onImport = if (c.provider == IBKR_PROVIDER) ({ managing = null; importReport() }) else null,
             onHoldings = { managing = null; onOpenAccount(AccountDetailRoute(c.accounts.holdings)) },
             onMovements = rootId?.let { root -> { managing = null; onOpenAccount(AccountDetailRoute(root, subtree = true)) } },
             onConnect = { managing = null; connecting = true },
             onDisconnect = if (isIol && iolUser != null) ({ managing = null; confirmDisconnect = true }) else null,
             onDismiss = { managing = null },
+        )
+    }
+
+    if (ibkrHelp) {
+        IbkrHelpSheet(
+            onPick = { ibkrHelp = false; importReport() },
+            onDismiss = { ibkrHelp = false },
         )
     }
 
@@ -609,11 +646,14 @@ private fun AutoSyncAlert(
 @Composable
 private fun BrokerSheet(
     title: String,
-    /** The username this device syncs as, null when it has no credentials. */
-    account: String?,
+    /** «Conectado como fausto», «Sin conectar en este dispositivo», how IBKR updates. */
+    status: String,
+    /** This device holds credentials (the connect action reads «cambiar»). */
+    connectedHere: Boolean,
     freshness: String,
     canConnect: Boolean,
     onSync: (() -> Unit)?,
+    onImport: (() -> Unit)?,
     onHoldings: () -> Unit,
     onMovements: (() -> Unit)?,
     onConnect: () -> Unit,
@@ -625,8 +665,7 @@ private fun BrokerSheet(
             Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
                 Text(title, style = MaterialTheme.typography.titleLarge)
                 Text(
-                    if (account != null) stringResource(Res.string.broker_connected_as, account)
-                    else stringResource(Res.string.investments_connect_here),
+                    status,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -638,12 +677,13 @@ private fun BrokerSheet(
             }
             HorizontalDivider(modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
             onSync?.let { SheetAction(Icons.Filled.Refresh, stringResource(Res.string.broker_sync_now), onClick = it) }
+            onImport?.let { SheetAction(Icons.Filled.DocumentScanner, stringResource(Res.string.broker_import_report), onClick = it) }
             SheetAction(Icons.Filled.TrendingUp, stringResource(Res.string.broker_see_holdings), onClick = onHoldings)
             onMovements?.let { SheetAction(Icons.Filled.ListAlt, stringResource(Res.string.broker_see_movements), onClick = it) }
             if (canConnect) {
                 SheetAction(
                     Icons.Filled.Person,
-                    stringResource(if (account != null) Res.string.broker_change_credentials else Res.string.broker_connect_here),
+                    stringResource(if (connectedHere) Res.string.broker_change_credentials else Res.string.broker_connect_here),
                     onClick = onConnect,
                 )
             }
@@ -676,6 +716,39 @@ private fun SheetAction(
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(16.dp))
         Text(label, style = MaterialTheme.typography.bodyLarge, color = color)
+    }
+}
+
+/**
+ * How to get IBKR's data in: the Flex query set up once, then its file.
+ * The steps are the whole feature from the user's side (IBKR offers
+ * individual accounts no API a phone can use), so they are spelled out.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun IbkrHelpSheet(onPick: () -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+        ) {
+            Text(stringResource(Res.string.ibkr_help_title), style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(Res.string.ibkr_help_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(20.dp))
+            Button(onClick = onPick, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(Res.string.ibkr_pick_file))
+            }
+        }
     }
 }
 

@@ -198,6 +198,11 @@ fun main(args: Array<String>) {
                     // A synthetic IOL plan: the review screen can't reach IOL
                     // from the sandbox, and a plan is plain data anyway.
                     "broker-import" -> demoBrokerImport()
+                    // The real TTWO report (the scrubbed test fixture) as a first import.
+                    "ibkr-import" -> kotlinx.coroutines.runBlocking {
+                        val preview = graph.ibkr.preview(File("../sharedLogic/src/jvmTest/resources/ibkr/trade-ttwo.xml").readBytes())
+                        BrokerImportRoute("IBKR", IBKR_PROVIDER, preview.plan, preview.accounts, graph.brokers.scales())
+                    }
                     "holdings" -> invest?.let { AccountDetailRoute(it.accounts.holdings) }
                     "instrument" -> invest?.let { AccountDetailRoute(it.accounts.holdings, "BCBA:MELI") }
                     "tx-buy" -> invest?.let { TransactionEditRoute(it.fractionalBuy) }

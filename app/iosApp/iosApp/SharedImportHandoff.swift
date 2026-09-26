@@ -63,9 +63,12 @@ enum SharedImportHandoff {
         }
         guard let data, !data.isEmpty else { return }
         let mime = mimeType(for: url)
-        guard ImportRepositoryKt.IMPORTABLE_MIME_TYPES.contains(mime) else { return }
+        let bytes = KotlinByteArray.from(data)
+        // An IBKR Flex report ("Open in Weil" on a .xml) is read on-device.
+        let flex = IbkrFlexKt.isFlexReport(bytes: bytes)
+        guard flex || ImportRepositoryKt.IMPORTABLE_MIME_TYPES.contains(mime) else { return }
         SharedImportInbox.shared.offer(document: PickedDocument(
-            bytes: KotlinByteArray.from(data), mimeType: mime, name: url.lastPathComponent))
+            bytes: bytes, mimeType: flex ? "application/xml" : mime, name: url.lastPathComponent))
     }
 
     private static func mimeType(for url: URL) -> String {

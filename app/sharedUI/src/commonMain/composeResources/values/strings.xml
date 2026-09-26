@@ -75,6 +75,13 @@
     <string name="broker_see_movements">Ver movimientos</string>
     <string name="broker_change_credentials">Cambiar usuario o contraseña</string>
     <string name="broker_connect_here">Conectar en este dispositivo</string>
+    <string name="ibkr_up_to_date">Interactive Brokers está al día</string>
+    <string name="ibkr_not_a_report">El archivo no es un reporte Flex de Interactive Brokers</string>
+    <string name="ibkr_help_title">Importar de Interactive Brokers</string>
+    <string name="ibkr_help_body">IBKR no deja que otras apps entren a tu cuenta, así que los datos llegan en un reporte que armás una sola vez:\n\n1. En el Portal de Clientes: Rendimiento e informes → Consultas Flex → crear una consulta de actividad.\n2. Secciones: Cash Report, Open Positions, Trades, Cash Transactions, Corporate Actions, Transfers y Financial Instrument Information. En Account Information alcanza con Account ID y Currency.\n3. Formato XML, período «Last 30 Calendar Days».\n4. Ejecutala, descargá el archivo y compartilo con Weil o elegilo acá.\n\nImportar el mismo período dos veces no duplica nada.</string>
+    <string name="ibkr_pick_file">Elegir archivo</string>
+    <string name="broker_import_report">Importar reporte</string>
+    <string name="broker_ibkr_status">Se actualiza importando el reporte Flex</string>
     <string name="investments_soon">Pronto</string>
     <string name="investments_soon_message">Todavía no está disponible</string>
     <string name="iol_connect_title">Conectar InvertirOnline</string>

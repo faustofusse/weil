@@ -52,6 +52,7 @@
 				<string>public.heic</string>
 				<string>public.heif</string>
 				<string>public.comma-separated-values-text</string>
+				<string>public.xml</string>
 			</array>
 		</dict>
 	</array>
