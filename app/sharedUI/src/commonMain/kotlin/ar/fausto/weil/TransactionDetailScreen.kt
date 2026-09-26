@@ -37,7 +37,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -270,18 +274,37 @@ fun TransactionDetailScreen(
                             style = MaterialTheme.typography.displaySmall,
                             color = flowColor(flow.direction),
                         )
-                        // Línea origen → destino.
+                        // Línea origen → destino. Each side is itself a
+                        // path ("IBKR › Dólares"), which already reads with
+                        // the same chevron [ROUTE_ARROW] uses for "leads to"
+                        // — so the one *between* the two paths is bolded and
+                        // tinted to read as the different, larger jump, and
+                        // the in-path ones stay plain punctuation.
                         val from = flow.fromId?.let { paths[it] }
                         val to = flow.toId?.let { paths[it] }
+                        val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+                        val accent = MaterialTheme.colorScheme.primary
                         val route = when {
-                            from != null && to != null && from != to -> "$from $ROUTE_ARROW $to"
-                            else -> from ?: to
+                            from != null && to != null && from != to ->
+                                buildAnnotatedString {
+                                    append(from)
+                                    // Wider than the tight in-path spacing, so the
+                                    // connector reads as a gap between two paths,
+                                    // not one more segment of either.
+                                    append("   ")
+                                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = accent)) {
+                                        append(ROUTE_ARROW)
+                                    }
+                                    append("   ")
+                                    append(to)
+                                }
+                            else -> (from ?: to)?.let { buildAnnotatedString { append(it) } }
                         }
                         if (route != null) {
                             Text(
                                 route,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = onSurfaceVariant,
                             )
                         }
                     }
