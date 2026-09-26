@@ -95,6 +95,17 @@ fun AccountDetailScreen(
         ledgerState.valuation.positions(holdings)
     }
     var entries by remember { mutableStateOf(cached?.entries ?: emptyList()) }
+    // The register is per posting, and a transaction between two accounts
+    // of the subtree (a broker's buy: Pesos → Cartera) has a posting in
+    // each, so it listed twice. One row per transaction; its caption is
+    // the money leg's running balance, since an instrument's quantity says
+    // less about the subtree than its cash does.
+    // groupBy keeps first-seen order, so the list stays newest first.
+    val shownEntries = remember(entries, ledgerState.valuation) {
+        entries.groupBy { it.posting.transactionId }.values.map { legs ->
+            legs.firstOrNull { !ledgerState.valuation.isInstrument(it.posting.commodity) } ?: legs.first()
+        }
+    }
     var transactions by remember { mutableStateOf(cached?.transactions ?: emptyMap()) }
     var loaded by remember { mutableStateOf(cached != null) }
     var loadingMore by remember { mutableStateOf(false) }
@@ -141,7 +152,10 @@ fun AccountDetailScreen(
     // Same for narrowing to one instrument.
     var shownSubtree by remember { mutableStateOf(includeSubtree) }
     var shownFilter by remember { mutableStateOf(commodityFilter) }
-    LaunchedEffect(includeSubtree, commodityFilter) {
+    // The subtree's ids come from the tree: reload once it arrives (a cold
+    // start straight into a subtree view had none) or changes shape.
+    val subtreeKey = if (includeSubtree) ids() else null
+    LaunchedEffect(includeSubtree, commodityFilter, subtreeKey) {
         if (shownSubtree != includeSubtree || shownFilter != commodityFilter) {
             entries = emptyList()
             shownSubtree = includeSubtree
@@ -340,7 +354,7 @@ fun AccountDetailScreen(
                 }
             }
             var lastGroup: DayGroup? = null
-            for (entry in entries) {
+            for (entry in shownEntries) {
                 val group = dayGroup(entry.date)
                 if (group != lastGroup) {
                     lastGroup = group

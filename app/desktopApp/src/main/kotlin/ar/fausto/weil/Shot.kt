@@ -213,6 +213,7 @@ fun main(args: Array<String>) {
                         BrokerImportRoute("IBKR", IBKR_PROVIDER, preview.plan, preview.accounts, graph.brokers.scales())
                     }
                     "holdings" -> invest?.let { AccountDetailRoute(it.accounts.holdings) }
+                    "broker-root" -> invest?.let { AccountDetailRoute(it.root, subtree = true) }
                     "instrument" -> invest?.let { AccountDetailRoute(it.accounts.holdings, "BCBA:MELI") }
                     "tx-buy" -> invest?.let { TransactionEditRoute(it.fractionalBuy) }
                     "tx-buy-detail" -> invest?.let { TransactionDetailRoute(it.fractionalBuy) }
@@ -236,9 +237,9 @@ fun main(args: Array<String>) {
 }
 
 
-private val INVESTMENT_ROUTES = setOf("investments", "investments-alert", "investments-sheet", "holdings", "tx-buy", "tx-buy-detail", "instrument")
+private val INVESTMENT_ROUTES = setOf("investments", "broker-root", "investments-alert", "investments-sheet", "holdings", "tx-buy", "tx-buy-detail", "instrument")
 
-private class SeededInvestments(val accounts: BrokerAccounts, val fractionalBuy: String)
+private class SeededInvestments(val accounts: BrokerAccounts, val fractionalBuy: String, val root: String)
 
 /**
  * An IOL connection with a year of history: an opening (MELI, a letra, cash),
@@ -295,7 +296,9 @@ private suspend fun seedInvestments(graph: AppGraph): SeededInvestments {
     check(plan.issues.isEmpty()) { "seed plan has issues: ${plan.issues}" }
     val ids = graph.brokers.apply(plan)
     val buy = plan.transactions.indexOfFirst { it.ref == brokerRef(IOL_PROVIDER, "seed-ttwo") }
-    return SeededInvestments(accounts, ids[buy])
+    val root = graph.accounts.tree().flatMap { it.selfAndDescendants }
+        .first { it.account.id == accounts.holdings }.account.parentId!!
+    return SeededInvestments(accounts, ids[buy], root)
 }
 
 /** A small but complete broker plan for the review screen's shot. */
