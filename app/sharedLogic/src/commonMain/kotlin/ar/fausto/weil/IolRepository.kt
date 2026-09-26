@@ -1,6 +1,8 @@
 package ar.fausto.weil
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -69,8 +71,14 @@ class IolRepository(
         val accounts = brokers.accountsFor(IOL_PROVIDER)
             ?: brokers.connect(IOL_PROVIDER, "IOL", listOf("ARS", "USD"))
         val known = brokers.knownRefs(IOL_PROVIDER)
-        val batch = iolBatch(fetch(known))
-        return planBrokerImport(batch, accounts, brokers.ledgerView(accounts), known, brokers.scales())
+        val fetched = fetch(known)
+        val view = brokers.ledgerView(accounts)
+        val scales = brokers.scales()
+        // A year of history is real work; keep it off the main thread, where
+        // the screens call this from.
+        return withContext(Dispatchers.Default) {
+            planBrokerImport(iolBatch(fetched), accounts, view, known, scales)
+        }
     }
 
     /** Writes the reviewed plan and moves the sync window forward. Returns the new ids, for undo. */

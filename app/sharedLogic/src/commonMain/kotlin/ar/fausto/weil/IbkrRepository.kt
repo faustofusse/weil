@@ -1,6 +1,8 @@
 package ar.fausto.weil
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.builtins.ListSerializer
@@ -133,20 +135,25 @@ class IbkrRepository(
 
     /** Parses [bytes], makes sure the accounts exist, and plans. Writes accounts only. */
     suspend fun preview(bytes: ByteArray): IbkrPreview {
-        val statements = parseFlexReport(bytes.decodeToString())
+        // Off the main thread: a year's report is megabytes of XML, and on
+        // Android the regex scan alone held the UI for half a minute (ANR).
+        val started = epochMillis()
+        val statements = withContext(Dispatchers.Default) { parseFlexReport(bytes.decodeToString()) }
         val statement = statements.first()
         val accounts = brokers.connect(IBKR_PROVIDER, "IBKR", ibkrCurrencies(statement), withTransfers = true)
         val known = brokers.knownRefs(IBKR_PROVIDER)
-        val batch = ibkrBatch(statement)
+        val batch = withContext(Dispatchers.Default) { ibkrBatch(statement) }
         val gap = coverageGap(coverage(), statement.fromDate)
         val extraNotes = buildList {
             if (statements.size > 1) add(PlanIssue(null, "the report has ${statements.size} accounts; only ${statement.accountId} was read"))
             gap?.let { (from, to) -> add(PlanIssue(null, "missing IBKR data from $from to $to: run the weil query for that range and share the file")) }
         }
-        val plan = planBrokerImport(
-            batch.copy(notes = batch.notes + extraNotes),
-            accounts, brokers.ledgerView(accounts), known, brokers.scales(),
-        )
+        val view = brokers.ledgerView(accounts)
+        val scales = brokers.scales()
+        val plan = withContext(Dispatchers.Default) {
+            planBrokerImport(batch.copy(notes = batch.notes + extraNotes), accounts, view, known, scales)
+        }
+        println("ibkr: ${bytes.size / 1024} KB, ${statement.elements.size} elements, planned in ${epochMillis() - started} ms")
         pending = statement.fromDate to statement.toDate
         return IbkrPreview(plan, accounts, statement.fromDate, statement.toDate, gap)
     }
