@@ -127,17 +127,34 @@ same commodity:
 | same day | 25, −6 per day of distance |
 | normalized payee equal / contains / shares a token | 20 / 12 / 6 |
 | the event's own account is the one involved | 10 |
+| both clock times real and ≤ 10 min apart | 10 |
+
+The clock signal only counts when both sides carry a real time
+(`timeKnown`: a message, or a row with `transactions.time_known = 1`). A
+statement row's time is a made-up midnight and never earns it.
 
 **Relations** (what kind of coincidence this is):
 
 - `AlreadyImported` — the fact already carries this `event_key`. Dominant, no
   scoring needed.
 - `Duplicate` — same own account, same sign: the same movement, already there.
-  Associating adds a source row and nothing else.
+  Associating adds a source row and nothing else. An own account that was
+  **guessed** on either side counts as open. A guessed account is the event's
+  `ownAccountGuessed`, or the fact's `transactions.account_guessed`, which is
+  set when the reader picked between the sender's accounts or the default
+  stood in. In that case same sign on another account is also a duplicate. A
+  bank push through Gmail («Aviso Santander: Pagaste $3.490,00») names only
+  the bank, so the reader picked the checking account; the receipt mail named
+  the card. Treating that guess as a fact wrote the purchase twice. When the
+  stored side was the guess and the event states another account,
+  `retargetPostingId` points at the stored own leg and associating moves it
+  there and clears the flag.
 - `Mirror` — *different* own account, opposite sign: the two halves of a
   transfer, each seen from one side. Associating also retargets the existing
   transaction's dangling expense/income leg to this event's own account, which
-  turns two half-wrong rows into one correct transfer.
+  turns two half-wrong rows into one correct transfer. A mirror built from a
+  guessed account still completes the transfer, and the row is marked
+  `account_guessed` so a later receipt can correct it.
 
 *Same* own account with the *opposite* sign is none of these, and `matchEvent`
 drops it. The auto-recorder asks about it separately (`findReversal`): the

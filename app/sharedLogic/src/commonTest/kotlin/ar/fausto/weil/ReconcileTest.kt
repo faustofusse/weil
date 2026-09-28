@@ -300,3 +300,91 @@ class CandidateEventMappingTest {
         assertEquals("mp", mapped.ownAccountId)
     }
 }
+
+/**
+ * A guessed own account is no evidence of a different account. The bank's
+ * push («Aviso Santander: Pagaste $3.490,00») names only the bank, so the
+ * reader picked the checking account; the receipt mail of the same purchase
+ * names the card. Taking the guess as a fact wrote the purchase twice.
+ */
+class GuessedAccountTest {
+    private val minute = 60_000L
+
+    /** The push's row: 3.490 out of the checking account, at 18:28. */
+    private fun pushRow(guessed: Boolean = true) = LedgerFact(
+        transactionId = "tx-push",
+        date = AUG14 + minute,
+        payee = "Movimiento",
+        legs = listOf(own("pesos", -3_490_00), category("otros", 3_490_00)),
+        ownAccountGuessed = guessed,
+        timeKnown = true,
+    )
+
+    /** The receipt: 3.490 on the card, at 18:27. */
+    private fun receipt(guessed: Boolean = false) = event(account = "card", amount = -3_490_00, payee = "MERPAGO*MELI")
+        .copy(source = EventSource.Email, ownAccountGuessed = guessed, timeKnown = true)
+
+    @Test
+    fun a_receipt_naming_the_card_attaches_to_the_push_and_corrects_it() {
+        val match = assertIs<MatchOutcome.Confident>(matchEvent(receipt(), listOf(pushRow()))).match
+        assertEquals(MatchRelation.Duplicate, match.relation)
+        assertTrue(MatchReason.CloseTime in match.reasons)
+        // The push's own leg moves to the account the receipt names.
+        assertEquals("p-pesos", match.retargetPostingId)
+    }
+
+    @Test
+    fun a_guessing_push_attaches_to_the_receipt_already_recorded() {
+        val receiptRow = LedgerFact(
+            transactionId = "tx-mail",
+            date = AUG14,
+            payee = "MERPAGO*MELI",
+            legs = listOf(own("card", -3_490_00), category("otros", 3_490_00)),
+            timeKnown = true,
+        )
+        val push = event(account = "pesos", amount = -3_490_00, date = AUG14 + minute, payee = "")
+            .copy(source = EventSource.Notification, ownAccountGuessed = true, timeKnown = true)
+        val match = assertIs<MatchOutcome.Confident>(matchEvent(push, listOf(receiptRow))).match
+        assertEquals(MatchRelation.Duplicate, match.relation)
+        // The receipt's account was read, so nothing to correct.
+        assertNull(match.retargetPostingId)
+    }
+
+    @Test
+    fun two_stated_accounts_are_still_two_purchases() {
+        assertEquals(MatchOutcome.None, matchEvent(receipt(), listOf(pushRow(guessed = false))))
+    }
+
+    @Test
+    fun without_the_clock_a_guess_alone_does_not_merge() {
+        // Same day and amount but no clock time on the row (a statement): a
+        // suggestion for the review screen, never a silent merge.
+        val outcome = matchEvent(receipt(), listOf(pushRow().copy(timeKnown = false)))
+        assertIs<MatchOutcome.Ambiguous>(outcome)
+    }
+
+    @Test
+    fun hours_apart_is_not_minutes_apart() {
+        val later = receipt().copy(date = AUG14 + 3 * 60 * minute)
+        assertIs<MatchOutcome.Ambiguous>(matchEvent(later, listOf(pushRow())))
+    }
+
+    @Test
+    fun a_guessed_account_still_completes_a_transfer() {
+        // The wallet's top-up was recorded first (+X, account certain); the
+        // bank's «Enviaste» names only the bank. The pair is still one
+        // transfer, and the planner marks the row as a guess.
+        val topUp = LedgerFact(
+            transactionId = "tx-mp",
+            date = AUG14,
+            payee = "",
+            legs = listOf(own("mp", 30_000_00), FactLeg("p-in", "otros-in", AccountType.Income, -30_000_00, "ARS")),
+            timeKnown = true,
+        )
+        val sent = event(account = "pesos", amount = -30_000_00, date = AUG14 + minute, payee = "Fausto Fusse")
+            .copy(source = EventSource.Notification, ownAccountGuessed = true, timeKnown = true)
+        val match = assertIs<MatchOutcome.Confident>(matchEvent(sent, listOf(topUp))).match
+        assertEquals(MatchRelation.Mirror, match.relation)
+        assertEquals("p-in", match.retargetPostingId)
+    }
+}

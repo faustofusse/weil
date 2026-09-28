@@ -80,6 +80,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                     entry.note,
                     entry.timeKnown,
                     entry.sourceDocumentId,
+                    entry.accountGuessed,
                 )
                 insertPostings(postings)
                 insertSources(txId, entry.sources)
@@ -106,12 +107,12 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 // describes a transaction the user just rewrote.
                 if (note.isNullOrBlank()) {
                     "update transactions set date = :date, payee = :payee, note = null," +
-                        " time_known = :time_known, embedding = null, embedding_model = null" +
-                        " where id = :id"
+                        " time_known = :time_known, embedding = null, embedding_model = null," +
+                        " account_guessed = 0 where id = :id"
                 } else {
                     "update transactions set date = :date, payee = :payee, note = :note," +
-                        " time_known = :time_known, embedding = null, embedding_model = null" +
-                        " where id = :id"
+                        " time_known = :time_known, embedding = null, embedding_model = null," +
+                        " account_guessed = 0 where id = :id"
                 },
                 buildMap {
                     put(":date", date)
@@ -284,6 +285,22 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 }
             }
         }
+        val flagged = ops.filter { it.accountGuessed != null }.map { it.transactionId }
+        val previousGuessed = if (flagged.isEmpty()) {
+            emptyMap()
+        } else {
+            db.useForRead { d ->
+                d.query(
+                    "select id, account_guessed from transactions where id in (${quoteList(flagged)})",
+                    null,
+                ) { rows ->
+                    rows.filter { it.size >= 2 }.mapNotNull { row ->
+                        val id = row[0]?.toString() ?: return@mapNotNull null
+                        id to ((row[1] as? Number)?.toLong() == 1L)
+                    }.toMap()
+                }
+            }
+        }
         writeAtomically {
             for (op in ops) {
                 insertSources(op.transactionId, op.sources)
@@ -293,6 +310,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                         mapOf(":account" to op.retargetAccountId, ":id" to op.retargetPostingId),
                     )
                     dropVector(op.transactionId)
+                    op.accountGuessed?.let { setGuessed(op.transactionId, it) }
                 }
             }
         }
@@ -307,6 +325,8 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 sources = op.sources,
                 postingId = op.retargetPostingId?.takeIf { op.retargetAccountId != null },
                 previousAccountId = op.retargetPostingId?.let { previous[it] },
+                previousGuessed = previousGuessed[op.transactionId]
+                    ?.takeIf { op.accountGuessed != null && op.retargetPostingId != null && op.retargetAccountId != null },
             )
         }
     }
@@ -334,6 +354,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                     )
                     dropVector(undo.transactionId)
                 }
+                undo.previousGuessed?.let { setGuessed(undo.transactionId, it) }
             }
         }
         emitChange()
@@ -351,8 +372,11 @@ class TransactionsRepository(private val db: DatabaseProvider) {
      * once and they all share the same window.
      */
     suspend fun reconcileFacts(from: Long, to: Long): List<LedgerFact> = db.useForRead { d ->
+        val clocked = HashSet<String>()
+        val guessed = HashSet<String>()
         val legs = d.query(
-            "select t.id, t.date, t.payee, p.id, p.account_id, a.type, p.amount_minor, p.commodity" +
+            "select t.id, t.date, t.payee, p.id, p.account_id, a.type, p.amount_minor, p.commodity," +
+                " t.time_known, t.account_guessed" +
                 " from transactions t" +
                 " join postings p on p.transaction_id = t.id" +
                 " left join accounts a on a.id = p.account_id" +
@@ -361,7 +385,9 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         ) { rows ->
             val acc = LinkedHashMap<String, Triple<Long, String, MutableList<FactLeg>>>()
             for (row in rows) {
-                if (row.size < 8) continue
+                if (row.size < 10) continue
+                if ((row[8] as? Number)?.toLong() == 1L) clocked += row[0].toString()
+                if ((row[9] as? Number)?.toLong() == 1L) guessed += row[0].toString()
                 val txId = row[0]?.toString() ?: continue
                 val date = (row[1] as? Number)?.toLong() ?: continue
                 val payee = row[2]?.toString() ?: ""
@@ -404,6 +430,8 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 legs = factLegs,
                 eventKeys = sources.first[txId].orEmpty(),
                 sourceRefs = sources.second[txId].orEmpty(),
+                ownAccountGuessed = txId in guessed,
+                timeKnown = txId in clocked,
             )
         }
     }
@@ -882,6 +910,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         note: String?,
         timeKnown: Boolean,
         sourceDocumentId: String?,
+        accountGuessed: Boolean = false,
     ) {
         val columns = mutableListOf("id", "date", "payee", "created_at", "time_known")
         val values = mutableListOf(":id", ":date", ":payee", ":created_at", ":time_known")
@@ -902,6 +931,11 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             values += ":source_document"
             params[":source_document"] = sourceDocumentId
         }
+        if (accountGuessed) {
+            columns += "account_guessed"
+            values += ":account_guessed"
+            params[":account_guessed"] = 1L
+        }
         execute(
             "insert into transactions(${columns.joinToString(", ")})" +
                 " values(${values.joinToString(", ")})",
@@ -913,6 +947,13 @@ class TransactionsRepository(private val db: DatabaseProvider) {
      * Provenance rows. `insert or ignore`: re-recording the same origin for the
      * same transaction is a no-op, which keeps association idempotent.
      */
+    private fun Database.setGuessed(txId: String, guessed: Boolean) {
+        execute(
+            "update transactions set account_guessed = :g where id = :id",
+            mapOf(":g" to if (guessed) 1L else 0L, ":id" to txId),
+        )
+    }
+
     /** Repointing a leg changes the accounts in the embedded text; see [update]. */
     private fun Database.dropVector(txId: String) {
         execute(

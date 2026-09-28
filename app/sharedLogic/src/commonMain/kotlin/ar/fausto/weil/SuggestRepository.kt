@@ -220,6 +220,8 @@ class SuggestRepository(
             date = message.at,
             rawPayee = read.payee,
             direction = direction,
+            ownAccountGuessed = !read.accountCertain,
+            timeKnown = true,
         )
         // Precedents come from the same kind of message: a mail's neighbours
         // are mails. The cross-table search exists and is used elsewhere, but
@@ -435,6 +437,14 @@ data class ReadResponse(
     val account: String? = null,
     /** For a transfer, the own account the money landed in (a path), else null. */
     val destination: String? = null,
+    /**
+     * The message itself settles [account]: it names the account or card, or
+     * the sender has only one account of the user's in that currency. False
+     * when the reader picked between several ("Aviso Santander: Pagaste
+     * $3.490" could be the checking account or the card). Defaults to true so
+     * a worker that predates the field behaves as before.
+     */
+    val accountCertain: Boolean = true,
     val note: String? = null,
     val normalized: String = "",
     /** What the reader itself took, without the trip to the worker. */

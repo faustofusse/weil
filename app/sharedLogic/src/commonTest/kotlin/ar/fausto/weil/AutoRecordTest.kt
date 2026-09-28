@@ -414,6 +414,88 @@ class AutoRecordTest {
     }
 
     @Test
+    fun anAccountTheReaderPickedIsMarkedAsAGuess() {
+        val created = assertIs<AutoRecordPlan.Create>(
+            planAutoRecord(
+                EventSource.Notification,
+                "notif-1",
+                trace(read = read().copy(accountCertain = false)),
+                tree,
+                emptyMap(),
+            ),
+        )
+        assertTrue(created.entry.accountGuessed)
+    }
+
+    @Test
+    fun theDefaultStandingInIsAGuessToo() {
+        val created = assertIs<AutoRecordPlan.Create>(
+            planAutoRecord(EventSource.Notification, "notif-1", trace(read = read(account = null)), tree, emptyMap()),
+        )
+        assertTrue(created.entry.accountGuessed)
+    }
+
+    @Test
+    fun aStatedAccountIsNotAGuess() {
+        val created = assertIs<AutoRecordPlan.Create>(
+            planAutoRecord(EventSource.Notification, "notif-1", trace(), tree, emptyMap()),
+        )
+        assertFalse(created.entry.accountGuessed)
+    }
+
+    @Test
+    fun aReceiptNamingTheAccountCorrectsTheGuessedRow() {
+        val attach = assertIs<AutoRecordPlan.Attach>(
+            planAutoRecord(
+                EventSource.Email,
+                "mail-1",
+                trace(match = MatchOutcome.Confident(match(MatchRelation.Duplicate, "p-own"))),
+                tree,
+                emptyMap(),
+            ),
+        )
+        assertEquals("p-own", attach.op.retargetPostingId)
+        assertEquals("bank", attach.op.retargetAccountId)
+        assertEquals(false, attach.op.accountGuessed)
+    }
+
+    @Test
+    fun aGuessNeverCorrectsAnotherRow() {
+        val attach = assertIs<AutoRecordPlan.Attach>(
+            planAutoRecord(
+                EventSource.Notification,
+                "notif-1",
+                trace(
+                    read = read().copy(accountCertain = false),
+                    match = MatchOutcome.Confident(match(MatchRelation.Duplicate, "p-own")),
+                ),
+                tree,
+                emptyMap(),
+            ),
+        )
+        assertNull(attach.op.retargetPostingId)
+        assertNull(attach.op.accountGuessed)
+    }
+
+    @Test
+    fun aTransferCompletedFromAGuessStaysMarked() {
+        val attach = assertIs<AutoRecordPlan.Attach>(
+            planAutoRecord(
+                EventSource.Notification,
+                "notif-1",
+                trace(
+                    read = read().copy(accountCertain = false),
+                    match = MatchOutcome.Confident(match(MatchRelation.Mirror, "p-9")),
+                ),
+                tree,
+                emptyMap(),
+            ),
+        )
+        assertEquals("p-9", attach.op.retargetPostingId)
+        assertEquals(true, attach.op.accountGuessed)
+    }
+
+    @Test
     fun theGateItself() {
         val movement = read()
         val candidate = trace().candidate()

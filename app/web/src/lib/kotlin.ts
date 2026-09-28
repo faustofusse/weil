@@ -79,7 +79,8 @@ export type MatchReason =
 	| 'SamePayee'
 	| 'SimilarPayee'
 	| 'SameAccount'
-	| 'OppositeAccount';
+	| 'OppositeAccount'
+	| 'CloseTime';
 
 export type Match = {
 	transactionId: string;

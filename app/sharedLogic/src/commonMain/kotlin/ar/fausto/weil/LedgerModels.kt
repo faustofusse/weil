@@ -298,6 +298,8 @@ data class NewTransaction(
     val sourceDocumentId: String? = null,
     /** Provenance rows written alongside the transaction (see `transaction_sources`). */
     val sources: List<TransactionSource> = emptyList(),
+    /** The own account was inferred, not read (see `transactions.account_guessed`). */
+    val accountGuessed: Boolean = false,
 )
 
 /**
@@ -324,6 +326,13 @@ data class AssociateOp(
     val sources: List<TransactionSource>,
     val retargetPostingId: String? = null,
     val retargetAccountId: String? = null,
+    /**
+     * What the retarget does to `transactions.account_guessed`: false when it
+     * corrects a guessed account with one the event states, true when it
+     * writes a guessed account (a transfer completed from a push that only
+     * named the bank), null to leave the flag alone.
+     */
+    val accountGuessed: Boolean? = null,
 )
 
 /** Everything needed to undo one [AssociateOp] from a Snackbar. */
@@ -332,6 +341,8 @@ data class AssociationUndo(
     val sources: List<TransactionSource>,
     val postingId: String? = null,
     val previousAccountId: String? = null,
+    /** `account_guessed` before the association changed it; null when untouched. */
+    val previousGuessed: Boolean? = null,
 )
 
 /**

@@ -244,11 +244,17 @@ internal fun planAutoRecord(
     // the run read the accounts minutes ago, and posting to an id another
     // device deleted in between writes a leg nothing can render.
     val known = tree.flatMap { it.selfAndDescendants }.mapTo(HashSet()) { it.account.id }
-    val asset = candidate.accountId?.takeIf { it in known }
+    val named = candidate.accountId?.takeIf { it in known }
+    val asset = named
         ?: resolveDefault(tree, AccountType.Asset, defaults[AccountType.Asset])
         ?: return AutoRecordPlan.Skip(AutoRecordSkip.NoOwnAccount)
+    // Whether the account is a guess: the default stood in, or the reader
+    // picked between several of the sender's accounts. A guessed row is kept
+    // open for a later source that names the account (see [score]).
+    val guessed = named == null || !trace.read.accountCertain
 
     val event = candidate.toEvent(ref, asset)
+        .copy(ownAccountGuessed = guessed, timeKnown = true)
     val eventKey = event.eventKey
     val sources = listOf(TransactionSource(source, ref, eventKey))
 
@@ -261,12 +267,25 @@ internal fun planAutoRecord(
     (trace.match as? MatchOutcome.Confident)?.let { confident ->
         val match = confident.match
         val mirror = match.relation == MatchRelation.Mirror
+        // A duplicate carries a retarget only when the stored row's account
+        // was a guess and this message states another one: the purchase
+        // recorded from a bank push on the checking account, and this is the
+        // receipt naming the card. The row moves to the card.
+        val settles = match.relation == MatchRelation.Duplicate &&
+            match.retargetPostingId != null && !guessed
         return AutoRecordPlan.Attach(
             AssociateOp(
                 transactionId = match.fact.transactionId,
                 sources = sources,
-                retargetPostingId = if (mirror) match.retargetPostingId else null,
-                retargetAccountId = if (mirror) asset else null,
+                retargetPostingId = if (mirror || settles) match.retargetPostingId else null,
+                retargetAccountId = if (mirror || settles) asset else null,
+                // A mirror written from a guess (Santander's «Enviaste» only
+                // names the bank) leaves the row open for the receipt.
+                accountGuessed = when {
+                    settles -> false
+                    mirror && guessed -> true
+                    else -> null
+                },
             ),
         )
     }
@@ -316,6 +335,7 @@ internal fun planAutoRecord(
             timeKnown = true,
             drafts = listOf(assetLeg) + categoryLegs,
             sources = sources,
+            accountGuessed = guessed,
         ),
     )
 }

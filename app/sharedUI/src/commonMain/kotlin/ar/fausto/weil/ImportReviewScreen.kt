@@ -100,6 +100,7 @@ import weil.app.sharedui.generated.resources.import_reason_day
 import weil.app.sharedui.generated.resources.import_reason_day_near
 import weil.app.sharedui.generated.resources.import_reason_payee
 import weil.app.sharedui.generated.resources.import_reason_payee_similar
+import weil.app.sharedui.generated.resources.import_reason_time
 import weil.app.sharedui.generated.resources.import_section_matched
 import weil.app.sharedui.generated.resources.import_section_review
 import weil.app.sharedui.generated.resources.import_payee_label
@@ -472,11 +473,17 @@ fun ImportReviewScreen(
                     .map { draft ->
                         val match = draft.associateTo!!
                         val mirror = match.relation == MatchRelation.Mirror
+                        // A duplicate carries a retarget only when the stored
+                        // row's account was a guess (a bank push): the
+                        // statement names the account, so the row moves there.
+                        val settles = match.relation == MatchRelation.Duplicate &&
+                            match.retargetPostingId != null
                         AssociateOp(
                             transactionId = match.fact.transactionId,
                             sources = draft.provenance(fallbackAsset),
-                            retargetPostingId = if (mirror) match.retargetPostingId else null,
-                            retargetAccountId = if (mirror) draft.assetOr(fallbackAsset) else null,
+                            retargetPostingId = if (mirror || settles) match.retargetPostingId else null,
+                            retargetAccountId = if (mirror || settles) draft.assetOr(fallbackAsset) else null,
+                            accountGuessed = if (settles) false else null,
                         )
                     }
                 val entries = current.filter { it.include && it.associateTo == null && it.valid }.mapNotNull { draft ->
@@ -1238,6 +1245,7 @@ private fun reasonLabel(reason: MatchReason): String = stringResource(
         MatchReason.SimilarPayee -> Res.string.import_reason_payee_similar
         MatchReason.SameAccount -> Res.string.import_reason_account
         MatchReason.OppositeAccount -> Res.string.import_reason_account_opposite
+        MatchReason.CloseTime -> Res.string.import_reason_time
     },
 )
 

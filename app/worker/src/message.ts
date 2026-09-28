@@ -56,6 +56,14 @@ export interface ReadMessage {
   /** The user's own account, verbatim from the list, or null. */
   account: string | null;
   /**
+   * The message settles `account`: it names the account or card, or the
+   * sender has only one of the user's accounts in that currency. False when
+   * the reader picked between several (a bank's checking account and its
+   * card). The app keeps a guessed account open, so the receipt that names
+   * the card attaches to the push's row instead of writing a second one.
+   */
+  accountCertain: boolean;
+  /**
    * For a transfer, the user's own account the money arrived in, verbatim
    * from the list; null otherwise. Checked against the own accounts before it
    * leaves the worker.
@@ -76,7 +84,10 @@ export interface ReadMessage {
  * unified endpoint). One string so the three call sites cannot drift.
  */
 export const ANSWER_KEYS =
-  'Answer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount (a string like "21389.00"), commodity, account, destination, note, normalized.';
+  'Answer with one JSON object and nothing else, with the keys: isMovement (boolean), direction, payee, amount (a string like "21389.00"), commodity, account, accountCertain (boolean), destination, note, normalized.';
+
+const ACCOUNT_CERTAIN_HINT =
+  'True only when the message itself settles the account: it names the account or card (its type or last digits), or the sender has exactly one account in the list in that currency. False when you picked between several of that sender\'s accounts, or guessed.';
 
 const DESTINATION_HINT =
   "Only for a transfer: the user's own account the money arrived in, verbatim from the list given. Null for an expense or an income, and null when none of their accounts fits.";
@@ -106,6 +117,7 @@ const SCHEMA = {
       description:
         "The user's own account or payment method the money moved through, verbatim from the list given. Infer it: the sender names the bank or wallet and the currency picks between that sender's accounts. Null only when even that leaves it open.",
     },
+    accountCertain: { type: 'BOOLEAN', description: ACCOUNT_CERTAIN_HINT },
     destination: {
       type: 'STRING',
       nullable: true,
@@ -118,7 +130,7 @@ const SCHEMA = {
         "A short Spanish noun phrase naming WHAT the movement was and through which account, with the bank's boilerplate removed: 'compra en Coto con Mercado Pago', 'transferencia recibida de Juan Pérez'. This text is embedded to find past movements that read alike, so it must contain NO DIGITS at all — no amount, no date, no card number. An amount here is the one thing that makes it useless.",
     },
   },
-  required: ['isMovement', 'direction', 'payee', 'amount', 'commodity', 'normalized'],
+  required: ['isMovement', 'direction', 'payee', 'amount', 'commodity', 'accountCertain', 'normalized'],
 } as const;
 
 /** What kind of message this is, in the prompt's words. */
@@ -164,6 +176,8 @@ export function messagePrompt(body: MessageBody): string {
           `The user's own accounts / payment methods, verbatim: ${own.join(' | ')}`,
           'These alerts almost never name the account, and they do not have to: the sender names the bank or wallet,',
           "and the currency picks between that sender's accounts. Answer null only when even that leaves it open.",
+          'accountCertain says whether the message settled the account or you picked it: a bank with a pesos account',
+          'and a card in pesos, on an alert that names neither, is a pick.',
         ].join('\n')
       : '',
     '',
@@ -238,6 +252,7 @@ const JSON_SCHEMA = {
     amount: { type: 'string' },
     commodity: { type: 'string' },
     account: { type: ['string', 'null'] },
+    accountCertain: { type: 'boolean', description: ACCOUNT_CERTAIN_HINT },
     destination: { type: ['string', 'null'], description: DESTINATION_HINT },
     note: { type: ['string', 'null'] },
     normalized: {
@@ -246,7 +261,7 @@ const JSON_SCHEMA = {
         'A short Spanish noun phrase naming what the movement was and through which account. No digits: no amount, no date, no card number.',
     },
   },
-  required: ['isMovement', 'direction', 'payee', 'amount', 'commodity', 'normalized'],
+  required: ['isMovement', 'direction', 'payee', 'amount', 'commodity', 'accountCertain', 'normalized'],
 } as const;
 
 export interface AltReading {
@@ -392,6 +407,9 @@ function normalizeReading(reading: ReadMessage, accounts: MessageAccount[] = [])
     amount: text(reading.amount),
     commodity: text(reading.commodity) || 'ARS',
     account: reading.account == null ? null : text(reading.account),
+    // Missing reads as a guess: a guessed account only keeps the row open for
+    // a later source, while a false "certain" writes the purchase twice.
+    accountCertain: reading.account != null && reading.accountCertain === true,
     destination: ownDestination(reading, accounts),
     note: reading.note == null ? null : text(reading.note),
     normalized: text(reading.normalized),

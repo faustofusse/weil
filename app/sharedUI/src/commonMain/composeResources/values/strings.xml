@@ -531,6 +531,7 @@
     <string name="import_reason_payee_similar">descripción parecida</string>
     <string name="import_reason_account">misma cuenta</string>
     <string name="import_reason_account_opposite">cuenta opuesta</string>
+    <string name="import_reason_time">minutos de diferencia</string>
     <string name="import_reason_already">ya importada antes</string>
     <string name="import_create_and_associate">Crear %1$d y asociar %2$d</string>
     <string name="import_associate_only">Asociar %1$d</string>

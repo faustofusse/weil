@@ -77,6 +77,15 @@ data class CandidateEvent(
     val date: Long,
     val rawPayee: String,
     val direction: ImportDirection,
+    /**
+     * [ownAccountId] was inferred, not read: a bank push that says "Pagaste
+     * $3.490" names the bank, not whether the checking account or the credit
+     * card paid. A guessed account is not evidence against a match (see
+     * [score]) and cannot build a transfer [MatchRelation.Mirror].
+     */
+    val ownAccountGuessed: Boolean = false,
+    /** [date] carries a real clock time (a message), not a statement's day. */
+    val timeKnown: Boolean = false,
 ) {
     /**
      * Fingerprint of the movement, independent of which door it arrived
@@ -123,6 +132,10 @@ data class LedgerFact(
     val legs: List<FactLeg>,
     val eventKeys: Set<String> = emptySet(),
     val sourceRefs: Set<String> = emptySet(),
+    /** The row's own account was a guess nobody confirmed (`transactions.account_guessed`). */
+    val ownAccountGuessed: Boolean = false,
+    /** [date] carries a real clock time (`transactions.time_known`). */
+    val timeKnown: Boolean = false,
 )
 
 /** Why the matcher thinks two movements are the same; the UI translates these. */
@@ -137,6 +150,9 @@ enum class MatchReason {
     SimilarPayee,
     SameAccount,
     OppositeAccount,
+
+    /** Both sides carry a clock time and they are minutes apart. */
+    CloseTime,
 }
 
 /** What kind of coincidence a match is — it decides what "associate" does. */
@@ -162,7 +178,13 @@ data class ScoredMatch(
     val relation: MatchRelation,
     val score: Int,
     val reasons: List<MatchReason>,
-    /** Leg to repoint at the event's own account when associating a [MatchRelation.Mirror]. */
+    /**
+     * Leg to repoint at the event's own account when associating. On a
+     * [MatchRelation.Mirror] it is the dangling category leg. On a
+     * [MatchRelation.Duplicate] it is the existing row's own leg, set only
+     * when that account was a guess and this event states a different one.
+     * The event knows better, so associating corrects the row.
+     */
     val retargetPostingId: String? = null,
 )
 
@@ -325,6 +347,9 @@ fun findReversal(
 /** Bank messages about one operation arrive within minutes of each other. */
 const val REVERSAL_WINDOW_MS: Long = 60L * 60 * 1000
 
+/** How close two clock times must be to count as [MatchReason.CloseTime]. */
+const val CLOSE_TIME_MS: Long = 10L * 60 * 1000
+
 /** Keeps the evidence, drops the automatic decision. */
 private fun demote(outcome: MatchOutcome): MatchOutcome = when (outcome) {
     is MatchOutcome.Confident -> MatchOutcome.Ambiguous(listOf(outcome.match))
@@ -349,12 +374,20 @@ private fun score(event: CandidateEvent, fact: LedgerFact, policy: MatchPolicy):
         if (delta > slack) continue
 
         val sameAccount = event.ownAccountId != null && event.ownAccountId == leg.accountId
+        // A guessed account on either side is no evidence of a *different*
+        // account. A bank push only names the bank, so the reader picks
+        // between its checking account and its card, and the receipt of the
+        // same purchase then names the card. Treating that guess as a fact
+        // wrote the purchase twice, once per account.
+        val accountOpen = event.ownAccountId == null || event.ownAccountGuessed || fact.ownAccountGuessed
         // Same account + same direction is the same movement seen twice. The
         // other half of a transfer is the opposite sign somewhere else; when
         // the incoming account is unknown we cannot tell the two apart, so the
-        // sign alone decides and the user confirms.
+        // sign alone decides and the user confirms. A mirror on a guessed
+        // account still completes the transfer (the other half is the better
+        // evidence of the two), and the row stays marked as a guess.
         val relation = when {
-            sameSign && (sameAccount || event.ownAccountId == null) -> MatchRelation.Duplicate
+            sameSign && (sameAccount || accountOpen) -> MatchRelation.Duplicate
             !sameSign && !sameAccount -> MatchRelation.Mirror
             else -> continue
         }
@@ -404,13 +437,24 @@ private fun score(event: CandidateEvent, fact: LedgerFact, policy: MatchPolicy):
             reasons += MatchReason.OppositeAccount
         }
 
+        // Two messages about one operation arrive minutes apart (the push,
+        // then the mail). Only when both clocks are real: a statement row's
+        // time is a made-up midnight.
+        if (event.timeKnown && fact.timeKnown && abs(event.date - fact.date) <= CLOSE_TIME_MS) {
+            total += 10
+            reasons += MatchReason.CloseTime
+        }
+
         // The leg to repoint when completing a transfer: the category side the
         // other document filed this movement under. Without one there is
         // nothing to fix, so the mirror is only a hint.
-        val dangling = if (relation == MatchRelation.Mirror) {
-            fact.legs.firstOrNull { it.isCategory && it.commodity == event.commodity }?.postingId
-        } else {
-            null
+        val dangling = when {
+            relation == MatchRelation.Mirror ->
+                fact.legs.firstOrNull { it.isCategory && it.commodity == event.commodity }?.postingId
+            // The row's account was a guess and this event states another one.
+            relation == MatchRelation.Duplicate && fact.ownAccountGuessed && !sameAccount &&
+                event.ownAccountId != null && !event.ownAccountGuessed -> leg.postingId
+            else -> null
         }
 
         val match = ScoredMatch(fact, relation, total, reasons, dangling)

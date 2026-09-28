@@ -146,7 +146,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 15L
+private const val SCHEMA_VERSION = 16L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -265,6 +265,7 @@ private val BASE_TRANSACTION_COLUMNS = listOf(
 private val OPTIONAL_TRANSACTION_COLUMNS = listOf(
     "source_document_id" to "text",
     "time_known" to "integer not null default 1",
+    "account_guessed" to "integer not null default 0",
     "embedding" to "F32_BLOB($EMBEDDING_DIMS)",
     "embedding_model" to "text",
 )
@@ -353,6 +354,15 @@ fun Database.migrateSchema() {
         execute(
             "update transactions set time_known = 0 where source_document_id is not null",
         )
+    }
+    if ("account_guessed" !in txColumns) {
+        // 1 when the own account was inferred rather than read: a bank push
+        // that only names the bank, so the reader picked between its checking
+        // account and its card. The matcher treats such an account as open
+        // (the card's receipt then attaches instead of writing a second row)
+        // and lets a source that states the account correct it. Cleared when
+        // the user edits the row or a later source settles it.
+        addColumn("alter table transactions add column account_guessed integer not null default 0")
     }
     val emailColumns = query("pragma table_info(emails)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
