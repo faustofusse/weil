@@ -100,13 +100,97 @@ class BrokersRepository(
         return result
     }
 
-    /** Balances before a batch: each cash account in its currency, and the holdings with their cost. */
-    suspend fun ledgerView(broker: BrokerAccounts): BrokerLedgerView {
-        val balances = ledger.leafBalances()
-        return BrokerLedgerView(
-            cash = broker.cash.mapValues { (currency, account) -> balances[account]?.get(currency) ?: 0L },
-            holdings = ledger.holdings(broker.holdings),
-        )
+    /**
+     * Balances before a batch: each cash account in its currency, and the
+     * holdings with their cost. [excluding] leaves those transactions out,
+     * which is what the ledger would hold once a rebuilt plan replaces them.
+     */
+    suspend fun ledgerView(broker: BrokerAccounts, excluding: List<String> = emptyList()): BrokerLedgerView {
+        if (excluding.isEmpty()) {
+            val balances = ledger.leafBalances()
+            return BrokerLedgerView(
+                cash = broker.cash.mapValues { (currency, account) -> balances[account]?.get(currency) ?: 0L },
+                holdings = ledger.holdings(broker.holdings),
+            )
+        }
+        val skip = quoteList(excluding.distinct())
+        return db.useForRead { d ->
+            val cash = broker.cash.mapValues { (currency, account) ->
+                d.query(
+                    "select sum(amount_minor) from postings where account_id = :account and commodity = :commodity" +
+                        " and transaction_id not in ($skip)",
+                    mapOf(":account" to account, ":commodity" to currency),
+                ) { rows -> (rows.firstOrNull()?.firstOrNull() as? Number)?.toLong() ?: 0L }
+            }
+            val holdings = d.query(
+                "select commodity, sum(amount_minor), sum(coalesce(cost_minor, 0)), max(cost_commodity)" +
+                    " from postings where account_id = :account and transaction_id not in ($skip) group by commodity",
+                mapOf(":account" to broker.holdings),
+            ) { rows ->
+                rows.mapNotNull { row ->
+                    val commodity = row.getOrNull(0)?.toString() ?: return@mapNotNull null
+                    commodity to HeldPosition(
+                        (row.getOrNull(1) as? Number)?.toLong() ?: 0L,
+                        (row.getOrNull(2) as? Number)?.toLong() ?: 0L,
+                        row.getOrNull(3)?.toString(),
+                    )
+                }.toList().toMap()
+            }
+            BrokerLedgerView(cash, holdings)
+        }
+    }
+
+    /**
+     * What a rebuilt import of [provider] replaces: every transaction that
+     * carries one of its refs, plus the ones without a source that book its
+     * cash or holdings against the opening balance (the opening itself and
+     * any [adjustOpening]). A bank transfer typed by hand stays: the rebuilt
+     * opening subtracts it instead.
+     */
+    suspend fun importedTransactionIds(provider: String, broker: BrokerAccounts): List<String> = db.useForRead { d ->
+        val own = quoteList((broker.cash.values + broker.holdings).distinct())
+        d.query(
+            "select distinct transaction_id from transaction_sources where kind = :kind and ref like :prefix" +
+                " union" +
+                " select distinct p.transaction_id from postings p" +
+                " where p.account_id in ($own)" +
+                " and p.transaction_id in (select transaction_id from postings where account_id = :opening)" +
+                " and p.transaction_id not in (select transaction_id from transaction_sources)",
+            mapOf(":kind" to EventSource.Broker.db, ":prefix" to "$provider:%", ":opening" to broker.opening),
+        ) { rows -> rows.mapNotNull { it.firstOrNull()?.toString() }.toList() }
+    }
+
+    /**
+     * Where the user pointed each deposit or withdrawal of [ids]: ref → the
+     * account on the other side of the broker's cash, when it is not the
+     * opening balance. A rebuild re-applies these instead of asking again
+     * (only to the transactions that need a counterpart: a trade's extra
+     * leg is a gain or a fee, and it is ignored there).
+     */
+    suspend fun counterparts(ids: List<String>, broker: BrokerAccounts): Map<String, String> {
+        if (ids.isEmpty()) return emptyMap()
+        val own = broker.cash.values.toSet() + broker.holdings + broker.opening
+        return db.useForRead { d ->
+            d.query(
+                "select s.ref, p.account_id from transaction_sources s join postings p on p.transaction_id = s.transaction_id" +
+                    " where s.transaction_id in (${quoteList(ids.distinct())}) and s.kind = :kind",
+                mapOf(":kind" to EventSource.Broker.db),
+            ) { rows ->
+                rows.mapNotNull { row ->
+                    val ref = row.getOrNull(0)?.toString() ?: return@mapNotNull null
+                    val account = row.getOrNull(1)?.toString()?.takeIf { it !in own } ?: return@mapNotNull null
+                    ref to account
+                }.toList()
+            }.groupBy({ it.first }, { it.second })
+                .filterValues { it.distinct().size == 1 }
+                .mapValues { it.value.first() }
+        }
+    }
+
+    /** [tradingLines] over every commodity the ledger describes plus [extra] (a batch's). */
+    suspend fun linesOf(extra: Collection<InstrumentInfo> = emptyList()): Map<String, String> {
+        val known = db.useForRead { d -> d.commodities() }
+        return tradingLines((known + extra.associateBy { it.id }).values)
     }
 
     /** Namespaced refs ("iol:…") of [provider] already booked. */
@@ -123,23 +207,7 @@ class BrokersRepository(
      * it has one, else whichever quote is newest).
      */
     suspend fun valuation(): Valuation = db.useForRead { d ->
-        val commodities = d.query(
-            "select id, symbol, name, kind, scale, price_per, quote_commodity from commodities",
-            null,
-        ) { rows ->
-            rows.mapNotNull { row ->
-                val id = row.getOrNull(0)?.toString() ?: return@mapNotNull null
-                InstrumentInfo(
-                    id = id,
-                    symbol = row.getOrNull(1)?.toString() ?: id,
-                    name = row.getOrNull(2)?.toString(),
-                    kind = row.getOrNull(3)?.toString() ?: "other",
-                    scale = (row.getOrNull(4) as? Number)?.toInt() ?: 2,
-                    pricePer = (row.getOrNull(5) as? Number)?.toInt() ?: 1,
-                    quoteCommodity = row.getOrNull(6)?.toString(),
-                )
-            }.toList().associateBy { it.id }
-        }
+        val commodities = d.commodities()
         val latest = mutableMapOf<String, PriceQuote>()
         d.query("select commodity, quote_commodity, at, price, source from prices order by at desc", null) { rows ->
             for (row in rows) {
@@ -158,7 +226,7 @@ class BrokersRepository(
                 }
             }
         }
-        Valuation(commodities, latest, d.officialRate())
+        Valuation(commodities, latest, d.officialRate(), d.latestRate(MEP_SOURCE))
     }
 
     /** Decimals of every commodity the ledger describes. */
@@ -194,7 +262,7 @@ class BrokersRepository(
             for (commodity in plan.newCommodities) d.insertCommodity(commodity)
             for (price in plan.prices) d.upsertPrice(price)
         }
-        return ledger.addAll(selected.map { it.transaction })
+        return ledger.replaceAll(plan.replaces, selected.map { it.transaction })
     }
 
     /**
@@ -268,14 +336,35 @@ private fun Database.insertCommodity(c: InstrumentInfo) {
     )
 }
 
-private fun Database.officialRate(): PriceQuote? = query(
+private fun Database.commodities(): Map<String, InstrumentInfo> = query(
+    "select id, symbol, name, kind, scale, price_per, quote_commodity from commodities",
+    null,
+) { rows ->
+    rows.mapNotNull { row ->
+        val id = row.getOrNull(0)?.toString() ?: return@mapNotNull null
+        InstrumentInfo(
+            id = id,
+            symbol = row.getOrNull(1)?.toString() ?: id,
+            name = row.getOrNull(2)?.toString(),
+            kind = row.getOrNull(3)?.toString() ?: "other",
+            scale = (row.getOrNull(4) as? Number)?.toInt() ?: 2,
+            pricePer = (row.getOrNull(5) as? Number)?.toInt() ?: 1,
+            quoteCommodity = row.getOrNull(6)?.toString(),
+        )
+    }.toList().associateBy { it.id }
+}
+
+private fun Database.officialRate(): PriceQuote? = latestRate(OFFICIAL_SOURCE)
+
+/** Newest USD rate in ARS from [source] ([OFFICIAL_SOURCE], [MEP_SOURCE]). */
+private fun Database.latestRate(source: String): PriceQuote? = query(
     "select at, price from prices where commodity = 'USD' and quote_commodity = 'ARS'" +
         " and source = :source order by at desc limit 1",
-    mapOf(":source" to OFFICIAL_SOURCE),
+    mapOf(":source" to source),
 ) { rows ->
     rows.firstOrNull()?.let { row ->
         val price = Decimal.parse(row.getOrNull(1)?.toString().orEmpty()) ?: return@let null
-        PriceQuote("USD", "ARS", (row.getOrNull(0) as? Number)?.toLong() ?: 0L, price, OFFICIAL_SOURCE)
+        PriceQuote("USD", "ARS", (row.getOrNull(0) as? Number)?.toLong() ?: 0L, price, source)
     }
 }
 

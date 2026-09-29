@@ -796,6 +796,9 @@ fun RootScreen(
                                         embeddings = graph.embeddings,
                                         userState = userState,
                                         settings = graph.settings,
+                                        investmentsDisplay = ledgerState.investmentsDisplay,
+                                        mepRate = ledgerState.valuation.mep,
+                                        onInvestmentsDisplay = ledgerState::chooseInvestmentsDisplay,
                                         onNavigateBack = { pop() },
                                         onSignOut = { scope.launch { graph.auth.signOut() } },
                                     )

@@ -66,19 +66,58 @@ class IolRepository(
         clearAutoSync()
     }
 
-    /** Fetches and plans; writes nothing. */
+    /**
+     * Fetches and plans; writes no transaction. The prices it fetched (the
+     * positions' last prices, the MEP rate) are saved right away: they are
+     * market data, not something to review, and the investments tab should
+     * show today's values even while the plan waits for a look.
+     */
     suspend fun preview(): BrokerPlan {
         val accounts = brokers.accountsFor(IOL_PROVIDER)
             ?: brokers.connect(IOL_PROVIDER, "IOL", listOf("ARS", "USD"))
         val known = brokers.knownRefs(IOL_PROVIDER)
-        val fetched = fetch(known)
+        val fetched = fetch(known, full = false)
         val view = brokers.ledgerView(accounts)
         val scales = brokers.scales()
+        val batch = withContext(Dispatchers.Default) { iolBatch(fetched) }
+        val lines = brokers.linesOf(batch.instruments)
         // A year of history is real work; keep it off the main thread, where
         // the screens call this from.
-        return withContext(Dispatchers.Default) {
-            planBrokerImport(iolBatch(fetched), accounts, view, known, scales)
+        val plan = withContext(Dispatchers.Default) {
+            planBrokerImport(batch, accounts, view, known, scales, lines)
         }
+        runCatching { brokers.savePrices(plan.prices) }
+        return plan
+    }
+
+    /**
+     * The whole history again, planned to *replace* what earlier imports
+     * wrote ([BrokerPlan.replaces]): for a ledger whose opening was computed
+     * wrong (before dollar lines were matched to their security, 8 AAPLD
+     * bought with dollars also opened as 8 AAPL). Deposits keep the account
+     * the user had pointed them at. Writes nothing until the reviewed plan
+     * is applied, and then in one SQL transaction.
+     */
+    suspend fun rebuildPreview(): BrokerPlan {
+        val accounts = brokers.accountsFor(IOL_PROVIDER)
+            ?: brokers.connect(IOL_PROVIDER, "IOL", listOf("ARS", "USD"))
+        val replaced = brokers.importedTransactionIds(IOL_PROVIDER, accounts)
+        val counterparts = brokers.counterparts(replaced, accounts)
+        val fetched = fetch(emptySet(), full = true)
+        val view = brokers.ledgerView(accounts, excluding = replaced)
+        val scales = brokers.scales()
+        val batch = withContext(Dispatchers.Default) { iolBatch(fetched) }
+        val lines = brokers.linesOf(batch.instruments)
+        val plan = withContext(Dispatchers.Default) {
+            planBrokerImport(batch, accounts, view, emptySet(), scales, lines, rebuild = true)
+        }
+        runCatching { brokers.savePrices(plan.prices) }
+        return plan.copy(
+            transactions = plan.transactions.map { p ->
+                p.ref?.let { counterparts[it] }?.let { p.withCounterpart(accounts.opening, it) } ?: p
+            },
+            replaces = replaced,
+        )
     }
 
     /** Writes the reviewed plan and moves the sync window forward. Returns the new ids, for undo. */
@@ -128,10 +167,10 @@ class IolRepository(
         lastAutoSync.value = null
     }
 
-    private suspend fun fetch(known: Set<String>): IolFetch {
+    private suspend fun fetch(known: Set<String>, full: Boolean): IolFetch {
         val now = epochMillis()
         val syncedAt = settings.all()[SYNCED_AT_KEY]?.toLongOrNull()
-        val from = if (syncedAt == null) FIRST_DAY else iolDate(syncedAt - WINDOW_MARGIN_MS)
+        val from = if (syncedAt == null || full) FIRST_DAY else iolDate(syncedAt - WINDOW_MARGIN_MS)
         val to = iolDate(now + DAY_MS)
         val operations = client.operations(from, to)
         val state = client.accountState()
@@ -142,7 +181,11 @@ class IolRepository(
         val instruments = iolSymbolsNeeded(operations, portfolios).mapNotNull { (market, symbol) ->
             runCatching { symbol to client.instrument(market, symbol) }.getOrNull()
         }.toMap()
-        return IolFetch(now, state, portfolios, operations, details, instruments)
+        // Best effort: without them there is no MEP rate this time, nothing else.
+        val quotes = IOL_MEP_BONDS.flatMap { listOf(it, it + "D") }.mapNotNull { symbol ->
+            runCatching { client.quote("bcba", symbol).ultimoPrecio }.getOrNull()?.let { symbol to it }
+        }.toMap()
+        return IolFetch(now, state, portfolios, operations, details, instruments, quotes)
     }
 
     private fun credentials(): IolCredentials? {

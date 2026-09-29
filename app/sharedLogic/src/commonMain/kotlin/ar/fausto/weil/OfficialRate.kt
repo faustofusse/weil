@@ -20,6 +20,35 @@ import kotlinx.serialization.json.JsonPrimitive
 const val OFFICIAL_SOURCE = "bcra"
 
 /**
+ * The MEP dollar, as the `prices` source of a USD-in-ARS row: the rate a
+ * peso holder actually gets through a broker, read from one bond's peso and
+ * dollar lines ([iolMepRate]). What the investments tab converts with when
+ * it is asked to show everything in pesos or everything in dollars; the
+ * official rate stays for the net worth line.
+ */
+const val MEP_SOURCE = "mep"
+
+/**
+ * How the investments tab states position values (a synced setting, like
+ * [NET_WORTH_CURRENCY_KEY]): each in the currency its line trades in, all
+ * in pesos, or all in MEP dollars. The conversions use [MEP_SOURCE].
+ */
+enum class InvestmentsDisplay(val key: String) {
+    Original("original"),
+    Pesos("ARS"),
+    Mep("USD");
+
+    /** The currency everything is converted into; null keeps each line's own. */
+    val target: String? get() = if (this == Original) null else key
+
+    companion object {
+        fun parse(value: String?): InvestmentsDisplay = entries.firstOrNull { it.key == value } ?: Original
+    }
+}
+
+const val INVESTMENTS_DISPLAY_KEY = "investments.display"
+
+/**
  * Which currency the net worth is also shown in, converted at the official
  * rate: `USD` (default, no row), `ARS`, or [NET_WORTH_CONVERSION_OFF]. A
  * synced setting: it is a preference about the account, not the device.

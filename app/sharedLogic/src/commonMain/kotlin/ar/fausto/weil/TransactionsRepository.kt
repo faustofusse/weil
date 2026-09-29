@@ -64,13 +64,27 @@ class TransactionsRepository(private val db: DatabaseProvider) {
      * whole set, so a failure halfway leaves the ledger untouched. Returns the
      * new transaction ids in input order.
      */
-    suspend fun addAll(entries: List<NewTransaction>): List<String> {
-        if (entries.isEmpty()) return emptyList()
+    suspend fun addAll(entries: List<NewTransaction>): List<String> = replaceAll(emptyList(), entries)
+
+    /**
+     * [addAll], deleting [deleteIds] (postings and provenance with them) in
+     * the same SQL transaction: a rebuilt broker import swaps its old rows
+     * for new ones, and a failure halfway must leave the old ones in place.
+     */
+    suspend fun replaceAll(deleteIds: List<String>, entries: List<NewTransaction>): List<String> {
+        val doomed = deleteIds.distinct()
+        if (entries.isEmpty() && doomed.isEmpty()) return emptyList()
         val prepared = entries.map { entry ->
             val txId = Uuid.random().toString()
             txId to (entry to resolvePostings(entry.drafts).map { it.copy(transactionId = txId) })
         }
         writeAtomically {
+            if (doomed.isNotEmpty()) {
+                val idList = quoteList(doomed)
+                execute("delete from postings where transaction_id in ($idList)", null)
+                execute("delete from transaction_sources where transaction_id in ($idList)", null)
+                execute("delete from transactions where id in ($idList)", null)
+            }
             for ((txId, pair) in prepared) {
                 val (entry, postings) = pair
                 insertTransaction(
@@ -1091,5 +1105,5 @@ class TransactionsRepository(private val db: DatabaseProvider) {
 }
 
 /** Single-quoted SQL literal list, used for small in-clauses of row ids. */
-private fun quoteList(ids: List<String>): String =
+internal fun quoteList(ids: List<String>): String =
     ids.joinToString(",") { "'" + it.replace("'", "''") + "'" }

@@ -199,8 +199,10 @@ private fun PositionRow(line: PositionLine, selected: Boolean, newestDay: String
             val cost = line.costMinor
             val costCommodity = line.costCommodity
             when {
-                gain != null && valueCommodity != null -> Text(
-                    gainText(gain, valueCommodity, line.unrealizedRatio),
+                // In the currency it cost, which may not be the value's
+                // (all in MEP, a CEDEAR bought with pesos): see Valuation.positions.
+                gain != null && costCommodity != null -> Text(
+                    gainText(gain, costCommodity, line.unrealizedRatio),
                     style = MaterialTheme.typography.bodySmall,
                     color = when {
                         gain > 0 -> MoneyColor.positive

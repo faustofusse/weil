@@ -296,7 +296,49 @@ data class BrokerPlan(
     val issues: List<PlanIssue>,
     /** Refs already booked (in transaction_sources), left alone. */
     val skippedRefs: List<String>,
+    /**
+     * Transactions this plan supersedes: a rebuilt import (see
+     * [planBrokerImport]'s `rebuild`) deletes them in the same SQL
+     * transaction that writes [transactions].
+     */
+    val replaces: List<String> = emptyList(),
 )
+
+/**
+ * The trading lines of one security, line → the security's own id.
+ *
+ * BYMA lists a security on several lines: `AAPL` in pesos, `AAPLD` in MEP
+ * dollars, `AAPLC` in cable dollars (an ON's peso line ends in `O`:
+ * `AEC1O`/`AEC1D`). An order names the line it traded on, but custody is per
+ * security, so a broker's portfolio reports the holding under the peso
+ * ticker only: 8 `AAPLD` bought with dollars show up there as 8 more `AAPL`.
+ * Each line stays its own commodity (its cost is in its own currency), and
+ * everything that compares or draws down a *holding* — the opening, the
+ * differences, a sale on another line, a redemption — goes through this map.
+ *
+ * A line is a BCBA instrument quoted in dollars whose code is another
+ * known, non-dollar BCBA instrument's plus `D` or `C`. The dollar quote is
+ * what keeps `YPFD` (YPF's peso ticker) from being read as a line of `YPF`.
+ */
+fun tradingLines(instruments: Collection<InstrumentInfo>): Map<String, String> {
+    val byId = instruments.associateBy { it.id }
+    val result = mutableMapOf<String, String>()
+    for (info in instruments) {
+        if (!info.id.startsWith(BYMA_PREFIX) || info.quoteCommodity != "USD") continue
+        val code = info.id.removePrefix(BYMA_PREFIX)
+        if (code.length < 3 || (code.last() != 'D' && code.last() != 'C')) continue
+        val stem = code.dropLast(1)
+        val candidates = buildList {
+            add(BYMA_PREFIX + stem)
+            if (info.kind == "on") add(BYMA_PREFIX + stem + "O")
+        }
+        val base = candidates.firstOrNull { id -> byId[id]?.let { it.quoteCommodity != "USD" } == true } ?: continue
+        result[info.id] = base
+    }
+    return result
+}
+
+private const val BYMA_PREFIX = "BCBA:"
 
 /** The ref as stored in `transaction_sources`: provider-scoped. */
 fun brokerRef(provider: String, ref: String): String = "$provider:$ref"
@@ -306,7 +348,14 @@ fun brokerRef(provider: String, ref: String): String = "$provider:$ref"
  *
  * [knownRefs] are the namespaced refs already in `transaction_sources`
  * (see [brokerRef]); [scales] the decimals of commodities the ledger already
- * knows (a commodity nobody describes keeps 2, like everywhere else).
+ * knows (a commodity nobody describes keeps 2, like everywhere else);
+ * [lines] the trading lines of one security ([tradingLines] over the
+ * ledger's commodities and the batch's).
+ *
+ * [rebuild] plans the opening even though the ledger is not empty: the
+ * caller left the broker's own transactions out of [ledger] because the
+ * plan replaces them, and what remains (a bank transfer typed by hand) is
+ * subtracted from the opening instead of counted twice.
  */
 fun planBrokerImport(
     batch: BrokerBatch,
@@ -314,7 +363,9 @@ fun planBrokerImport(
     ledger: BrokerLedgerView,
     knownRefs: Set<String>,
     scales: Map<String, Int> = emptyMap(),
-): BrokerPlan = BrokerPlanner(batch, accounts, ledger, knownRefs, scales).plan()
+    lines: Map<String, String> = tradingLines(batch.instruments),
+    rebuild: Boolean = false,
+): BrokerPlan = BrokerPlanner(batch, accounts, ledger, knownRefs, scales, lines, rebuild).plan()
 
 private class BrokerPlanner(
     val batch: BrokerBatch,
@@ -322,8 +373,13 @@ private class BrokerPlanner(
     val ledger: BrokerLedgerView,
     val knownRefs: Set<String>,
     knownScales: Map<String, Int>,
+    val lines: Map<String, String>,
+    val rebuild: Boolean,
 ) {
     private val scales: Map<String, Int> = knownScales + batch.instruments.associate { it.id to it.scale }
+
+    /** The security a trading line belongs to (see [tradingLines]); itself for anything else. */
+    fun speciesOf(instrument: String): String = lines[instrument] ?: instrument
     private val cash: MutableMap<String, Long> = ledger.cash.toMutableMap()
     private val holdings: MutableMap<String, HeldPosition> = ledger.holdings.toMutableMap()
     private val planned = mutableListOf<PlannedTransaction>()
@@ -351,7 +407,7 @@ private class BrokerPlanner(
             .sortedWith(compareBy<BrokerEvent>({ it.at }, { it.ref }))
             .partition { brokerRef(batch.provider, it.ref) !in knownRefs }
 
-        if (ledger.isEmpty && batch.snapshot != null) planOpening(fresh, batch.snapshot)
+        if ((ledger.isEmpty || rebuild) && batch.snapshot != null) planOpening(fresh, batch.snapshot)
 
         for (event in fresh) {
             val ref = brokerRef(batch.provider, event.ref)
@@ -427,8 +483,13 @@ private class BrokerPlanner(
     }
 
     private fun planPrincipal(e: BrokerEvent.Principal, ref: String) {
+        // A whole-position redemption takes every line of the security: an
+        // ON bought on its dollar line (AEC1D) is paid back under its peso
+        // ticker (AEC1O).
+        val species = speciesOf(e.instrument)
         val redeemed = e.quantity?.let { quantityMinor(it.abs(), e.instrument) }
-            ?: holdings[e.instrument]?.quantityMinor?.takeIf { it > 0L }
+            ?: holdings.filter { speciesOf(it.key) == species }.values.sumOf { it.quantityMinor.coerceAtLeast(0L) }
+                .takeIf { it > 0L }
             ?: throw PlanException("redeems the whole position of ${e.instrument} but the ledger holds none")
         if (redeemed == 0L) throw PlanException("zero quantity")
         closePosition(e, ref, PlannedKind.Principal, e.instrument, redeemed, minor(e.cash, e.cashCommodity), e.cashCommodity, null, null, emptyList())
@@ -436,7 +497,10 @@ private class BrokerPlanner(
 
     /**
      * [quantity] units of [instrument] leave the holdings at their cost basis
-     * and [net] arrives in cash; the gap is the realized gain.
+     * and [net] arrives in cash; the gap is the realized gain. The units come
+     * from [instrument]'s own line first and then from the other lines of
+     * the same security ([lots]), each at its own cost, with [net] (and a
+     * broker's basis) split between them by quantity. One transaction.
      */
     private fun closePosition(
         e: BrokerEvent,
@@ -450,6 +514,50 @@ private class BrokerPlanner(
         note: String?,
         extraDrafts: List<DraftPosting>,
     ) {
+        val lots = lots(instrument, quantity)
+        val nets = splitByQuantity(net, lots.map { it.second })
+        val bases = brokerBasis?.let { splitByQuantity(it, lots.map { l -> l.second }) }
+        // Everything is computed before anything is recorded, so a lot that
+        // can't close leaves the running balances as they were.
+        val closed = lots.mapIndexed { i, (line, units) -> closeLot(line, units, nets[i], cashCommodity, bases?.get(i)) }
+        add(kind, e, ref, closed.flatMap { it.drafts } + extraDrafts, note)
+        for (lot in closed) {
+            holdings[lot.instrument] = lot.after
+            cash.bump(cashCommodity, lot.net)
+        }
+    }
+
+    private class ClosedLot(val instrument: String, val drafts: List<DraftPosting>, val after: HeldPosition, val net: Long)
+
+    /**
+     * Where [quantity] units of [instrument] come out of: its own line, then
+     * the security's peso line, then any other line. Whatever no line holds
+     * stays on [instrument], where closing it reports the shortfall (or,
+     * with a broker's basis, books it as the broker says).
+     */
+    private fun lots(instrument: String, quantity: Long): List<Pair<String, Long>> {
+        val species = speciesOf(instrument)
+        val candidates = listOf(instrument) + holdings.keys
+            .filter { it != instrument && speciesOf(it) == species }
+            .sortedWith(compareBy<String>({ it != species }, { it }))
+        val result = mutableListOf<Pair<String, Long>>()
+        var left = quantity
+        for (line in candidates) {
+            if (left == 0L) break
+            val held = holdings[line]?.quantityMinor ?: 0L
+            if (held <= 0L) continue
+            val take = minOf(held, left)
+            result += line to take
+            left -= take
+        }
+        if (left > 0L) {
+            val own = result.indexOfFirst { it.first == instrument }
+            if (own >= 0) result[own] = instrument to (result[own].second + left) else result += instrument to left
+        }
+        return result
+    }
+
+    private fun closeLot(instrument: String, quantity: Long, net: Long, cashCommodity: String, brokerBasis: Long?): ClosedLot {
         val cashAccount = cashAccount(cashCommodity)
         val position = holdings[instrument]
         val costCommodity = position?.costCommodity?.takeIf { position.quantityMinor != 0L } ?: cashCommodity
@@ -482,15 +590,13 @@ private class BrokerPlanner(
                 if (net <= 0L) throw PlanException("non-positive proceeds in another currency than the cost")
                 add(draft(cashAccount, net, cashCommodity, basis, costCommodity))
             }
-            addAll(extraDrafts)
         }
-        add(kind, e, ref, drafts, note)
-        holdings[instrument] = HeldPosition(
-            held - quantity,
-            (position?.costMinor ?: 0L) - basis,
-            costCommodity,
+        return ClosedLot(
+            instrument,
+            drafts,
+            HeldPosition(held - quantity, (position?.costMinor ?: 0L) - basis, costCommodity),
+            net,
         )
-        cash.bump(cashCommodity, net)
     }
 
     private fun planIncome(e: BrokerEvent.Income, ref: String) {
@@ -577,9 +683,14 @@ private class BrokerPlanner(
      * event (plan decision 6).
      */
     private fun planOpening(events: List<BrokerEvent>, snapshot: BrokerSnapshot) {
+        // By security, not by line: the snapshot reports 11 AAPL where the
+        // events bought 3 AAPL and 8 AAPLD, and the opening is zero, not 8.
         val quantityDelta = mutableMapOf<String, Decimal>()
         val cashDelta = mutableMapOf<String, Decimal>()
-        fun q(instrument: String, d: Decimal) { quantityDelta[instrument] = (quantityDelta[instrument] ?: Decimal.ZERO) + d }
+        fun q(instrument: String, d: Decimal) {
+            val species = speciesOf(instrument)
+            quantityDelta[species] = (quantityDelta[species] ?: Decimal.ZERO) + d
+        }
         fun c(commodity: String, d: Decimal) { cashDelta[commodity] = (cashDelta[commodity] ?: Decimal.ZERO) + d }
         for (event in events) {
             when (event) {
@@ -608,28 +719,42 @@ private class BrokerPlanner(
 
         val drafts = mutableListOf<DraftPosting>()
         val equity = mutableMapOf<String, Long>()
-        val instruments = (snapshot.positions.map { it.instrument } + quantityDelta.keys).distinct()
+        val held = snapshotBySpecies(snapshot)
+        // What the ledger already holds outside this plan: nothing on a first
+        // import, a hand-typed transfer of securities on a rebuild.
+        val booked = mutableMapOf<String, Decimal>()
+        for ((line, position) in ledger.holdings) {
+            val species = speciesOf(line)
+            booked[species] = (booked[species] ?: Decimal.ZERO) + Decimal.ofMinorUnits(position.quantityMinor, scaleOf(line))
+        }
+        val instruments = (held.keys + quantityDelta.keys).distinct()
         for (instrument in instruments) {
-            val held = snapshot.positions.firstOrNull { it.instrument == instrument }
+            val position = held[instrument]
             val opening = redeemedOpening(instrument, events)
-                ?: ((held?.quantity ?: Decimal.ZERO) - (quantityDelta[instrument] ?: Decimal.ZERO))
+                ?: ((position?.quantity ?: Decimal.ZERO) - (quantityDelta[instrument] ?: Decimal.ZERO) -
+                    (booked[instrument] ?: Decimal.ZERO))
             if (opening.isZero) continue
             if (opening.signum < 0) {
                 issues += PlanIssue(null, "opening: $instrument would open short (${opening.toPlainString()})")
                 continue
             }
-            val (cost, costCommodity) = openingCost(instrument, opening, held, events) ?: run {
+            val (cost, costCommodity) = openingCost(instrument, opening, position, events) ?: run {
                 issues += PlanIssue(null, "opening: no price or cost to value ${opening.toPlainString()} $instrument")
                 null
             } ?: continue
             val quantity = minor(opening, instrument)
             drafts += draft(accounts.holdings, quantity, instrument, cost, costCommodity)
             equity.bump(costCommodity, cost)
-            holdings[instrument] = HeldPosition(quantity, cost, costCommodity)
+            val before = holdings[instrument]
+            holdings[instrument] = if (before == null || before.quantityMinor == 0L) {
+                HeldPosition(quantity, cost, costCommodity)
+            } else {
+                HeldPosition(before.quantityMinor + quantity, before.costMinor + cost, before.costCommodity ?: costCommodity)
+            }
         }
         for (commodity in (snapshot.cash.keys + cashDelta.keys).distinct()) {
             val opening = (snapshot.cash[commodity] ?: Decimal.ZERO) - (cashDelta[commodity] ?: Decimal.ZERO)
-            val amount = minor(opening, commodity)
+            val amount = minor(opening, commodity) - (ledger.cash[commodity] ?: 0L)
             if (amount == 0L) continue
             val account = accounts.cash[commodity] ?: run {
                 issues += PlanIssue(null, "opening: no cash account for $commodity")
@@ -665,9 +790,9 @@ private class BrokerPlanner(
      */
     private fun redeemedOpening(instrument: String, events: List<BrokerEvent>): Decimal? {
         val own = events.filter {
-            (it is BrokerEvent.Trade && it.instrument == instrument) ||
-                (it is BrokerEvent.Principal && it.instrument == instrument) ||
-                (it is BrokerEvent.QuantityChange && it.instrument == instrument)
+            (it is BrokerEvent.Trade && speciesOf(it.instrument) == instrument) ||
+                (it is BrokerEvent.Principal && speciesOf(it.instrument) == instrument) ||
+                (it is BrokerEvent.QuantityChange && speciesOf(it.instrument) == instrument)
         }
         val firstReset = own.indexOfFirst { it is BrokerEvent.Principal && it.quantity == null }
         if (firstReset < 0) return null
@@ -690,6 +815,11 @@ private class BrokerPlanner(
      * reports one (pro rata, since part may have been bought in this batch),
      * else the broker's cost basis on a later sale of them, else the first
      * price this batch shows for them. Null when nothing prices them.
+     *
+     * [instrument] is a security; its trades on every line count, but only
+     * the buys in the currency the broker states its cost in are taken off
+     * that cost (a dollar amount can't be subtracted from pesos). The first
+     * trade used as a price is the security's own line when there is one.
      */
     private fun openingCost(
         instrument: String,
@@ -697,8 +827,10 @@ private class BrokerPlanner(
         held: SnapshotPosition?,
         events: List<BrokerEvent>,
     ): Pair<Long, String>? {
-        val trades = events.filterIsInstance<BrokerEvent.Trade>().filter { it.instrument == instrument }
-        val bought = trades.filter { it.quantity.signum > 0 }
+        val trades = events.filterIsInstance<BrokerEvent.Trade>()
+            .filter { speciesOf(it.instrument) == instrument }
+            .sortedBy { it.instrument != instrument }
+        val bought = trades.filter { it.quantity.signum > 0 && it.cashCommodity == held?.costCommodity }
         if (held?.cost != null && held.costCommodity != null && held.quantity.signum > 0) {
             // Cost of the snapshot's units, minus what this batch's buys added,
             // spread over what remains: exact when nothing was sold.
@@ -753,12 +885,40 @@ private class BrokerPlanner(
             val ledgerNow = cash[commodity] ?: 0L
             if (broker != ledgerNow) result += BalanceDifference(account, commodity, ledgerNow, broker)
         }
-        val instruments = (snapshot.positions.map { it.instrument } + holdings.keys).distinct().sorted()
-        for (instrument in instruments) {
-            val broker = snapshot.positions.firstOrNull { it.instrument == instrument }
-                ?.let { minor(it.quantity, instrument) } ?: 0L
-            val ledgerNow = holdings[instrument]?.quantityMinor ?: 0L
-            if (broker != ledgerNow) result += BalanceDifference(accounts.holdings, instrument, ledgerNow, broker)
+        // Per security: the broker's AAPL is the ledger's AAPL plus AAPLD.
+        val broker = snapshotBySpecies(snapshot)
+        val booked = mutableMapOf<String, Long>()
+        for ((line, position) in holdings) booked.bump(speciesOf(line), position.quantityMinor)
+        for (instrument in (broker.keys + booked.keys).distinct().sorted()) {
+            val brokerNow = broker[instrument]?.let { minor(it.quantity, instrument) } ?: 0L
+            val ledgerNow = booked[instrument] ?: 0L
+            if (brokerNow != ledgerNow) result += BalanceDifference(accounts.holdings, instrument, ledgerNow, brokerNow)
+        }
+        return result
+    }
+
+    /**
+     * The snapshot keyed by security. A broker reports one row per security
+     * already; two rows that map to one (a line reported on its own) add up,
+     * keeping the first one's price and adding costs stated in one currency.
+     */
+    private fun snapshotBySpecies(snapshot: BrokerSnapshot): Map<String, SnapshotPosition> {
+        val result = linkedMapOf<String, SnapshotPosition>()
+        for (position in snapshot.positions) {
+            val species = speciesOf(position.instrument)
+            val before = result[species]
+            result[species] = if (before == null) {
+                position.copy(instrument = species)
+            } else {
+                before.copy(
+                    quantity = before.quantity + position.quantity,
+                    cost = if (before.costCommodity == position.costCommodity && before.cost != null && position.cost != null) {
+                        before.cost + position.cost
+                    } else {
+                        null
+                    },
+                )
+            }
         }
         return result
     }
@@ -861,6 +1021,23 @@ private fun pricePerExponent(pricePer: Int): Int {
     }
     require(n == 1) { "price_per must be a power of ten: $pricePer" }
     return exponent
+}
+
+/**
+ * [total] split in proportion to [parts], exactly: the last share takes the
+ * rounding, so the shares add up to [total].
+ */
+private fun splitByQuantity(total: Long, parts: List<Long>): List<Long> {
+    if (parts.size <= 1) return listOf(total)
+    val sum = Decimal.of(parts.sum())
+    var assigned = 0L
+    return parts.mapIndexed { i, part ->
+        if (i == parts.lastIndex) {
+            total - assigned
+        } else {
+            (Decimal.of(total) * Decimal.of(part)).divide(sum, 0).toMinorUnits(0).also { assigned += it }
+        }
+    }
 }
 
 private fun MutableMap<String, Long>.bump(key: String, by: Long) {

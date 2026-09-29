@@ -40,6 +40,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -119,6 +122,13 @@ import weil.app.sharedui.generated.resources.profile_theme_roles_title
 import weil.app.sharedui.generated.resources.profile_theme_selected
 import weil.app.sharedui.generated.resources.profile_theme_subtitle
 import weil.app.sharedui.generated.resources.profile_theme_title
+import weil.app.sharedui.generated.resources.investments_display_mep
+import weil.app.sharedui.generated.resources.investments_display_original
+import weil.app.sharedui.generated.resources.investments_display_pesos
+import weil.app.sharedui.generated.resources.investments_mep_missing
+import weil.app.sharedui.generated.resources.investments_mep_rate
+import weil.app.sharedui.generated.resources.profile_investments_subtitle
+import weil.app.sharedui.generated.resources.profile_investments_title
 import weil.app.sharedui.generated.resources.profile_wa_code_hint
 import weil.app.sharedui.generated.resources.profile_wa_expired
 import weil.app.sharedui.generated.resources.profile_wa_hide_qr
@@ -148,6 +158,10 @@ fun ProfileScreen(
     embeddings: EmbeddingsRepository,
     userState: UserState,
     settings: SettingsRepository,
+    investmentsDisplay: InvestmentsDisplay,
+    /** The newest MEP rate, said under the choice; null until IOL brings one. */
+    mepRate: PriceQuote?,
+    onInvestmentsDisplay: (InvestmentsDisplay) -> Unit,
     onNavigateBack: () -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -179,6 +193,8 @@ fun ProfileScreen(
             WhatsappSection(whatsappState)
             Spacer(Modifier.height(16.dp))
             ThemeSection(settings)
+            Spacer(Modifier.height(16.dp))
+            InvestmentsSection(investmentsDisplay, mepRate, onInvestmentsDisplay)
             Spacer(Modifier.height(16.dp))
             EmbeddingsSection(embeddings)
             Spacer(Modifier.height(24.dp))
@@ -262,6 +278,60 @@ private fun SectionCard(
             Spacer(Modifier.height(14.dp))
             content()
         }
+    }
+}
+
+/**
+ * How the investments tab states position values: each in its own currency,
+ * all in pesos or all in MEP dollars. A synced setting (it follows the
+ * account, like the palette); the MEP rate it converts with is printed
+ * under it, or why there is none yet.
+ */
+@Composable
+private fun InvestmentsSection(
+    display: InvestmentsDisplay,
+    mepRate: PriceQuote?,
+    onChoose: (InvestmentsDisplay) -> Unit,
+) {
+    SectionCard(
+        title = stringResource(Res.string.profile_investments_title),
+        icon = Icons.Filled.TrendingUp,
+        subtitle = stringResource(Res.string.profile_investments_subtitle),
+    ) {
+        val options = InvestmentsDisplay.entries
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, option ->
+                SegmentedButton(
+                    selected = option == display,
+                    onClick = { if (option != display) onChoose(option) },
+                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                    label = {
+                        Text(
+                            stringResource(
+                                when (option) {
+                                    InvestmentsDisplay.Original -> Res.string.investments_display_original
+                                    InvestmentsDisplay.Pesos -> Res.string.investments_display_pesos
+                                    InvestmentsDisplay.Mep -> Res.string.investments_display_mep
+                                },
+                            ),
+                            maxLines = 1,
+                        )
+                    },
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            mepRate?.let {
+                stringResource(
+                    Res.string.investments_mep_rate,
+                    formatPrice(it.price, it.quoteCommodity, exact = true),
+                    shortDate(it.at),
+                )
+            } ?: stringResource(Res.string.investments_mep_missing),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

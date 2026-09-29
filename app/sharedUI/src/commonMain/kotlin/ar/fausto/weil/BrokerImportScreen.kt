@@ -36,6 +36,9 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.action_undo
+import weil.app.sharedui.generated.resources.broker_positions_hint
+import weil.app.sharedui.generated.resources.broker_rebuild_done
+import weil.app.sharedui.generated.resources.broker_rebuild_replaces
 import weil.app.sharedui.generated.resources.broker_adjust
 import weil.app.sharedui.generated.resources.broker_adjusted
 import weil.app.sharedui.generated.resources.broker_all_match
@@ -81,6 +84,7 @@ fun BrokerImportScreen(
     var error by remember { mutableStateOf<String?>(null) }
     val count = plan.transactions.size
     val doneMessage = stringResource(Res.string.broker_import_done, count)
+    val rebuiltMessage = stringResource(Res.string.broker_rebuild_done, route.brokerName)
     val undoLabel = stringResource(Res.string.action_undo)
     val adjustedMessage = stringResource(Res.string.broker_adjusted)
     // Differences settled on this screen: they leave the list, and come back
@@ -144,7 +148,13 @@ fun BrokerImportScreen(
                                         )
                                         val ids = apply(chosen)
                                         onDone()
-                                        Feedback.undoable(doneMessage, undoLabel) { ledger.deleteAll(ids) }
+                                        // A rebuild deleted what it replaced: undoing
+                                        // it would leave neither, so it has no undo.
+                                        if (plan.replaces.isEmpty()) {
+                                            Feedback.undoable(doneMessage, undoLabel) { ledger.deleteAll(ids) }
+                                        } else {
+                                            Feedback.show(rebuiltMessage)
+                                        }
                                     } catch (e: Throwable) {
                                         if (e is kotlinx.coroutines.CancellationException) throw e
                                         error = e.message ?: e.toString()
@@ -185,8 +195,16 @@ fun BrokerImportScreen(
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 12.dp),
+                    modifier = Modifier.padding(bottom = if (plan.replaces.isEmpty()) 12.dp else 4.dp),
                 )
+                if (plan.replaces.isNotEmpty()) {
+                    Text(
+                        stringResource(Res.string.broker_rebuild_replaces, plan.replaces.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 12.dp),
+                    )
+                }
             }
             if (differences.isNotEmpty()) {
                 item(key = "differences") {
@@ -197,6 +215,19 @@ fun BrokerImportScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
+                    // A position that disagrees has no «Ajustar»; on IOL the
+                    // usual cause is an opening computed wrong, which a
+                    // rebuild recomputes.
+                    if (route.provider == IOL_PROVIDER && plan.replaces.isEmpty() &&
+                        differences.any { it.accountId !in route.accounts.cash.values }
+                    ) {
+                        Text(
+                            stringResource(Res.string.broker_positions_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                        )
+                    }
                     differences.forEach { difference ->
                         val cash = difference.accountId in route.accounts.cash.values
                         val label = if (cash) currencyName(difference.commodity) else symbols[difference.commodity] ?: difference.commodity

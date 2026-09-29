@@ -119,6 +119,13 @@
     <string name="broker_adjust">Ajustar</string>
     <string name="broker_adjusted">Saldo inicial ajustado</string>
     <string name="broker_adjust_payee">Ajuste de saldo inicial %1$s</string>
+    <string name="broker_rebuild">Reimportar todo el historial</string>
+    <string name="broker_rebuild_title">Reimportar el historial de %1$s</string>
+    <string name="broker_rebuild_body">Se vuelve a traer todo el historial y se recalcula el saldo inicial. Al confirmar, lo importado antes se reemplaza por lo nuevo, en un solo paso. Los depósitos que ya asignaste a una cuenta la conservan; los cambios hechos a mano en movimientos importados se pierden.</string>
+    <string name="broker_rebuild_action">Revisar</string>
+    <string name="broker_rebuild_replaces">Reemplaza %1$d movimientos importados antes</string>
+    <string name="broker_rebuild_done">Historial de %1$s reimportado</string>
+    <string name="broker_positions_hint">Si una posición no coincide, puede que el saldo inicial se haya calculado mal. «Reimportar todo el historial» lo recalcula.</string>
     <string name="broker_counterpart_hint">El broker no dice de qué cuenta salió la plata de cada depósito. Tocalo para elegirla; si no, queda contra el saldo inicial.</string>
     <string name="broker_counterpart_from">desde %1$s</string>
     <string name="broker_counterpart_to">hacia %1$s</string>
@@ -567,6 +574,15 @@
     <string name="suggest_debug_rerun">Volver a probar</string>
     <string name="notification_related">Transacciones relacionadas</string>
     <string name="notification_related_none">Ninguna todavía</string>
+
+    <!-- Perfil: inversiones -->
+    <string name="profile_investments_title">Inversiones</string>
+    <string name="profile_investments_subtitle">En qué moneda mostrar el valor de tus posiciones. La ganancia se muestra siempre en la moneda en la que compraste.</string>
+    <string name="investments_display_original">Original</string>
+    <string name="investments_display_pesos">Pesos</string>
+    <string name="investments_display_mep">Dólar MEP</string>
+    <string name="investments_mep_rate">Dólar MEP: %1$s (%2$s)</string>
+    <string name="investments_mep_missing">Todavía no hay cotización del dólar MEP: llega al sincronizar InvertirOnline. Hasta entonces, cada posición se muestra en su moneda.</string>
 
     <!-- Perfil: apariencia -->
     <string name="profile_theme_title">Apariencia</string>

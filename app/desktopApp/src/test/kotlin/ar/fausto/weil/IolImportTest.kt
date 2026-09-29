@@ -58,6 +58,11 @@ class IolImportTest {
         }
         override suspend fun instrument(market: String, symbol: String): IolInstrument =
             titles[symbol] ?: IolInstrument(symbol)
+        override suspend fun quote(market: String, symbol: String): IolQuote = when (symbol) {
+            "AL30" -> IolQuote(Decimal.parse("83100"))
+            "AL30D" -> IolQuote(Decimal.parse("57.10"))
+            else -> throw IolApiException("no quote for $symbol")
+        }
     }
 
     private val source = RecordedIol()
@@ -197,6 +202,49 @@ class IolImportTest {
             adjustment.postings.map { it.accountId to it.amountMinor }.toSet(),
         )
         assertEquals(emptyList(), iol.preview().differences)
+    }
+
+    /** A sync saves the MEP rate it read, whether or not the plan is applied. */
+    @Test
+    fun previewStoresTheMepRate() = runBlocking {
+        iol.connect("user", "ok")
+        iol.preview()
+        val mep = graph.brokers.valuation().mep
+        assertEquals(Decimal.parse("1455.34"), mep?.price)
+        assertEquals(MEP_SOURCE, mep?.source)
+    }
+
+    /**
+     * Reimporting the history replaces what was imported (and the opening
+     * adjustment computed against it) in one write, keeps a transfer typed
+     * by hand, and ends where IOL says.
+     */
+    @Test
+    fun aRebuildReplacesTheImportAndKeepsWhatWasTypedByHand() = runBlocking {
+        val accounts = iol.connect("user", "ok")
+        val firstIds = iol.apply(iol.preview())
+        val pesos = accounts.cash.getValue("ARS")
+        val typed = graph.ledger.add(
+            iolTime("2026-01-10T10:00:00")!!, "Transferencia a Santander", null,
+            listOf(DraftPosting(pesos, "-1056293,72"), DraftPosting("seed-asset-bank", "1056293,72")),
+        )
+        val adjustment = graph.brokers.adjustOpening(accounts, iol.preview().differences.single(), "Ajuste de saldo inicial IOL")
+
+        val rebuilt = iol.rebuildPreview()
+        assertEquals((firstIds + adjustment).toSet(), rebuilt.replaces.toSet())
+        assertEquals(emptyList(), rebuilt.issues)
+        assertEquals(emptyList(), rebuilt.differences)
+        assertEquals(44, rebuilt.transactions.size)
+
+        iol.apply(rebuilt)
+        for (id in firstIds + adjustment) assertNull(graph.ledger.get(id))
+        assertTrue(graph.ledger.get(typed) != null)
+        val view = graph.brokers.ledgerView(accounts)
+        assertEquals(mapOf("ARS" to 54_257_383L, "USD" to 304_966L), view.cash)
+        assertEquals(HeldPosition(13L, 31_925_683L, "ARS"), view.holdings["BCBA:MELI"])
+        val after = iol.preview()
+        assertEquals(emptyList(), after.transactions)
+        assertEquals(emptyList(), after.differences)
     }
 
     @Test

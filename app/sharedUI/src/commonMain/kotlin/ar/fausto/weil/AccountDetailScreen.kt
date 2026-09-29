@@ -91,8 +91,8 @@ fun AccountDetailScreen(
     // The positions view narrows the register to one instrument.
     var commodityFilter by rememberSaveable { mutableStateOf(initialCommodity) }
     var holdings by remember { mutableStateOf(cached?.holdings ?: emptyMap()) }
-    val positions = remember(holdings, ledgerState.valuation) {
-        ledgerState.valuation.positions(holdings)
+    val positions = remember(holdings, ledgerState.valuation, ledgerState.investmentsDisplay) {
+        ledgerState.valuation.positions(holdings, ledgerState.investmentsDisplay)
     }
     var entries by remember { mutableStateOf(cached?.entries ?: emptyList()) }
     // The register is per posting, and a transaction between two accounts

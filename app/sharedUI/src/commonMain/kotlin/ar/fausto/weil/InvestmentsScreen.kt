@@ -49,6 +49,11 @@ import kotlin.math.abs
 import kotlinx.coroutines.flow.merge
 import androidx.compose.foundation.verticalScroll
 import weil.app.sharedui.generated.resources.broker_ibkr_api_status
+import weil.app.sharedui.generated.resources.broker_rebuild
+import weil.app.sharedui.generated.resources.broker_rebuild_action
+import weil.app.sharedui.generated.resources.broker_rebuild_body
+import weil.app.sharedui.generated.resources.broker_rebuild_title
+import weil.app.sharedui.generated.resources.investments_mep_rate
 import weil.app.sharedui.generated.resources.broker_ibkr_change_token
 import weil.app.sharedui.generated.resources.broker_ibkr_connect_api
 import weil.app.sharedui.generated.resources.broker_connect_here
@@ -160,6 +165,7 @@ fun InvestmentsScreen(
     var connecting by remember { mutableStateOf(false) }
     var syncing by remember { mutableStateOf(false) }
     var confirmDisconnect by remember { mutableStateOf(false) }
+    var confirmRebuild by remember { mutableStateOf(false) }
     // IBKR's token, like IOL's password: this device's only, re-read after changes here.
     var ibkrQuery by remember { mutableStateOf(ibkr.queryId.takeIf { ibkr.hasToken }) }
     var ibkrSyncing by remember { mutableStateOf(false) }
@@ -273,10 +279,29 @@ fun InvestmentsScreen(
         }
     }
 
+    /** The whole IOL history planned again, to replace what earlier imports wrote; always reviewed. */
+    fun rebuild() {
+        if (syncing) return
+        syncing = true
+        scope.launch {
+            try {
+                val plan = iol.rebuildPreview()
+                val accounts = brokers.accountsFor(IOL_PROVIDER) ?: error("IOL accounts missing after preview")
+                onReviewImport(BrokerImportRoute("IOL", IOL_PROVIDER, plan, accounts, brokers.scales()))
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Feedback.show(if (e is IolAuthException) wrongCredentials else e.message ?: e.toString())
+            } finally {
+                syncing = false
+            }
+        }
+    }
+
     val connected = connections.orEmpty()
     val valuation = ledgerState.valuation
-    val positions = remember(holdings, valuation) {
-        valuation.positions(consolidateHoldings(holdings.values.toList()))
+    val display = ledgerState.investmentsDisplay
+    val positions = remember(holdings, valuation, display) {
+        valuation.positions(consolidateHoldings(holdings.values.toList()), display)
     }
     val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
     val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
@@ -351,12 +376,21 @@ fun InvestmentsScreen(
                             }
                             sum.filterValues { it != 0L }
                         }
+                        // All in pesos or all in MEP converts at the MEP rate,
+                        // which is then the one line worth saying; the
+                        // official one only restates the currencies as they are.
+                        val shown = remember(money, valuation, display) { valuation.inDisplay(money, display) }
                         InvestmentsHero(
-                            money = money,
+                            money = shown,
                             gains = remember(positions) { unrealizedTotals(positions) },
-                            converted = remember(money, valuation, ledgerState.netWorthCurrency) {
-                                valuation.convert(money, ledgerState.netWorthCurrency, epochMillis())
+                            converted = remember(money, valuation, ledgerState.netWorthCurrency, display) {
+                                if (display == InvestmentsDisplay.Original) {
+                                    valuation.convert(money, ledgerState.netWorthCurrency, epochMillis())
+                                } else {
+                                    null
+                                }
                             },
+                            mep = valuation.mep?.takeIf { display != InvestmentsDisplay.Original && shown != money },
                             hidden = ledgerState.amountsHidden,
                         )
                     }
@@ -389,6 +423,7 @@ fun InvestmentsScreen(
                             .flatMap { ledgerState.displayLeafTotals[it].orEmpty().entries }
                             .groupBy({ it.key }, { it.value })
                             .mapValues { it.value.sum() }
+                            .let { valuation.inDisplay(it, display) }
                             .filterValues { it != 0L }
                             .entries.sortedByDescending { abs(it.value) }
                         val isIol = c.provider == IOL_PROVIDER
@@ -537,6 +572,7 @@ fun InvestmentsScreen(
                 else -> null
             },
             onImport = if (c.provider == IBKR_PROVIDER) ({ managing = null; importReport() }) else null,
+            onRebuild = if (isIol && iolUser != null) ({ managing = null; confirmRebuild = true }) else null,
             onHoldings = { managing = null; onOpenAccount(AccountDetailRoute(c.accounts.holdings)) },
             onMovements = rootId?.let { root -> { managing = null; onOpenAccount(AccountDetailRoute(root, subtree = true)) } },
             onConnect = { managing = null; if (isIol) connecting = true else ibkrHelp = true },
@@ -582,6 +618,23 @@ fun InvestmentsScreen(
         )
     }
 
+    if (confirmRebuild) {
+        AlertDialog(
+            onDismissRequest = { confirmRebuild = false },
+            title = { Text(stringResource(Res.string.broker_rebuild_title, "InvertirOnline")) },
+            text = { Text(stringResource(Res.string.broker_rebuild_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRebuild = false
+                    rebuild()
+                }) { Text(stringResource(Res.string.broker_rebuild_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRebuild = false }) { Text(stringResource(Res.string.action_cancel)) }
+            },
+        )
+    }
+
     if (confirmDisconnect) {
         AlertDialog(
             onDismissRequest = { confirmDisconnect = false },
@@ -616,6 +669,8 @@ private fun InvestmentsHero(
     money: Map<String, Long>,
     gains: List<UnrealizedTotal>,
     converted: ConvertedTotal?,
+    /** The MEP rate the values were converted at, when they were. */
+    mep: PriceQuote?,
     hidden: Boolean,
 ) {
     val lines = money.entries.sortedByDescending { abs(it.value) }
@@ -659,6 +714,20 @@ private fun InvestmentsHero(
                 },
                 maxLines = 1,
                 modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+        mep?.let { rate ->
+            Text(
+                stringResource(
+                    Res.string.investments_mep_rate,
+                    formatPrice(rate.price, rate.quoteCommodity, exact = true),
+                    shortDate(rate.at),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = ink.copy(alpha = 0.75f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
         converted?.let { c ->
@@ -765,6 +834,8 @@ private fun BrokerSheet(
     freshness: String,
     onSync: (() -> Unit)?,
     onImport: (() -> Unit)?,
+    /** Plans the whole history again, to replace what was imported (IOL). */
+    onRebuild: (() -> Unit)? = null,
     onHoldings: () -> Unit,
     onMovements: (() -> Unit)?,
     onConnect: () -> Unit,
@@ -792,6 +863,7 @@ private fun BrokerSheet(
             SheetAction(Icons.Filled.TrendingUp, stringResource(Res.string.broker_see_holdings), onClick = onHoldings)
             onMovements?.let { SheetAction(Icons.Filled.ListAlt, stringResource(Res.string.broker_see_movements), onClick = it) }
             SheetAction(Icons.Filled.Person, connectLabel, onClick = onConnect)
+            onRebuild?.let { SheetAction(Icons.Filled.Refresh, stringResource(Res.string.broker_rebuild), onClick = it) }
             onDisconnect?.let {
                 SheetAction(
                     Icons.Filled.Logout,

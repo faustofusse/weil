@@ -17,7 +17,51 @@ data class Valuation(
     val prices: Map<String, PriceQuote> = emptyMap(),
     /** Newest official USD rate in ARS, for [convert]; see [OFFICIAL_SOURCE]. */
     val official: PriceQuote? = null,
+    /** Newest MEP USD rate in ARS, for [convertMoney]; see [MEP_SOURCE]. */
+    val mep: PriceQuote? = null,
 ) {
+    /** Trading line → its security ([tradingLines]): AAPLD → AAPL. */
+    private val lines: Map<String, String> by lazy { tradingLines(commodities.values) }
+
+    /**
+     * The latest price of [commodity], or of the security it is a trading
+     * line of: the broker quotes AAPL, and the AAPLD bought with dollars is
+     * the same share, worth the same.
+     */
+    fun priceOf(commodity: String): PriceQuote? =
+        prices[commodity] ?: lines[commodity]?.let { prices[it] }
+
+    /**
+     * [minor] cents of [from] in [to] at the MEP rate; itself when they are
+     * the same currency, null for any other pair or without a rate.
+     */
+    fun convertMoney(minor: Long, from: String, to: String): Long? {
+        if (from == to) return minor
+        val rate = mep?.price?.takeIf { it.signum > 0 } ?: return null
+        val amount = Decimal.ofMinorUnits(minor, 2)
+        return when {
+            from == "USD" && to == "ARS" -> (amount * rate).toMinorUnits(2)
+            from == "ARS" && to == "USD" -> amount.divide(rate, 4).toMinorUnits(2)
+            else -> null
+        }
+    }
+
+    /**
+     * [money] (currency → minor units) as [display] states it: everything
+     * that converts, in its target currency; anything that doesn't (no MEP
+     * rate, a third currency) left as it was.
+     */
+    fun inDisplay(money: Map<String, Long>, display: InvestmentsDisplay): Map<String, Long> {
+        val target = display.target ?: return money
+        val result = mutableMapOf<String, Long>()
+        for ((commodity, minor) in money) {
+            val converted = convertMoney(minor, commodity, target)
+            val key = if (converted != null) target else commodity
+            result[key] = (result[key] ?: 0L) + (converted ?: minor)
+        }
+        return result.filterValues { it != 0L }
+    }
+
     /**
      * [totals] (commodity → minor units) as money: currencies kept, priced
      * instruments converted into their quote currency and added to it, zero
@@ -44,7 +88,7 @@ data class Valuation(
     /** One position's value: (quote currency, minor units), or null without a price. */
     fun valueOf(commodity: String, quantityMinor: Long): Pair<String, Long>? {
         val info = commodities[commodity] ?: return null
-        val price = prices[commodity] ?: return null
+        val price = priceOf(commodity) ?: return null
         val quantity = Decimal.ofMinorUnits(quantityMinor, info.scale)
         val value = (quantity * price.price).movePointLeft(digitsOf(info.pricePer))
         return price.quoteCommodity to value.toMinorUnits(2)
@@ -58,23 +102,40 @@ data class Valuation(
      * account's cash, not a position). Open positions come first, grouped by
      * quote currency and largest value first; closed ones (quantity zero)
      * after, by symbol.
+     *
+     * [display] picks the currency of the value: the line's own quote
+     * currency (AAPLD in dollars even though its price comes from AAPL in
+     * pesos), or everything in pesos or in MEP dollars. The gain is always
+     * stated in the currency the position cost: value converted into it at
+     * today's MEP rate when needed, minus the cost. Converting a peso gain
+     * into dollars at today's rate would mix devaluation into it, and the
+     * cost's historical rate is not something the ledger knows.
      */
-    fun positions(holdings: Map<String, HeldPosition>): List<PositionLine> {
+    fun positions(
+        holdings: Map<String, HeldPosition>,
+        display: InvestmentsDisplay = InvestmentsDisplay.Original,
+    ): List<PositionLine> {
         val lines = holdings.mapNotNull { (commodity, held) ->
             val info = commodities[commodity] ?: return@mapNotNull null
-            val price = prices[commodity]
-            val value = if (held.quantityMinor == 0L) null else valueOf(commodity, held.quantityMinor)
-            // A gain is value minus cost only when both are in the same
-            // currency: a dollar bond bought with pesos has no honest
-            // number here without a conversion rate, so it gets none.
-            val gain = value?.takeIf { held.costMinor != 0L && it.first == held.costCommodity }
-                ?.let { it.second - held.costMinor }
+            val price = priceOf(commodity)
+            val native = if (held.quantityMinor == 0L) null else valueOf(commodity, held.quantityMinor)
+            val value = native?.let { (quote, minor) ->
+                val target = display.target ?: info.quoteCommodity ?: quote
+                convertMoney(minor, quote, target)?.let { target to it } ?: native
+            }
+            // Value minus cost in the cost's currency: a dollar bond bought
+            // with pesos has no honest number without a rate, so without a
+            // MEP rate it gets none.
+            val costCommodity = held.costCommodity
+            val gain = native?.takeIf { held.costMinor != 0L && costCommodity != null }
+                ?.let { (quote, minor) -> convertMoney(minor, quote, costCommodity!!) }
+                ?.let { it - held.costMinor }
             PositionLine(
                 commodity = commodity,
                 info = info,
                 quantityMinor = held.quantityMinor,
                 costMinor = held.costMinor.takeIf { it != 0L },
-                costCommodity = held.costCommodity,
+                costCommodity = costCommodity,
                 price = price,
                 valueCommodity = value?.first,
                 valueMinor = value?.second,
@@ -109,7 +170,7 @@ data class PositionLine(
     /** Market value: currency and minor units, null without a price or when closed. */
     val valueCommodity: String?,
     val valueMinor: Long?,
-    /** Value − cost, when both are in the same currency. */
+    /** Value − cost, in [costCommodity]; null without a price, or without a rate between the two. */
     val unrealizedMinor: Long?,
 ) {
     val closed: Boolean get() = quantityMinor == 0L
@@ -160,13 +221,13 @@ data class UnrealizedTotal(val commodity: String, val gainMinor: Long, val costM
 
 /**
  * The hero's gain line: [lines]' unrealized gains summed per currency,
- * counting only the positions that have one (priced, and cost in the
- * currency they are valued in), so the percentage is over the same cost
- * the gain is.
+ * counting only the positions that have one, grouped by the currency they
+ * cost in (which is the one the gain is stated in), so the percentage is
+ * over the same cost the gain is.
  */
 fun unrealizedTotals(lines: List<PositionLine>): List<UnrealizedTotal> =
-    lines.filter { it.unrealizedMinor != null && it.valueCommodity != null && it.costMinor != null }
-        .groupBy { it.valueCommodity!! }
+    lines.filter { it.unrealizedMinor != null && it.costCommodity != null && it.costMinor != null }
+        .groupBy { it.costCommodity!! }
         .map { (currency, group) ->
             UnrealizedTotal(currency, group.sumOf { it.unrealizedMinor!! }, group.sumOf { it.costMinor!! })
         }

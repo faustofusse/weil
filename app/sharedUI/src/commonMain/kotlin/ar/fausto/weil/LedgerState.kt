@@ -41,6 +41,17 @@ class LedgerState(
         }
     }
 
+    /** How the investments tab states position values; see [INVESTMENTS_DISPLAY_KEY]. */
+    var investmentsDisplay by mutableStateOf(InvestmentsDisplay.Original)
+        private set
+
+    fun chooseInvestmentsDisplay(value: InvestmentsDisplay) {
+        investmentsDisplay = value
+        scope.launch {
+            runCatching { settings.set(INVESTMENTS_DISPLAY_KEY, value.key.takeIf { value != InvestmentsDisplay.Original }) }
+        }
+    }
+
     /**
      * Per-type default account ids as stored (not resolved): the account a
      * new transaction preselects for that type. Raw ids, because the account
@@ -388,7 +399,9 @@ class LedgerState(
     }
 
     private suspend fun reloadNetWorthCurrency() {
-        netWorthCurrency = settings.all()[NET_WORTH_CURRENCY_KEY] ?: DEFAULT_NET_WORTH_CURRENCY
+        val rows = settings.all()
+        netWorthCurrency = rows[NET_WORTH_CURRENCY_KEY] ?: DEFAULT_NET_WORTH_CURRENCY
+        investmentsDisplay = InvestmentsDisplay.parse(rows[INVESTMENTS_DISPLAY_KEY])
     }
 
     fun toggleAmountsHidden() {

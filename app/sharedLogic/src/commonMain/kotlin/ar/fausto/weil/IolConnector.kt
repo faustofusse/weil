@@ -31,7 +31,24 @@ data class IolFetch(
     val details: Map<Long, IolOperationDetail>,
     /** Instrument lookups by symbol, for the symbols no portfolio describes. */
     val instruments: Map<String, IolInstrument> = emptyMap(),
+    /** Last price by symbol, for the [IOL_MEP_BONDS] lines; missing ones are simply absent. */
+    val quotes: Map<String, Decimal> = emptyMap(),
 )
+
+/**
+ * The bonds the MEP rate is read from, in order of preference: each one's
+ * peso line and its "D" line are the same security, so their price ratio is
+ * the dollar a peso buys through the broker.
+ */
+val IOL_MEP_BONDS = listOf("AL30", "GD30")
+
+/** Pesos per MEP dollar from [quotes] (see [IOL_MEP_BONDS]), or null when no pair is quoted. */
+fun iolMepRate(quotes: Map<String, Decimal>, at: Long): PriceQuote? =
+    IOL_MEP_BONDS.firstNotNullOfOrNull { bond ->
+        val pesos = quotes[bond]?.takeIf { it.signum > 0 } ?: return@firstNotNullOfOrNull null
+        val dollars = quotes[bond + "D"]?.takeIf { it.signum > 0 } ?: return@firstNotNullOfOrNull null
+        PriceQuote("USD", "ARS", at, pesos.divide(dollars, 2), MEP_SOURCE)
+    }
 
 const val IOL_PROVIDER = "iol"
 
@@ -244,6 +261,7 @@ fun iolBatch(fetch: IolFetch): BrokerBatch {
         events = events,
         snapshot = snapshot,
         instruments = instruments.values.sortedBy { it.id },
+        prices = listOfNotNull(iolMepRate(fetch.quotes, fetch.at)),
         notes = notes,
     )
 }

@@ -136,6 +136,13 @@ data class IolOperation(
     @Serializable(with = IolDecimalSerializer::class) val montoOperado: Decimal? = null,
 )
 
+/** `GET /api/v2/{mercado}/Titulos/{simbolo}/Cotizacion`: the last trade of one line. */
+@Serializable
+data class IolQuote(
+    @Serializable(with = IolDecimalSerializer::class) val ultimoPrecio: Decimal? = null,
+    val moneda: String? = null,
+)
+
 /** `GET /api/v2/operaciones/{numero}`: currency and fees, which the list lacks. */
 @Serializable
 data class IolOperationDetail(
@@ -160,6 +167,10 @@ interface IolSource {
     suspend fun operations(from: String, to: String): List<IolOperation>
     suspend fun operation(numero: Long): IolOperationDetail
     suspend fun instrument(market: String, symbol: String): IolInstrument
+
+    /** Last price of one line; recorded sources that predate it have none. */
+    suspend fun quote(market: String, symbol: String): IolQuote =
+        throw UnsupportedOperationException("no quotes")
 }
 
 /**
@@ -213,6 +224,9 @@ class IolClient(
 
     override suspend fun instrument(market: String, symbol: String): IolInstrument =
         get("/api/v2/$market/Titulos/$symbol")
+
+    override suspend fun quote(market: String, symbol: String): IolQuote =
+        get("/api/v2/$market/Titulos/$symbol/Cotizacion")
 
     private suspend inline fun <reified T> get(
         path: String,
