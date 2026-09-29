@@ -49,6 +49,22 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Tags the released commit v<version> once: Android and iOS share the version
+# (VERSION + commit count), so whichever script uploads first creates it and
+# the other finds it already there. Local only — push with `git push --tags`.
+tag_release() {
+  local tag="v$1"
+  if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    if [[ "$(git rev-list -n 1 "$tag")" != "$(git rev-parse HEAD)" ]]; then
+      echo "warning: tag $tag already exists on another commit, left as is" >&2
+    else
+      echo "==> tag $tag already exists"
+    fi
+    return 0
+  fi
+  git tag -a "$tag" -m "Release $1" && echo "==> tagged $(git rev-parse --short HEAD) as $tag"
+}
+
 # ---- API key -----------------------------------------------------------------
 if [[ ! -f "$KEY_FILE" ]]; then
   for candidate in "$HOME/Downloads/AuthKey_${ASC_KEY_ID}.p8" "$REPO_ROOT/AuthKey_${ASC_KEY_ID}.p8"; do
@@ -161,6 +177,8 @@ fi
 
 echo "==> uploading to TestFlight"
 run_altool --upload-app
+
+tag_release "$SHORT_VERSION"
 
 echo
 echo "==> uploaded $BUNDLE_ID $SHORT_VERSION ($ARCHIVED_BUILD)"

@@ -59,6 +59,22 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Tags the released commit v<version> once: Android and iOS share the version
+# (VERSION + commit count), so whichever script uploads first creates it and
+# the other finds it already there. Local only — push with `git push --tags`.
+tag_release() {
+  local tag="v$1"
+  if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    if [[ "$(git rev-list -n 1 "$tag")" != "$(git rev-parse HEAD)" ]]; then
+      echo "warning: tag $tag already exists on another commit, left as is" >&2
+    else
+      echo "==> tag $tag already exists"
+    fi
+    return 0
+  fi
+  git tag -a "$tag" -m "Release $1" && echo "==> tagged $(git rev-parse --short HEAD) as $tag"
+}
+
 # ---- upload keystore ---------------------------------------------------------
 if [[ $INIT_KEYSTORE -eq 1 ]]; then
   [[ -f "$KEYSTORE" ]] && { echo "error: $KEYSTORE already exists" >&2; exit 1; }
@@ -175,6 +191,8 @@ call -X PUT -H 'Content-Type: application/json' -d "$TRACK_BODY" \
 
 echo "==> committing edit"
 call -X POST "$API/edits/$EDIT_ID:commit" > /dev/null
+
+tag_release "$VERSION_NAME"
 
 echo
 echo "==> published $PACKAGE $VERSION_NAME ($UPLOADED) to $TRACK"
