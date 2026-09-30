@@ -1,6 +1,9 @@
 package ar.fausto.weil
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -48,6 +51,18 @@ class IolConnectorTest {
         opening = "saldo-inicial",
         adjustments = "ajustes",
     )
+
+    @Test
+    fun theSnapshotKeepsIolsOwnFiguresAsWritten() {
+        val snapshot = json.parseToJsonElement(iolSnapshotJson(fetch())).jsonObject
+        val meli = snapshot.getValue("activos").jsonArray.map { it.jsonObject }.single { it["simbolo"]?.jsonPrimitive?.content == "MELI" }
+        // IOL's gain is against its PPC, without the commission: (23.510 − 24.390) × 13.
+        assertEquals("-11440.0", meli.getValue("gananciaDinero").jsonPrimitive.content)
+        assertEquals("24390.0", meli.getValue("ppc").jsonPrimitive.content)
+        val pesos = snapshot.getValue("cuentas").jsonArray.map { it.jsonObject }.first { it["moneda"]?.jsonPrimitive?.content == "peso_Argentino" }
+        assertEquals("2895241.30896", pesos.getValue("total").jsonPrimitive.content)
+        assertEquals(snapshotAt.toString(), snapshot.getValue("at").jsonPrimitive.content)
+    }
 
     @Test
     fun amountsAreDecodedExactly() {

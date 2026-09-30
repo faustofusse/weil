@@ -52,6 +52,67 @@ fun iolMepRate(quotes: Map<String, Decimal>, at: Long): PriceQuote? =
 
 const val IOL_PROVIDER = "iol"
 
+/**
+ * Synced setting: IOL's own view of the account at the last fetch, as IOL
+ * states it ([iolSnapshotJson]). Nothing in the app reads it; it is there so
+ * a "the app says X, IOL says Y" report can be checked position by position
+ * from the user's database (`bun scripts/db.ts`), with both sides taken at
+ * the same moment and without anyone's broker password.
+ */
+const val IOL_SNAPSHOT_KEY = "broker.iol.snapshot"
+
+/**
+ * [fetch]'s portfolio and cash as IOL reported them: per position the
+ * quantity, IOL's average cost (PPC), last price, value and IOL's own gain;
+ * per cash account balance, available and committed; and IOL's total in
+ * pesos. Numbers are copied as IOL wrote them (strings), never re-parsed.
+ */
+fun iolSnapshotJson(fetch: IolFetch): String {
+    fun raw(value: Any?): kotlinx.serialization.json.JsonElement = when (value) {
+        null -> kotlinx.serialization.json.JsonNull
+        is kotlinx.serialization.json.JsonElement -> value
+        is Decimal -> kotlinx.serialization.json.JsonPrimitive(value.toPlainString())
+        else -> kotlinx.serialization.json.JsonPrimitive(value.toString())
+    }
+    val root = kotlinx.serialization.json.buildJsonObject {
+        put("at", raw(fetch.at))
+        put("totalEnPesos", raw(fetch.accountState?.totalEnPesos))
+        put("cuentas", kotlinx.serialization.json.buildJsonArray {
+            for (c in fetch.accountState?.cuentas.orEmpty()) {
+                add(kotlinx.serialization.json.buildJsonObject {
+                    put("tipo", raw(c.tipo))
+                    put("moneda", raw(c.moneda))
+                    put("saldo", raw(c.saldo))
+                    put("disponible", raw(c.disponible))
+                    put("comprometido", raw(c.comprometido))
+                    put("titulosValorizados", raw(c.titulosValorizados))
+                    put("total", raw(c.total))
+                })
+            }
+        })
+        put("activos", kotlinx.serialization.json.buildJsonArray {
+            for (portfolio in fetch.portfolios) {
+                for (p in portfolio.activos) {
+                    add(kotlinx.serialization.json.buildJsonObject {
+                        put("pais", raw(portfolio.pais))
+                        put("simbolo", raw(p.titulo.simbolo))
+                        put("tipo", raw(p.titulo.tipo))
+                        put("moneda", raw(p.titulo.moneda))
+                        put("cantidad", raw(p.cantidad))
+                        put("ppc", raw(p.ppc))
+                        put("ultimoPrecio", raw(p.ultimoPrecio))
+                        put("valorizado", raw(p.valorizado))
+                        put("gananciaDinero", raw(p.gananciaDinero))
+                        put("gananciaPorcentaje", raw(p.gananciaPorcentaje))
+                        put("variacionDiaria", raw(p.variacionDiaria))
+                    })
+                }
+            }
+        })
+    }
+    return root.toString()
+}
+
 private val TRADE_TYPES = setOf("compra", "venta", "suscripción fci", "rescate fci")
 private const val DAY_MS = 24L * 60 * 60 * 1000
 

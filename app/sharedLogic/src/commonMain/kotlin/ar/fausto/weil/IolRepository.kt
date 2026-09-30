@@ -185,7 +185,14 @@ class IolRepository(
         val quotes = IOL_MEP_BONDS.flatMap { listOf(it, it + "D") }.mapNotNull { symbol ->
             runCatching { client.quote("bcba", symbol).ultimoPrecio }.getOrNull()?.let { symbol to it }
         }.toMap()
-        return IolFetch(now, state, portfolios, operations, details, instruments, quotes)
+        val fetched = IolFetch(now, state, portfolios, operations, details, instruments, quotes)
+        // IOL's own figures, for checking a reported mismatch; never fails the sync.
+        try {
+            settings.set(IOL_SNAPSHOT_KEY, iolSnapshotJson(fetched))
+        } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+        }
+        return fetched
     }
 
     private fun credentials(): IolCredentials? {

@@ -80,7 +80,11 @@ data class IolTokenResponse(
 
 /** `GET /api/v2/estadocuenta`: the cash accounts. */
 @Serializable
-data class IolAccountState(val cuentas: List<IolCashAccount> = emptyList())
+data class IolAccountState(
+    val cuentas: List<IolCashAccount> = emptyList(),
+    /** Everything (cash and securities) in pesos, as IOL states it; raw, only recorded. */
+    val totalEnPesos: JsonElement? = null,
+)
 
 @Serializable
 data class IolCashAccount(
@@ -91,6 +95,9 @@ data class IolCashAccount(
     val moneda: String? = null,
     @Serializable(with = IolDecimalSerializer::class) val saldo: Decimal? = null,
     @Serializable(with = IolDecimalSerializer::class) val disponible: Decimal? = null,
+    val comprometido: JsonElement? = null,
+    val titulosValorizados: JsonElement? = null,
+    val total: JsonElement? = null,
 )
 
 /** `GET /api/v2/portafolio/{pais}`. */
@@ -104,6 +111,14 @@ data class IolPosition(
     /** Average purchase price, per the same face value as [ultimoPrecio]. */
     @Serializable(with = IolDecimalSerializer::class) val ppc: Decimal? = null,
     @Serializable(with = IolDecimalSerializer::class) val valorizado: Decimal? = null,
+    /**
+     * IOL's own unrealized gain (title currency, percent) and daily change.
+     * Raw JSON on purpose: only recorded ([iolSnapshotJson]), and a format
+     * nobody parses here must never fail a sync.
+     */
+    val gananciaDinero: JsonElement? = null,
+    val gananciaPorcentaje: JsonElement? = null,
+    val variacionDiaria: JsonElement? = null,
     val titulo: IolInstrument,
 )
 
