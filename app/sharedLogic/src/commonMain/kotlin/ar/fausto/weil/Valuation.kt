@@ -19,9 +19,52 @@ data class Valuation(
     val official: PriceQuote? = null,
     /** Newest MEP USD rate in ARS, for [convertMoney]; see [MEP_SOURCE]. */
     val mep: PriceQuote? = null,
+    /**
+     * Every stored MEP rate, oldest first: the brokers' live quotes and the
+     * daily closes ([MEP_CLOSE_SOURCE]). What a purchase cost in the other
+     * currency is read from here ([mepAt]).
+     */
+    val mepHistory: List<PriceQuote> = emptyList(),
 ) {
     /** Trading line → its security ([tradingLines]): AAPLD → AAPL. */
     private val lines: Map<String, String> by lazy { tradingLines(commodities.values) }
+
+    /** The security [commodity] is a trading line of; itself for anything else. */
+    fun securityOf(commodity: String): String = lines[commodity] ?: commodity
+
+    /** [security] and every trading line of it: BCBA:AAPL → {AAPL, AAPLD, AAPLC}. */
+    fun linesOf(security: String): Set<String> =
+        setOf(security) + lines.filterValues { it == security }.keys
+
+    /**
+     * Whether [positions] shows one row per security in [display]: only when
+     * everything is stated in one currency, which needs the MEP rate. In
+     * «Original» each trading line keeps its own row, in its own currency.
+     */
+    fun groupsLines(display: InvestmentsDisplay): Boolean = display.target != null && mep != null
+
+    /**
+     * The MEP rate that applied at [at]: the newest stored one not after it,
+     * as long as it is at most [MEP_HISTORY_GAP_MS] older (a purchase from
+     * before the history starts has no rate, rather than today's). A trade
+     * at noon reads the previous day's close, which is also what the broker
+     * quoted it against.
+     */
+    fun mepAt(at: Long): Decimal? {
+        var lo = 0
+        var hi = mepHistory.size - 1
+        var found: PriceQuote? = null
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            if (mepHistory[mid].at <= at) {
+                found = mepHistory[mid]
+                lo = mid + 1
+            } else {
+                hi = mid - 1
+            }
+        }
+        return found?.takeIf { at - it.at <= MEP_HISTORY_GAP_MS }?.price?.takeIf { it.signum > 0 }
+    }
 
     /**
      * The latest price of [commodity], or of the security it is a trading
@@ -103,18 +146,24 @@ data class Valuation(
      * quote currency and largest value first; closed ones (quantity zero)
      * after, by symbol.
      *
-     * [display] picks the currency of the value: the line's own quote
-     * currency (AAPLD in dollars even though its price comes from AAPL in
-     * pesos), or everything in pesos or in MEP dollars. The gain is always
-     * stated in the currency the position cost: value converted into it at
-     * today's MEP rate when needed, minus the cost. Converting a peso gain
-     * into dollars at today's rate would mix devaluation into it, and the
-     * cost's historical rate is not something the ledger knows.
+     * [display] picks the currency: in "Original" each trading line keeps
+     * its row and its own quote currency (AAPLD in dollars even though its
+     * price comes from AAPL in pesos), and the gain is stated in the currency
+     * the line cost, because converting it at today's rate would mix
+     * devaluation into it. All in pesos or all in MEP dollars is
+     * [securityPositions]: one row per security, value and gain in that
+     * currency, the cost converted at the MEP of each purchase's day, read
+     * from [movements] (the holdings accounts' postings). That is how a
+     * broker's app states it, and the only honest way to add a peso gain
+     * to a dollar one.
      */
     fun positions(
         holdings: Map<String, HeldPosition>,
         display: InvestmentsDisplay = InvestmentsDisplay.Original,
+        movements: List<HoldingMovement> = emptyList(),
     ): List<PositionLine> {
+        val target = display.target
+        if (target != null && groupsLines(display)) return securityPositions(holdings, target, movements)
         val lines = holdings.mapNotNull { (commodity, held) ->
             val info = commodities[commodity] ?: return@mapNotNull null
             val price = priceOf(commodity)
@@ -142,6 +191,125 @@ data class Valuation(
                 unrealizedMinor = gain,
             )
         }
+        return sortPositions(lines)
+    }
+
+    /**
+     * The positions stated wholly in [target] (pesos, or MEP dollars), the
+     * way a broker's app shows them: one row per security (8 AAPLD bought
+     * with dollars and 3 AAPL bought with pesos are 11 AAPL), valued in
+     * [target], and the gain against what each purchase cost in [target] on
+     * its own day ([datedCosts]) — a CEDEAR bought with pesos at a MEP of
+     * 1.200 cost fewer dollars than today's rate would say, and that is the
+     * dollar return. A line whose cost is in [target] already needs no rate;
+     * one without a rate for some purchase leaves its security without a
+     * gain rather than a guessed one.
+     */
+    private fun securityPositions(
+        holdings: Map<String, HeldPosition>,
+        target: String,
+        movements: List<HoldingMovement>,
+    ): List<PositionLine> {
+        val dated = datedCosts(movements)
+        val groups = holdings.filterKeys { it in commodities }.entries.groupBy { securityOf(it.key) }
+        val lines = groups.map { (security, entries) ->
+            val info = commodities[security] ?: commodities.getValue(entries.first().key)
+            val quantity = entries.sumOf { it.value.quantityMinor }
+            var value: Long? = 0L
+            var cost: Long? = 0L
+            for ((line, held) in entries) {
+                if (held.quantityMinor == 0L) continue
+                val lineValue = valueOf(line, held.quantityMinor)?.let { (quote, minor) -> convertMoney(minor, quote, target) }
+                value = if (value != null && lineValue != null) value + lineValue else null
+                val lineCost = when {
+                    held.costMinor == 0L || held.costCommodity == null -> null
+                    held.costCommodity == target -> held.costMinor
+                    else -> dated[line]?.let { if (target == "ARS") it.ars else it.usd }
+                }
+                cost = if (cost != null && lineCost != null) cost + lineCost else null
+            }
+            val open = quantity != 0L
+            val shownValue = value.takeIf { open }
+            val shownCost = cost.takeIf { open && it != 0L }
+            PositionLine(
+                commodity = security,
+                info = info,
+                quantityMinor = quantity,
+                costMinor = shownCost,
+                costCommodity = target,
+                price = priceOf(security) ?: entries.firstNotNullOfOrNull { priceOf(it.key) },
+                valueCommodity = shownValue?.let { target },
+                valueMinor = shownValue,
+                unrealizedMinor = if (shownValue != null && shownCost != null) shownValue - shownCost else null,
+            )
+        }
+        return sortPositions(lines)
+    }
+
+    /**
+     * What the open units of each trading line cost in pesos and in dollars,
+     * each purchase converted at the MEP of its day ([mepAt]). Walked in
+     * date order per account and line: a buy adds its cost, a units-only
+     * movement (a split) adds units, a sale takes its share of the cost out
+     * (average cost, what the ledger books too), and a line that closes
+     * starts over. A purchase without a rate leaves that currency unknown.
+     */
+    fun datedCosts(movements: List<HoldingMovement>): Map<String, DatedCost> {
+        class Walk(var quantity: Long = 0L, var ars: Decimal? = Decimal.ZERO, var usd: Decimal? = Decimal.ZERO)
+        val walks = mutableMapOf<Pair<String, String>, Walk>()
+        for (m in movements.sortedBy { it.at }) {
+            val walk = walks.getOrPut(m.accountId to m.commodity) { Walk() }
+            if (m.quantityMinor > 0L) {
+                walk.quantity += m.quantityMinor
+                val cost = m.costMinor?.takeIf { it != 0L } ?: continue
+                val amount = Decimal.ofMinorUnits(cost, 2)
+                val rate = mepAt(m.at)
+                when (m.costCommodity) {
+                    "ARS" -> {
+                        walk.ars = walk.ars?.plus(amount)
+                        walk.usd = if (rate == null) null else walk.usd?.plus(amount.divide(rate, 4))
+                    }
+                    "USD" -> {
+                        walk.usd = walk.usd?.plus(amount)
+                        walk.ars = if (rate == null) null else walk.ars?.plus(amount * rate)
+                    }
+                    else -> {
+                        walk.ars = null
+                        walk.usd = null
+                    }
+                }
+            } else if (m.quantityMinor < 0L) {
+                val before = walk.quantity
+                walk.quantity += m.quantityMinor
+                if (walk.quantity <= 0L || before <= 0L) {
+                    walks[m.accountId to m.commodity] = Walk(quantity = walk.quantity.coerceAtLeast(0L))
+                } else {
+                    val left = Decimal.of(walk.quantity)
+                    val held = Decimal.of(before)
+                    walk.ars = walk.ars?.let { (it * left).divide(held, 4) }
+                    walk.usd = walk.usd?.let { (it * left).divide(held, 4) }
+                }
+            }
+        }
+        val result = mutableMapOf<String, DatedCost>()
+        for ((key, walk) in walks) {
+            if (walk.quantity == 0L) continue
+            val ars = walk.ars?.toMinorUnits(2)
+            val usd = walk.usd?.toMinorUnits(2)
+            val before = result[key.second]
+            result[key.second] = if (before == null) {
+                DatedCost(ars, usd)
+            } else {
+                DatedCost(
+                    if (before.ars != null && ars != null) before.ars + ars else null,
+                    if (before.usd != null && usd != null) before.usd + usd else null,
+                )
+            }
+        }
+        return result
+    }
+
+    private fun sortPositions(lines: List<PositionLine>): List<PositionLine> {
         val (open, closed) = lines.partition { !it.closed }
         return open.sortedWith(
             compareBy<PositionLine> { it.valueCommodity == null }
@@ -157,12 +325,36 @@ data class Valuation(
     private fun digitsOf(pricePer: Int): Int = pricePer.toString().length - 1
 }
 
+/**
+ * A stored MEP rate older than this before a purchase says nothing about
+ * that day: a week covers weekends and holidays, not a missing history.
+ */
+const val MEP_HISTORY_GAP_MS = 7L * 24 * 60 * 60 * 1000
+
+/** One posting into a holdings account, dated: the input of [Valuation.datedCosts]. */
+data class HoldingMovement(
+    val accountId: String,
+    val at: Long,
+    val commodity: String,
+    val quantityMinor: Long,
+    /** The posting's `@@` cost, signed like the quantity; null for units without a cost (a split). */
+    val costMinor: Long?,
+    val costCommodity: String?,
+)
+
+/** What a line's open units cost in each currency, at each purchase's MEP; null when a rate was missing. */
+data class DatedCost(val ars: Long?, val usd: Long?)
+
 /** One instrument of a holdings account, as [Valuation.positions] sees it. */
 data class PositionLine(
     val commodity: String,
     val info: InstrumentInfo,
     val quantityMinor: Long,
-    /** Total booked cost (Σ `@@`), null when nothing states one. */
+    /**
+     * Total cost in [costCommodity]: the booked one (Σ `@@`), or for a
+     * security row in pesos/MEP each purchase at its day's rate. Null when
+     * nothing states one.
+     */
     val costMinor: Long?,
     val costCommodity: String?,
     /** Latest known price, null when the ledger has none. */

@@ -226,7 +226,38 @@ class BrokersRepository(
                 }
             }
         }
-        Valuation(commodities, latest, d.officialRate(), d.latestRate(MEP_SOURCE))
+        val mepHistory = d.query(
+            "select at, price, source from prices where commodity = 'USD' and quote_commodity = 'ARS'" +
+                " and source in (:live, :close) order by at",
+            mapOf(":live" to MEP_SOURCE, ":close" to MEP_CLOSE_SOURCE),
+        ) { rows ->
+            rows.mapNotNull { row ->
+                val price = Decimal.parse(row.getOrNull(1)?.toString().orEmpty()) ?: return@mapNotNull null
+                PriceQuote("USD", "ARS", (row.getOrNull(0) as? Number)?.toLong() ?: 0L, price, row.getOrNull(2)?.toString().orEmpty())
+            }.toList()
+        }
+        // Today's rate is the broker's live quote; without one (no sync yet,
+        // or an older one), the newest close.
+        val mep = listOfNotNull(d.latestRate(MEP_SOURCE), d.latestRate(MEP_CLOSE_SOURCE)).maxByOrNull { it.at }
+        Valuation(commodities, latest, d.officialRate(), mep, mepHistory)
+    }
+
+    /** Date of the oldest movement in any connected broker's holdings, or null without one. */
+    suspend fun oldestHoldingMovement(): Long? =
+        ledger.earliestDate(connections().map { it.accounts.holdings })
+
+    /** Oldest and newest stored MEP close ([MEP_CLOSE_SOURCE]), or null when there is none. */
+    suspend fun mepCloseRange(): Pair<Long, Long>? = db.useForRead { d ->
+        d.query(
+            "select min(at), max(at) from prices where commodity = 'USD' and quote_commodity = 'ARS' and source = :source",
+            mapOf(":source" to MEP_CLOSE_SOURCE),
+        ) { rows ->
+            rows.firstOrNull()?.let { row ->
+                val oldest = (row.getOrNull(0) as? Number)?.toLong() ?: return@let null
+                val newest = (row.getOrNull(1) as? Number)?.toLong() ?: return@let null
+                oldest to newest
+            }
+        }
     }
 
     /** Decimals of every commodity the ledger describes. */

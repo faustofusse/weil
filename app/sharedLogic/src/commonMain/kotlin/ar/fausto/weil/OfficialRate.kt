@@ -29,6 +29,59 @@ const val OFFICIAL_SOURCE = "bcra"
 const val MEP_SOURCE = "mep"
 
 /**
+ * The MEP dollar's daily close, as a `prices` source: the history a
+ * purchase's cost is converted with when the investments tab states
+ * everything in one currency ([Valuation.datedCosts]). The mid of the
+ * published buy/sell, stamped at 15:00 ART like the official rate. Kept
+ * apart from [MEP_SOURCE] so a day's live quote and its close don't
+ * overwrite each other (prices are one row per day and source).
+ */
+const val MEP_CLOSE_SOURCE = "mep_close"
+
+/** The whole MEP close series; the repository keeps the days it needs. */
+fun interface MepHistorySource {
+    suspend fun closes(): List<PriceQuote>
+}
+
+private const val MEP_HISTORY_URL = "https://api.argentinadatos.com/v1/cotizaciones/dolares/bolsa"
+
+/**
+ * argentinadatos.com's `cotizaciones/dolares/bolsa` → one [PriceQuote] per
+ * day at the mid of `compra` and `venta`, read from the JSON text. Rows
+ * without both are skipped.
+ */
+fun parseMepHistory(body: String): List<PriceQuote> {
+    val rows = Json.parseToJsonElement(body) as? JsonArray ?: return emptyList()
+    val two = Decimal.of(2)
+    return rows.mapNotNull { row ->
+        val obj = row as? JsonObject ?: return@mapNotNull null
+        val date = (obj["fecha"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+        val buy = (obj["compra"] as? JsonPrimitive)?.content?.let { Decimal.parse(it) }?.takeIf { it.signum > 0 }
+            ?: return@mapNotNull null
+        val sell = (obj["venta"] as? JsonPrimitive)?.content?.let { Decimal.parse(it) }?.takeIf { it.signum > 0 }
+            ?: return@mapNotNull null
+        val at = iolTime("${date}T15:00:00") ?: return@mapNotNull null
+        PriceQuote("USD", "ARS", at, (buy + sell).divide(two, 2).stripTrailingZeros(), MEP_CLOSE_SOURCE)
+    }
+}
+
+class ArgentinaDatosMepClient(private val url: String = MEP_HISTORY_URL) : MepHistorySource {
+    private val http = platformHttpClient {
+        install(HttpTimeout) {
+            requestTimeoutMillis = 20_000
+            connectTimeoutMillis = 10_000
+        }
+        platformUserAgent()?.let { ua -> install(UserAgent) { agent = ua } }
+    }
+
+    override suspend fun closes(): List<PriceQuote> {
+        val response = http.get(url)
+        if (!response.status.isSuccess()) return emptyList()
+        return parseMepHistory(response.bodyAsText())
+    }
+}
+
+/**
  * How the investments tab states position values (a synced setting, like
  * [NET_WORTH_CURRENCY_KEY]): each in the currency its line trades in, all
  * in pesos, or all in MEP dollars. The conversions use [MEP_SOURCE].
@@ -116,12 +169,14 @@ class BcraClient(private val baseUrl: String = BCRA_BASE_URL) : OfficialRateSour
 /**
  * Keeps the official rate current in `prices`: fetches the days after the
  * newest stored one (the last ten on a fresh ledger), at most once an hour
- * per process, and never throws — a background refresh must not surface
+ * per process, and never throws. With a [mepSource], also the MEP closes
+ * the brokers' holdings need ([MEP_CLOSE_SOURCE]) — a background refresh must not surface
  * as an error on Home.
  */
 class OfficialRatesRepository(
     private val brokers: BrokersRepository,
     private val source: OfficialRateSource,
+    private val mepSource: MepHistorySource? = null,
 ) {
     private var lastAttempt = 0L
 
@@ -129,6 +184,41 @@ class OfficialRatesRepository(
     suspend fun refresh(now: Long = epochMillis()): Boolean {
         if (now - lastAttempt < 60L * 60 * 1000) return false
         lastAttempt = now
+        val official = refreshOfficial(now)
+        val mep = refreshMepHistory(now)
+        return official || mep
+    }
+
+    /**
+     * The MEP closes from a week before the brokers' oldest holding movement
+     * to yesterday (today's rate is the broker's live quote), fetched only
+     * when the stored ones don't cover that span or stopped more than
+     * [MEP_HISTORY_STALE_MS] ago. Nothing without a broker. Never throws.
+     */
+    private suspend fun refreshMepHistory(now: Long): Boolean {
+        val source = mepSource ?: return false
+        return runCatching {
+            val since = brokers.oldestHoldingMovement() ?: return@runCatching false
+            val from = since - MEP_HISTORY_GAP_MS
+            val stored = brokers.mepCloseRange()
+            if (stored != null && iolDate(stored.first) <= iolDate(from) && now - stored.second < MEP_HISTORY_STALE_MS) {
+                return@runCatching false
+            }
+            val today = iolDate(now)
+            val missing = source.closes().filter { quote ->
+                quote.at >= from && iolDate(quote.at) < today &&
+                    (stored == null || quote.at < stored.first || quote.at > stored.second)
+            }
+            if (missing.isEmpty()) return@runCatching false
+            brokers.savePrices(missing)
+            true
+        }.getOrElse { e ->
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            false
+        }
+    }
+
+    private suspend fun refreshOfficial(now: Long): Boolean {
         return runCatching {
             val today = iolDate(now)
             val newest = brokers.latestOfficialRate()
@@ -145,6 +235,9 @@ class OfficialRatesRepository(
         }
     }
 }
+
+/** Newest stored MEP close older than this: fetch the series again. */
+private const val MEP_HISTORY_STALE_MS = 4 * DAY_MS
 
 /** The net worth restated in one currency at the official rate. */
 data class ConvertedTotal(val commodity: String, val minor: Long, val rate: PriceQuote)

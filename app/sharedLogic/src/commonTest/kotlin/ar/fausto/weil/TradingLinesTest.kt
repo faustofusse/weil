@@ -212,19 +212,19 @@ class TradingLinesTest {
         )
         fun line(display: InvestmentsDisplay, id: String) = valuation.positions(holdings, display).single { it.commodity == id }
 
-        // Original: each line in its own currency; $ 102.400 / 1600 = US$ 64.
+        // Original: each line in its own currency; $ 102.400 / 1600 = US$ 64,
+        // and each gain in the currency the line cost.
         assertEquals("USD" to 6_400L, line(InvestmentsDisplay.Original, "BCBA:AAPLD").let { it.valueCommodity to it.valueMinor })
         assertEquals("ARS" to 3_840_000L, line(InvestmentsDisplay.Original, "BCBA:AAPL").let { it.valueCommodity to it.valueMinor })
-        // All in pesos / all in MEP dollars.
-        assertEquals("ARS" to 10_240_000L, line(InvestmentsDisplay.Pesos, "BCBA:AAPLD").let { it.valueCommodity to it.valueMinor })
-        assertEquals("USD" to 2_400L, line(InvestmentsDisplay.Mep, "BCBA:AAPL").let { it.valueCommodity to it.valueMinor })
-        // The gain stays in the cost's currency whatever the display.
-        for (display in InvestmentsDisplay.entries) {
-            assertEquals(1_400L, line(display, "BCBA:AAPLD").unrealizedMinor)
-            assertEquals(840_000L, line(display, "BCBA:AAPL").unrealizedMinor)
-        }
-        val totals = unrealizedTotals(valuation.positions(holdings, InvestmentsDisplay.Mep))
-        assertEquals(setOf("USD" to 1_400L, "ARS" to 840_000L), totals.map { it.commodity to it.gainMinor }.toSet())
+        assertEquals(1_400L, line(InvestmentsDisplay.Original, "BCBA:AAPLD").unrealizedMinor)
+        assertEquals(840_000L, line(InvestmentsDisplay.Original, "BCBA:AAPL").unrealizedMinor)
+        // All in pesos / all in MEP dollars: one row for the security, 11 AAPL.
+        val pesos = valuation.positions(holdings, InvestmentsDisplay.Pesos).single()
+        assertEquals(listOf("BCBA:AAPL", 11L, "ARS", 14_080_000L), listOf(pesos.commodity, pesos.quantityMinor, pesos.valueCommodity, pesos.valueMinor))
+        assertEquals("USD" to 8_800L, line(InvestmentsDisplay.Mep, "BCBA:AAPL").let { it.valueCommodity to it.valueMinor })
+        // Without the purchases' dates there is no rate for the other
+        // currency's cost, so no gain rather than one at today's rate.
+        assertNull(pesos.unrealizedMinor)
     }
 
     @Test

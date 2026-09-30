@@ -766,17 +766,15 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         subtreeIds: List<String>,
         limit: Int = LIST_PAGE_SIZE,
         before: LedgerCursor? = null,
-        commodity: String? = null,
+        commodities: Collection<String>? = null,
     ): List<RegisterEntry> {
         if (subtreeIds.isEmpty()) return emptyList()
         val idList = quoteList(subtreeIds)
-        // One instrument's register (the positions view): its running
-        // balance is already per commodity, so only the rows narrow.
-        val commodityFilter = if (commodity == null) "" else " and p.commodity = :commodity"
-        fun params(cursor: LedgerCursor?): Map<String, Any>? {
-            val base = cursorParams(cursor)
-            return if (commodity == null) base else (base.orEmpty() + (":commodity" to commodity))
-        }
+        // One instrument's register (the positions view; a security's
+        // trading lines together): its running balance is already per
+        // commodity, so only the rows narrow.
+        val commodityFilter = if (commodities.isNullOrEmpty()) "" else " and p.commodity in (${quoteList(commodities.toList())})"
+        fun params(cursor: LedgerCursor?): Map<String, Any>? = cursorParams(cursor)
         return db.useForRead { d ->
             val entries = d.query(
                 "select p.id, p.transaction_id, p.account_id, p.amount_minor, p.commodity," +
@@ -859,6 +857,33 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 val cost = (row.getOrNull(2) as? Number)?.toLong() ?: 0L
                 commodity to HeldPosition(quantity, cost, row.getOrNull(3)?.toString())
             }.toList().toMap()
+        }
+    }
+
+    /**
+     * Every posting into [accountIds] with its date, oldest first: the
+     * purchases [Valuation.datedCosts] converts at their day's MEP rate.
+     */
+    suspend fun holdingMovements(accountIds: List<String>): List<HoldingMovement> {
+        if (accountIds.isEmpty()) return emptyList()
+        return db.useForRead { d ->
+            d.query(
+                "select p.account_id, t.date, p.commodity, p.amount_minor, p.cost_minor, p.cost_commodity" +
+                    " from postings p join transactions t on t.id = p.transaction_id" +
+                    " where p.account_id in (${quoteList(accountIds)}) order by t.date, t.id",
+                null,
+            ) { rows ->
+                rows.mapNotNull { row ->
+                    HoldingMovement(
+                        accountId = row.getOrNull(0)?.toString() ?: return@mapNotNull null,
+                        at = (row.getOrNull(1) as? Number)?.toLong() ?: return@mapNotNull null,
+                        commodity = row.getOrNull(2)?.toString() ?: return@mapNotNull null,
+                        quantityMinor = (row.getOrNull(3) as? Number)?.toLong() ?: return@mapNotNull null,
+                        costMinor = (row.getOrNull(4) as? Number)?.toLong(),
+                        costCommodity = row.getOrNull(5)?.toString(),
+                    )
+                }.toList()
+            }
         }
     }
 

@@ -91,8 +91,13 @@ fun AccountDetailScreen(
     // The positions view narrows the register to one instrument.
     var commodityFilter by rememberSaveable { mutableStateOf(initialCommodity) }
     var holdings by remember { mutableStateOf(cached?.holdings ?: emptyMap()) }
-    val positions = remember(holdings, ledgerState.valuation, ledgerState.investmentsDisplay) {
-        ledgerState.valuation.positions(holdings, ledgerState.investmentsDisplay)
+    var movements by remember { mutableStateOf(cached?.movements ?: emptyList()) }
+    val positions = remember(holdings, movements, ledgerState.valuation, ledgerState.investmentsDisplay) {
+        ledgerState.valuation.positions(holdings, ledgerState.investmentsDisplay, movements)
+    }
+    // In pesos/MEP a position is a security, and its register every line of it.
+    val filterLines = commodityFilter?.let { filter ->
+        if (ledgerState.valuation.groupsLines(ledgerState.investmentsDisplay)) ledgerState.valuation.linesOf(filter) else setOf(filter)
     }
     var entries by remember { mutableStateOf(cached?.entries ?: emptyList()) }
     // The register is per posting, and a transaction between two accounts
@@ -112,7 +117,7 @@ fun AccountDetailScreen(
     var hasMore by remember { mutableStateOf(cached?.hasMore ?: true) }
     DisposableEffect(cacheKey) {
         onDispose {
-            if (loaded) RegisterCache[cacheKey] = RegisterSnapshot(entries, transactions, hasMore, holdings)
+            if (loaded) RegisterCache[cacheKey] = RegisterSnapshot(entries, transactions, hasMore, holdings, movements)
         }
     }
     var error by remember { mutableStateOf<String?>(null) }
@@ -133,10 +138,11 @@ fun AccountDetailScreen(
             // As deep as the user has already scrolled: a plain first page
             // would cut the list short and clamp the position upwards.
             val limit = maxOf(LIST_PAGE_SIZE, entries.size)
-            val page = ledger.register(subtreeIds = ids(), limit = limit, commodity = commodityFilter)
+            val page = ledger.register(subtreeIds = ids(), limit = limit, commodities = filterLines)
             // Positions are one account's: a subtree mixes brokers' carteras
             // and the booked cost is per account.
             holdings = if (includeSubtree) emptyMap() else ledger.holdings(accountId)
+            movements = if (holdings.keys.none { ledgerState.valuation.isInstrument(it) }) emptyList() else ledger.holdingMovements(listOf(accountId))
             entries = page
             transactions = ledger.getAll(page.map { it.posting.transactionId }.distinct())
             hasMore = page.size >= limit
@@ -155,7 +161,7 @@ fun AccountDetailScreen(
     // The subtree's ids come from the tree: reload once it arrives (a cold
     // start straight into a subtree view had none) or changes shape.
     val subtreeKey = if (includeSubtree) ids() else null
-    LaunchedEffect(includeSubtree, commodityFilter, subtreeKey) {
+    LaunchedEffect(includeSubtree, commodityFilter, filterLines, subtreeKey) {
         if (shownSubtree != includeSubtree || shownFilter != commodityFilter) {
             entries = emptyList()
             shownSubtree = includeSubtree
@@ -179,7 +185,7 @@ fun AccountDetailScreen(
                 val nextPage = ledger.register(
                     subtreeIds = ids(),
                     before = LedgerCursor(last.date, last.posting.transactionId),
-                    commodity = commodityFilter,
+                    commodities = filterLines,
                 )
                 hasMore = nextPage.size >= LIST_PAGE_SIZE
                 // A concurrent loadAll() (ledger.changes) can have replaced
@@ -449,6 +455,7 @@ private class RegisterSnapshot(
     val transactions: Map<String, Transaction>,
     val hasMore: Boolean,
     val holdings: Map<String, HeldPosition>,
+    val movements: List<HoldingMovement>,
 )
 
 /**

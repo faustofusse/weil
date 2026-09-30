@@ -160,6 +160,8 @@ sealed interface BrokerEvent {
         override val description: String,
         val instrument: String,
         val delta: Decimal,
+        /** Why it is there, when the planner deduced it (the transaction's note). */
+        val note: String? = null,
     ) : BrokerEvent
 }
 
@@ -253,6 +255,12 @@ data class PlannedTransaction(
      * money came from, so a person should.
      */
     val needsCounterpart: Boolean = false,
+    /**
+     * Deduced by the planner rather than reported by the broker (a split
+     * read off the snapshot): shown in the review, never written unattended
+     * ([isRoutine]).
+     */
+    val inferred: Boolean = false,
 ) {
     /**
      * The same transaction with its [fallback] leg (the opening balance)
@@ -407,9 +415,12 @@ private class BrokerPlanner(
             .sortedWith(compareBy<BrokerEvent>({ it.at }, { it.ref }))
             .partition { brokerRef(batch.provider, it.ref) !in knownRefs }
 
-        if ((ledger.isEmpty || rebuild) && batch.snapshot != null) planOpening(fresh, batch.snapshot)
+        val splits = batch.snapshot?.let { inferSplits(fresh, it) }.orEmpty()
+        val events = if (splits.isEmpty()) fresh else (fresh + splits).sortedWith(compareBy<BrokerEvent>({ it.at }, { it.ref }))
 
-        for (event in fresh) {
+        if ((ledger.isEmpty || rebuild) && batch.snapshot != null) planOpening(events, batch.snapshot)
+
+        for (event in events) {
             val ref = brokerRef(batch.provider, event.ref)
             try {
                 planEvent(event, ref)
@@ -419,6 +430,11 @@ private class BrokerPlanner(
                 issues += PlanIssue(ref, "amount out of range: ${e.message}")
             }
         }
+        if (splits.isNotEmpty()) {
+            val inferred = splits.map { brokerRef(batch.provider, it.ref) }.toSet()
+            planned.replaceAll { if (it.ref in inferred) it.copy(inferred = true) else it }
+        }
+        batch.snapshot?.let { reportHiddenSplits(it) }
 
         return BrokerPlan(
             transactions = planned,
@@ -664,6 +680,7 @@ private class BrokerPlanner(
                 draft(accounts.holdings, delta, e.instrument),
                 draft(accounts.adjustments, -delta, e.instrument),
             ),
+            note = e.note,
         )
         val position = holdings[e.instrument]
         holdings[e.instrument] = HeldPosition(
@@ -671,6 +688,127 @@ private class BrokerPlanner(
             position?.costMinor ?: 0L,
             position?.costCommodity,
         )
+    }
+
+    // --- splits -----------------------------------------------------------
+
+    /**
+     * Splits the broker applied but never listed as a movement (IOL's
+     * operations have no row for YPF's 1:10 of 2026): what the ledger plus
+     * this batch would hold of a security is an exact fraction (or multiple)
+     * of what the snapshot says, and the broker's average cost moved by the
+     * same factor. Both have to agree: 10 units where the history explains 1
+     * is also what an account opened before its history looks like, and only
+     * the cost tells them apart (the 9 units held from before cost what the
+     * one bought did; after a 1:10 split the broker's average is a tenth).
+     *
+     * The split is dated just before the snapshot (the broker doesn't say
+     * when) on the one line that holds the units, and marked
+     * [PlannedTransaction.inferred], so an unattended sync never writes it.
+     * A security held on several lines, or bought in another currency than
+     * the one the broker states its cost in, is left to [differences].
+     */
+    private fun inferSplits(events: List<BrokerEvent>, snapshot: BrokerSnapshot): List<BrokerEvent.QuantityChange> {
+        val quantity = mutableMapOf<String, Decimal>()
+        val paid = mutableMapOf<String, MutableMap<String, Pair<Decimal, Decimal>>>()
+        val skip = mutableSetOf<String>()
+        fun units(line: String, d: Decimal) { quantity[line] = (quantity[line] ?: Decimal.ZERO) + d }
+        fun paid(line: String, commodity: String, cost: Decimal, units: Decimal) {
+            val byCurrency = paid.getOrPut(speciesOf(line)) { mutableMapOf() }
+            val (c, u) = byCurrency[commodity] ?: (Decimal.ZERO to Decimal.ZERO)
+            byCurrency[commodity] = (c + cost) to (u + units)
+        }
+        for ((line, position) in ledger.holdings) {
+            val units = Decimal.ofMinorUnits(position.quantityMinor, scaleOf(line))
+            units(line, units)
+            val costCommodity = position.costCommodity
+            if (position.quantityMinor > 0L && position.costMinor > 0L && costCommodity != null) {
+                paid(line, costCommodity, Decimal.ofMinorUnits(position.costMinor, scaleOf(costCommodity)), units)
+            }
+        }
+        for (event in events) {
+            when (event) {
+                is BrokerEvent.Trade -> {
+                    units(event.instrument, event.quantity)
+                    if (event.quantity.signum > 0) paid(event.instrument, event.cashCommodity, event.gross, event.quantity)
+                }
+                is BrokerEvent.Principal -> event.quantity?.let { units(event.instrument, -it.abs()) }
+                    ?: skip.add(speciesOf(event.instrument))
+                // The broker did report it: nothing to infer.
+                is BrokerEvent.QuantityChange -> skip.add(speciesOf(event.instrument))
+                else -> Unit
+            }
+        }
+        val result = mutableListOf<BrokerEvent.QuantityChange>()
+        for ((species, held) in snapshotBySpecies(snapshot)) {
+            if (species in skip) continue
+            val brokerCost = held.cost ?: continue
+            val costCommodity = held.costCommodity ?: continue
+            if (held.quantity.signum <= 0 || brokerCost.signum <= 0) continue
+            val lines = quantity.filter { speciesOf(it.key) == species && !it.value.isZero }
+            val (line, ours) = lines.entries.singleOrNull() ?: continue
+            if (ours.signum <= 0 || ours == held.quantity) continue
+            val bought = paid[species]?.takeIf { it.keys == setOf(costCommodity) }?.get(costCommodity) ?: continue
+            if (bought.second.signum <= 0) continue
+            val ourUnit = bought.first.divide(bought.second, 8)
+            val brokerUnit = brokerCost.divide(held.quantity, 8)
+            val forward = held.quantity > ours
+            val factor = if (forward) held.quantity.divide(ours, 0) else ours.divide(held.quantity, 0)
+            if (factor < Decimal.of(2)) continue
+            if ((if (forward) ours * factor else held.quantity * factor) != (if (forward) held.quantity else ours)) continue
+            // After a 1:r split the broker's unit cost is ours / r; after r:1, ours × r.
+            val expected = if (forward) ourUnit.divide(factor, 8) else ourUnit * factor
+            if (!roughlyEqual(brokerUnit, expected)) continue
+            val symbol = batch.instruments.firstOrNull { it.id == species }?.symbol ?: species.substringAfter(':')
+            val ratio = factor.stripTrailingZeros().toPlainString()
+            result += BrokerEvent.QuantityChange(
+                ref = "split:$species:${snapshot.at}",
+                at = snapshot.at - 1,
+                timeKnown = false,
+                description = if (forward) "Split $symbol 1:$ratio" else "Contrasplit $symbol $ratio:1",
+                instrument = line,
+                delta = held.quantity - ours,
+                note = "Deducido: ${batch.provider.uppercase()} informa ${held.quantity.toPlainString()}, " +
+                    "el historial explica ${ours.toPlainString()}",
+            )
+        }
+        return result
+    }
+
+    /**
+     * A split an earlier import turned into units the account never had
+     * (before [inferSplits] existed, the opening made up the difference at
+     * the old price): the quantities agree, but the ledger's average cost is
+     * a whole multiple of the broker's. Nothing the plan can fix by adding
+     * a movement — the history itself is wrong — so it is reported, and a
+     * rebuilt import replans it with the split.
+     */
+    private fun reportHiddenSplits(snapshot: BrokerSnapshot) {
+        for ((species, held) in snapshotBySpecies(snapshot)) {
+            val brokerCost = held.cost ?: continue
+            if (held.quantity.signum <= 0 || brokerCost.signum <= 0) continue
+            val lines = holdings.filter { speciesOf(it.key) == species && it.value.quantityMinor != 0L }
+            val (line, position) = lines.entries.singleOrNull() ?: continue
+            if (position.costCommodity != held.costCommodity || position.costMinor <= 0L) continue
+            val units = Decimal.ofMinorUnits(position.quantityMinor, scaleOf(line))
+            if (units != held.quantity) continue
+            val ours = Decimal.ofMinorUnits(position.costMinor, scaleOf(held.costCommodity!!))
+            val (bigger, smaller) = if (ours > brokerCost) ours to brokerCost else brokerCost to ours
+            val factor = bigger.divide(smaller, 0)
+            if (factor < Decimal.of(2) || !roughlyEqual(bigger, smaller * factor)) continue
+            issues += PlanIssue(
+                null,
+                "$species: the ledger's cost is ${if (ours > brokerCost) "${factor.toPlainString()}×" else "1/${factor.toPlainString()} of"} " +
+                    "the broker's, a split missing from the history; rebuild the import",
+            )
+        }
+    }
+
+    /** Within 10 %: a cost with commissions against one without, never a whole factor apart. */
+    private fun roughlyEqual(a: Decimal, b: Decimal): Boolean {
+        if (b.signum <= 0) return false
+        val gap = (a - b).abs()
+        return gap * Decimal.of(10) <= b
     }
 
     // --- opening ----------------------------------------------------------

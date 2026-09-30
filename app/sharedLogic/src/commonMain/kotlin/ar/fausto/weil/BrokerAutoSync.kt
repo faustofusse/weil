@@ -37,7 +37,7 @@ sealed interface BrokerAutoSync {
 
 /** True when [plan] can be written with nobody reviewing it; see the file comment. */
 fun isRoutine(plan: BrokerPlan): Boolean =
-    plan.issues.isEmpty() && plan.transactions.none { it.kind == PlannedKind.Opening || it.needsCounterpart }
+    plan.issues.isEmpty() && plan.transactions.none { it.kind == PlannedKind.Opening || it.needsCounterpart || it.inferred }
 
 /** Unattended syncs no more often than this, measured from the last applied one. */
 const val BROKER_AUTO_SYNC_INTERVAL_MS = 30L * 60 * 1000

@@ -33,7 +33,8 @@ import org.jetbrains.skia.Image
  *   ./gradlew :app:desktopApp:shot -Pshot.route=categories (expense categories
  *     with their icons)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=investments (the investments
- *     tab over a seeded IOL portfolio; `investments-empty` for no broker)
+ *     tab over a seeded IOL portfolio; `investments-empty` for no broker,
+ *     `investments-mep` for everything in MEP dollars, one row per security)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=holdings (the seeded Cartera:
  *     positions + register)
  *   ./gradlew :app:desktopApp:shot -Pshot.route=tx-buy   (the editor over a
@@ -89,6 +90,13 @@ fun main(args: Array<String>) {
     val fixedOfficialRate = OfficialRateSource { _, to ->
         listOf(PriceQuote("USD", "ARS", iolTime("${to}T15:00:00")!!, Decimal.parse("1525.50")!!, OFFICIAL_SOURCE))
     }
+    // A flat MEP history for the same reason: the pesos/MEP views convert
+    // each purchase at its day's close, and a shot must not fetch them.
+    val flatMepHistory = MepHistorySource {
+        val day = 24L * 60 * 60 * 1000
+        val today = epochMillis()
+        (1..800).map { PriceQuote("USD", "ARS", today - it * day, Decimal.parse("1450")!!, MEP_CLOSE_SOURCE) }
+    }
     val graph = AppGraph(
         store = JvmSecureStore(storeFile, seedDevSession = true),
         passkeys = { JvmDevPasskeys() },
@@ -104,6 +112,7 @@ fun main(args: Array<String>) {
         // the worker that holds the TypeSafe key.
         categorySuggester = FakeCategorySuggester(),
         officialRates = fixedOfficialRate,
+        mepHistory = flatMepHistory,
         dbContext = jvmDbDispatcher,
         dbFactory = { _, _, _ -> FakeDatabase(dbFile) },
     )
@@ -119,6 +128,7 @@ fun main(args: Array<String>) {
         categorySuggester = FakeCategorySuggester(),
         suggester = FakeSuggestTracer(graph.notifications, graph.ledger, graph.embeddings),
         officialRates = fixedOfficialRate,
+        mepHistory = flatMepHistory,
         dbContext = jvmDbDispatcher,
         dbFactory = { _, _, _ -> FakeDatabase(dbFile) },
     )
@@ -130,6 +140,8 @@ fun main(args: Array<String>) {
     // A small IOL portfolio written through the real repositories, for the
     // routes that show investments.
     val invest = if (route in INVESTMENT_ROUTES) kotlinx.coroutines.runBlocking { seedInvestments(graph) } else null
+    // Everything in MEP dollars: one row per security, gains at each purchase's rate.
+    if (route == "investments-mep") kotlinx.coroutines.runBlocking { graph.settings.set(INVESTMENTS_DISPLAY_KEY, InvestmentsDisplay.Mep.key) }
     // For the alert route, an unattended sync left something to review.
     if (route == "investments-alert") {
         graph.iol.lastAutoSync.value = BrokerAutoSync.NeedsReview(
@@ -173,7 +185,7 @@ fun main(args: Array<String>) {
                 startTab = when (route) {
                     "movements" -> AppTab.Movements
                     "categories" -> AppTab.Categories
-                    "investments", "investments-empty", "investments-alert", "investments-sheet", "ibkr-connect" -> AppTab.Investments
+                    "investments", "investments-mep", "investments-empty", "investments-alert", "investments-sheet", "ibkr-connect" -> AppTab.Investments
                     else -> AppTab.Home
                 },
                 initialRoute = when (route) {
@@ -237,7 +249,7 @@ fun main(args: Array<String>) {
 }
 
 
-private val INVESTMENT_ROUTES = setOf("investments", "broker-root", "investments-alert", "investments-sheet", "holdings", "tx-buy", "tx-buy-detail", "instrument")
+private val INVESTMENT_ROUTES = setOf("investments", "investments-mep", "broker-root", "investments-alert", "investments-sheet", "holdings", "tx-buy", "tx-buy-detail", "instrument")
 
 private class SeededInvestments(val accounts: BrokerAccounts, val fractionalBuy: String, val root: String)
 
@@ -258,10 +270,15 @@ private suspend fun seedInvestments(graph: AppGraph): SeededInvestments {
     val s14g6 = InstrumentInfo("BCBA:S14G6", "S14G6", "Letra del Tesoro 14/08", "letra", 0, pricePer = 100, quoteCommodity = "ARS")
     val ttwo = InstrumentInfo("NASDAQ:TTWO", "TTWO", "Take-Two Interactive", "stock", 4, quoteCommodity = "USD")
     val al30 = InstrumentInfo("BCBA:AL30", "AL30", "Bono Rep. Argentina 2030", "bono", 0, pricePer = 100, quoteCommodity = "ARS")
+    val aapl = InstrumentInfo("BCBA:AAPL", "AAPL", "Cedear Apple", "cedear", 0, quoteCommodity = "ARS")
+    val aapld = InstrumentInfo("BCBA:AAPLD", "AAPLD", "Cedear Apple", "cedear", 0, quoteCommodity = "USD")
     val events = listOf(
         BrokerEvent.Trade("seed-s14g6", t0, true, "Compra S14G6", "BCBA:S14G6", d("2168316"), d("2178073.42"), "ARS", d("4377.93")),
         BrokerEvent.Trade("seed-meli", t0 + 5 * day, true, "Compra MELI", "BCBA:MELI", d("13"), d("317070"), "ARS", d("2186.83")),
         BrokerEvent.Trade("seed-al30", t0 + 8 * day, true, "Compra AL30", "BCBA:AL30", d("500"), d("412500"), "ARS", d("1240")),
+        // One security on two lines: 3 AAPL with pesos, 8 AAPLD with dollars.
+        BrokerEvent.Trade("seed-aapl", t0 + 6 * day, true, "Compra AAPL", "BCBA:AAPL", d("3"), d("60000"), "ARS", d("400")),
+        BrokerEvent.Trade("seed-aapld", t0 + 7 * day, true, "Compra AAPLD", "BCBA:AAPLD", d("8"), d("110.40"), "USD"),
         BrokerEvent.Trade("seed-ttwo", t0 + 10 * day, true, "Compra TTWO", "NASDAQ:TTWO", d("0.4939"), d("98.98"), "USD", d("1")),
         BrokerEvent.Income("seed-al30-renta", t0 + 20 * day, true, "Renta AL30", IncomeKind.Interest, d("2.85"), "USD", instrument = "BCBA:AL30"),
         BrokerEvent.Principal("seed-s14g6-amort", t0 + 30 * day, true, "Amortización S14G6", "BCBA:S14G6", null, d("2342410.09"), "ARS"),
@@ -274,6 +291,7 @@ private suspend fun seedInvestments(graph: AppGraph): SeededInvestments {
             add(PriceQuote("BCBA:S13N6", "ARS", at, d("106.251"), "iol"))
             add(PriceQuote("NASDAQ:TTWO", "USD", at, d("231.40").minus(d((i * 2).toString())), "iol"))
             add(PriceQuote("BCBA:AL30", "ARS", at, d("83910"), "iol"))
+            add(PriceQuote("BCBA:AAPL", "ARS", at, d("26620"), "iol"))
         }
     }
     val snapshot = BrokerSnapshot(
@@ -283,11 +301,12 @@ private suspend fun seedInvestments(graph: AppGraph): SeededInvestments {
             SnapshotPosition("BCBA:MELI", d("13")),
             SnapshotPosition("BCBA:S13N6", d("1923076"), price = d("104.10")),
             SnapshotPosition("BCBA:AL30", d("500")),
+            SnapshotPosition("BCBA:AAPL", d("11")),
             SnapshotPosition("NASDAQ:TTWO", d("0.4939")),
         ),
     )
     val plan = planBrokerImport(
-        BrokerBatch(IOL_PROVIDER, events, snapshot, listOf(meli, s13n6, s14g6, ttwo, al30), prices),
+        BrokerBatch(IOL_PROVIDER, events, snapshot, listOf(meli, s13n6, s14g6, ttwo, al30, aapl, aapld), prices),
         accounts,
         graph.brokers.ledgerView(accounts),
         graph.brokers.knownRefs(IOL_PROVIDER),

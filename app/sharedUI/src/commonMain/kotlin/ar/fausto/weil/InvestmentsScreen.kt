@@ -190,6 +190,7 @@ fun InvestmentsScreen(
 
     var connections by remember { mutableStateOf<List<BrokerConnection>?>(null) }
     var holdings by remember { mutableStateOf<Map<String, Map<String, HeldPosition>>>(emptyMap()) }
+    var movements by remember { mutableStateOf<List<HoldingMovement>>(emptyList()) }
     var recent by remember { mutableStateOf<List<Transaction>>(emptyList()) }
 
     // A cold start straight into this tab has no tree nor valuation yet.
@@ -198,6 +199,7 @@ fun InvestmentsScreen(
     suspend fun load() {
         val found = runCatching { brokers.connections() }.getOrNull() ?: return
         holdings = found.associate { it.provider to ledger.holdings(it.accounts.holdings) }
+        movements = ledger.holdingMovements(found.map { it.accounts.holdings })
         // Every account a broker books into on the asset side: its cash
         // accounts and its holdings (the income/expense/equity branches are
         // shared by all brokers and would drag in unrelated rows).
@@ -300,8 +302,8 @@ fun InvestmentsScreen(
     val connected = connections.orEmpty()
     val valuation = ledgerState.valuation
     val display = ledgerState.investmentsDisplay
-    val positions = remember(holdings, valuation, display) {
-        valuation.positions(consolidateHoldings(holdings.values.toList()), display)
+    val positions = remember(holdings, movements, valuation, display) {
+        valuation.positions(consolidateHoldings(holdings.values.toList()), display, movements)
     }
     val nodes = remember(ledgerState.tree) { ledgerState.tree.flatMap { it.selfAndDescendants } }
     val names = remember(nodes) { nodes.associate { it.account.id to it.account.name.censored() } }
@@ -459,8 +461,11 @@ fun InvestmentsScreen(
                                 // broker, simply its register for that instrument.
                                 onSelect = { commodity ->
                                     commodity ?: return@PositionsCard
-                                    val holder = connected.maxByOrNull {
-                                        holdings[it.provider]?.get(commodity)?.quantityMinor ?: Long.MIN_VALUE
+                                    // A security row stands for all its trading lines.
+                                    val lines = if (valuation.groupsLines(display)) valuation.linesOf(commodity) else setOf(commodity)
+                                    val holder = connected.maxByOrNull { c ->
+                                        val held = holdings[c.provider].orEmpty().filterKeys { it in lines }.values
+                                        if (held.isEmpty()) Long.MIN_VALUE else held.sumOf { it.quantityMinor }
                                     }
                                     holder?.let { onOpenAccount(AccountDetailRoute(it.accounts.holdings, commodity)) }
                                 },

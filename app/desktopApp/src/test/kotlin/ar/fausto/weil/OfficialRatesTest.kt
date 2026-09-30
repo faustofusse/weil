@@ -21,10 +21,22 @@ class OfficialRatesTest {
         listOf(PriceQuote("USD", "ARS", iolTime("${to}T15:00:00")!!, Decimal.parse("1525.50")!!, OFFICIAL_SOURCE))
     }
 
+    private val mepCalls = mutableListOf<Unit>()
+
+    /** Daily closes from 2026-08-01 to 2026-09-26, 1.500 before September and 1.550 after. */
+    private val mepSource = MepHistorySource {
+        mepCalls += Unit
+        (1..57).map { i ->
+            val at = iolTime("2026-08-01T15:00:00")!! + (i - 1) * DAY
+            PriceQuote("USD", "ARS", at, Decimal.parse(if (i <= 31) "1500" else "1550")!!, MEP_CLOSE_SOURCE)
+        }
+    }
+
     private val graph = AppGraph(
         store = JvmSecureStore(File(sandbox, "store.properties"), seedDevSession = true),
         passkeys = { JvmDevPasskeys() },
         officialRates = source,
+        mepHistory = mepSource,
         dbContext = jvmDbDispatcher,
         dbFactory = { _, _, _ -> FakeDatabase(File(sandbox, "ledger.db")) },
     )
@@ -58,7 +70,43 @@ class OfficialRatesTest {
 
     @Test
     fun aFailingSourceIsSwallowed() = runBlocking {
-        val broken = OfficialRatesRepository(graph.brokers) { _, _ -> error("offline") }
+        val broken = OfficialRatesRepository(graph.brokers, OfficialRateSource { _, _ -> error("offline") }, MepHistorySource { error("offline") })
         assertFalse(broken.refresh(iolTime("2026-09-25T19:00:00")!!))
+    }
+
+    @Test
+    fun mepClosesCoverTheBrokersHoldings() = runBlocking {
+        val now = iolTime("2026-09-26T12:00:00")!!
+        // No broker: nothing to convert, nothing fetched.
+        graph.officialRates.refresh(now)
+        assertTrue(mepCalls.isEmpty())
+
+        val broker = graph.brokers.connect(IOL_PROVIDER, "IOL", listOf("ARS", "USD"))
+        graph.ledger.add(
+            date = iolTime("2026-08-20T12:00:00")!!,
+            payee = "Compra",
+            note = null,
+            drafts = listOf(
+                DraftPosting(broker.holdings, "1", "BCBA:X", costText = "1000", costCommodity = "ARS"),
+                DraftPosting(broker.cash.getValue("ARS"), "-1000", "ARS"),
+            ),
+        )
+        assertTrue(OfficialRatesRepository(graph.brokers, source, mepSource).refresh(now))
+        assertEquals(1, mepCalls.size)
+        val valuation = graph.brokers.valuation()
+        // From a week before the purchase to yesterday; today is the live quote's.
+        assertEquals(iolTime("2026-08-13T15:00:00"), valuation.mepHistory.first().at)
+        assertEquals(iolTime("2026-09-25T15:00:00"), valuation.mepHistory.last().at)
+        assertEquals(Decimal.parse("1500"), valuation.mepAt(iolTime("2026-08-20T12:00:00")!!))
+        // Without a live quote, today's MEP is the newest close.
+        assertEquals(Decimal.parse("1550"), valuation.mep?.price)
+
+        // Covered and fresh: no second fetch.
+        assertFalse(OfficialRatesRepository(graph.brokers, source, mepSource).refresh(now + 2 * 60 * 60 * 1000))
+        assertEquals(1, mepCalls.size)
+    }
+
+    private companion object {
+        const val DAY = 24L * 60 * 60 * 1000
     }
 }
