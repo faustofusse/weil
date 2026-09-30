@@ -76,7 +76,7 @@ class InstrumentDetailTest {
     }
 
     @Test
-    fun onlyClosedMarketLinesWithoutTodaysPriceAreQuoted() {
+    fun onlyClosedLinesWithoutTodaysPriceAreQuoted() {
         val now = iolTime("2026-09-30T12:00:00")!!
         val yesterday = now - 24L * 60 * 60 * 1000
         val holdings = mapOf(
@@ -91,9 +91,22 @@ class InstrumentDetailTest {
             "BCBA:AL30" to PriceQuote("BCBA:AL30", "ARS", now - 60_000, d("80000"), "iol"),
             "BCBA:GGAL" to PriceQuote("BCBA:GGAL", "ARS", yesterday, d("5000"), "iol"),
         )
-        // Held (MELI), priced today (AL30), funds and cash are left alone;
-        // never priced goes before priced yesterday.
-        assertEquals(listOf("nyse" to "KO", "bcba" to "GGAL"), iolClosedToQuote(holdings, latest, now))
+        // Held (MELI), priced today (AL30) and cash are left alone; funds
+        // are asked as "fci"; never priced goes before priced yesterday.
+        assertEquals(
+            listOf("nyse" to "KO", "fci" to "IOLCAMA", "bcba" to "GGAL"),
+            iolClosedToQuote(holdings, latest, now),
+        )
         assertEquals(listOf("nyse" to "KO"), iolClosedToQuote(holdings, latest, now, limit = 1))
+    }
+
+    @Test
+    fun aFundQuoteReadsEitherNameForTheShareValue() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val a = json.decodeFromString(IolFundQuote.serializer(), """{"simbolo":"IOLCAMA","ultimoOperado":12.23127,"moneda":"peso_Argentino"}""")
+        assertEquals(d("12.23127"), a.price)
+        val b = json.decodeFromString(IolFundQuote.serializer(), """{"ultimoValorCuotaParte":1.5}""")
+        assertEquals(d("1.5"), b.price)
+        assertEquals(null, json.decodeFromString(IolFundQuote.serializer(), """{"ultimoOperado":0}""").price)
     }
 }

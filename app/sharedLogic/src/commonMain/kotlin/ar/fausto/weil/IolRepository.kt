@@ -102,10 +102,13 @@ class IolRepository(
         val now = epochMillis()
         val wanted = iolClosedToQuote(ledgerHoldings(accounts), valuation.prices, now)
         val prices = wanted.mapNotNull { (market, symbol) ->
-            val quote = runCatching { client.quote(market, symbol) }.getOrNull() ?: return@mapNotNull null
-            val price = quote.ultimoPrecio?.takeIf { it.signum > 0 } ?: return@mapNotNull null
             val id = "${market.uppercase()}:$symbol"
-            val currency = iolCurrency(quote.moneda) ?: valuation.commodities[id]?.quoteCommodity ?: return@mapNotNull null
+            val (price, moneda) = runCatching {
+                if (market == "fci") client.fundQuote(symbol).let { it.price to it.moneda }
+                else client.quote(market, symbol).let { it.ultimoPrecio?.takeIf { p -> p.signum > 0 } to it.moneda }
+            }.getOrNull() ?: return@mapNotNull null
+            price ?: return@mapNotNull null
+            val currency = iolCurrency(moneda) ?: valuation.commodities[id]?.quoteCommodity ?: return@mapNotNull null
             PriceQuote(id, currency, now, price, IOL_PROVIDER)
         }
         brokers.savePrices(prices)

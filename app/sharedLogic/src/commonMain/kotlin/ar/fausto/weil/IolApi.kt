@@ -158,6 +158,21 @@ data class IolQuote(
     val moneda: String? = null,
 )
 
+/**
+ * `GET /api/v2/Titulos/FCI/{simbolo}`: a fund's last share value. Funds have
+ * no market line, so the stock quote endpoint doesn't know them. IOL names
+ * the value `ultimoOperado`; `ultimoValorCuotaParte` is accepted too, in
+ * case it answers with the name its portfolio fields use.
+ */
+@Serializable
+data class IolFundQuote(
+    @Serializable(with = IolDecimalSerializer::class) val ultimoOperado: Decimal? = null,
+    @Serializable(with = IolDecimalSerializer::class) val ultimoValorCuotaParte: Decimal? = null,
+    val moneda: String? = null,
+) {
+    val price: Decimal? get() = (ultimoOperado ?: ultimoValorCuotaParte)?.takeIf { it.signum > 0 }
+}
+
 /** `GET /api/v2/operaciones/{numero}`: currency and fees, which the list lacks. */
 @Serializable
 data class IolOperationDetail(
@@ -230,6 +245,10 @@ interface IolSource {
     /** Last price of one line; recorded sources that predate it have none. */
     suspend fun quote(market: String, symbol: String): IolQuote =
         throw UnsupportedOperationException("no quotes")
+
+    /** A fund's last share value; recorded sources have none. */
+    suspend fun fundQuote(symbol: String): IolFundQuote =
+        throw UnsupportedOperationException("no fund quotes")
 }
 
 /**
@@ -286,6 +305,8 @@ class IolClient(
 
     override suspend fun quote(market: String, symbol: String): IolQuote =
         get("/api/v2/$market/Titulos/$symbol/Cotizacion")
+
+    override suspend fun fundQuote(symbol: String): IolFundQuote = get("/api/v2/Titulos/FCI/$symbol")
 
     private suspend inline fun <reified T> get(
         path: String,

@@ -471,7 +471,8 @@ fun iolClosedToQuote(
     limit: Int = 20,
 ): List<Pair<String, String>> {
     val today = iolDate(now)
-    return holdings.filter { (id, held) -> held.quantityMinor == 0L && ':' in id && !id.startsWith("FCI:") }
+    // Funds come back as ("fci", SYMBOL): the caller asks the fund endpoint.
+    return holdings.filter { (id, held) -> held.quantityMinor == 0L && ':' in id }
         .keys
         .filter { id -> latest[id]?.let { iolDate(it.at) != today } ?: true }
         .sortedBy { latest[it]?.at ?: 0L }
