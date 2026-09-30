@@ -55,7 +55,18 @@ data class PriceQuote(
     val source: String,
 )
 
-enum class IncomeKind { Dividend, Interest }
+enum class IncomeKind {
+    Dividend,
+    Interest,
+
+    /**
+     * Part of a bond's principal paid back while the units stay (a partial
+     * amortization): money received, booked apart from interest. The
+     * position's cost is left as it was, the way the broker's average price
+     * is, so its unrealized loss and this income add up to the real result.
+     */
+    PrincipalReturn,
+}
 
 /**
  * One itemized charge, for a transaction's note: "Comisión" $ 1.585,35 +
@@ -250,6 +261,8 @@ data class BrokerAccounts(
     val vat: String? = null,
     /** The market's fee ("Derechos de mercado") of itemized charges; null like [vat]. */
     val marketFees: String? = null,
+    /** Partial amortizations ([IncomeKind.PrincipalReturn]); null like [vat], falling back to [capitalGains]. */
+    val amortizations: String? = null,
 )
 
 /** A holding as the ledger has it: quantity and total cost, both minor units. */
@@ -545,7 +558,27 @@ private class BrokerPlanner(
         val redeemed = e.quantity?.let { quantityMinor(it.abs(), e.instrument) }
             ?: holdings.filter { speciesOf(it.key) == species }.values.sumOf { it.quantityMinor.coerceAtLeast(0L) }
                 .takeIf { it > 0L }
-            ?: throw PlanException("redeems the whole position of ${e.instrument} but the ledger holds none")
+        if (redeemed == null) {
+            // Paid back whole, but the ledger never held it: a position from
+            // before the broker's history (IOL answers from a date on, and
+            // what was redeemed before the snapshot isn't in it either). Its
+            // value was the user's already, so the cash comes from the
+            // opening balance rather than being refused and left for a
+            // hand-made adjustment.
+            val amount = minor(e.cash, e.cashCommodity)
+            if (amount <= 0L) throw PlanException("redeems the whole position of ${e.instrument} but the ledger holds none")
+            add(
+                PlannedKind.Principal, e, ref,
+                listOf(
+                    draft(cashAccount(e.cashCommodity), amount, e.cashCommodity),
+                    draft(accounts.opening, -amount, e.cashCommodity),
+                ) + (itemizedCharges(e.feeItems, e.fees)?.paidDrafts() ?: foreignFeeDrafts(e.fees)),
+                note = "Tenencia anterior al historial del broker",
+            )
+            cash.bump(e.cashCommodity, amount)
+            bumpForeignFees(e.fees)
+            return
+        }
         if (redeemed == 0L) throw PlanException("zero quantity")
         closePosition(
             e, ref, PlannedKind.Principal, e.instrument, redeemed, minor(e.cash, e.cashCommodity), e.cashCommodity, null,
@@ -664,7 +697,11 @@ private class BrokerPlanner(
         val gross = minor(e.gross, e.cashCommodity)
         val tax = minor(e.tax, e.cashCommodity)
         if (gross == 0L) throw PlanException("zero income")
-        val incomeAccount = if (e.kind == IncomeKind.Dividend) accounts.dividends else accounts.interest
+        val incomeAccount = when (e.kind) {
+            IncomeKind.Dividend -> accounts.dividends
+            IncomeKind.Interest -> accounts.interest
+            IncomeKind.PrincipalReturn -> accounts.amortizations ?: accounts.capitalGains
+        }
         val drafts = buildList {
             add(draft(cashAccount, gross - tax, e.cashCommodity))
             add(draft(incomeAccount, -gross, e.cashCommodity))

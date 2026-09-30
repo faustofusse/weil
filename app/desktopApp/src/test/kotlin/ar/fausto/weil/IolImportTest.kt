@@ -139,6 +139,7 @@ class IolImportTest {
         assertEquals("Costos de inversión:Comisiones", paths[accounts.commissions])
         assertEquals("Costos de inversión:IVA", paths[accounts.vat])
         assertEquals("Costos de inversión:Derechos de mercado", paths[accounts.marketFees])
+        assertEquals("Rendimientos:Amortizaciones", paths[accounts.amortizations])
 
         val first = iol.preview()
         assertEquals(emptyList(), first.issues)

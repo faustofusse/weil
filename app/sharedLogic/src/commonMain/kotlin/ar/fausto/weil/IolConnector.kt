@@ -16,7 +16,9 @@ package ar.fausto.weil
  *    cash ("AO27 US$", the currency in the symbol) and a row without an
  *    amount (for an amortization, the securities leaving). The cash row is
  *    the event; the empty companion of an amortization makes it a
- *    whole-position redemption.
+ *    whole-position redemption, and an amortization with no companion is a
+ *    partial one (units stay, principal comes back: income apart from the
+ *    coupons). A dollar coupon's commission is billed on its peso half.
  *  - Timestamps have no zone; they are Argentina's (UTC−3, no DST).
  */
 
@@ -297,10 +299,19 @@ fun iolBatch(fetch: IolFetch): BrokerBatch {
                 if (companions.isEmpty()) {
                     // Cash with no securities leaving: a partial amortization,
                     // which lowers the residual value instead of the count.
-                    // Booking it needs the residual, which IOL doesn't give.
-                    notes += PlanIssue(
-                        brokerRef(IOL_PROVIDER, ref),
-                        "partial amortization of $symbol (${amount.toPlainString()} $currency) is not supported yet",
+                    // Money received; the position keeps its units and its
+                    // cost, as IOL's PPC does (see IncomeKind.PrincipalReturn).
+                    events += BrokerEvent.Income(
+                        ref = ref,
+                        at = at,
+                        timeKnown = true,
+                        description = "Amortización parcial $symbol",
+                        kind = IncomeKind.PrincipalReturn,
+                        gross = amount,
+                        cashCommodity = currency,
+                        instrument = instrumentOf(symbol, op.mercado).id,
+                        fees = fees,
+                        feeItems = feeItems,
                     )
                 } else {
                     events += BrokerEvent.Principal(

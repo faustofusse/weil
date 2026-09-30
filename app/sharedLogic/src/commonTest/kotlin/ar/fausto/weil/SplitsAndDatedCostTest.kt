@@ -166,6 +166,43 @@ class SplitsAndDatedCostTest {
         assertTrue(plan.issues.single().message.contains("rebuild"))
     }
 
+    // --- payments the history can't place ----------------------------------------
+
+    /** Axel's STCEO: held before IOL's history, redeemed whole for US$ 100. */
+    @Test
+    fun aRedemptionOfSomethingHeldBeforeTheHistoryComesFromTheOpening() {
+        val stceo = InstrumentInfo("BCBA:STCEO", "STCEO", kind = "on", scale = 0, pricePer = 100, quoteCommodity = "USD")
+        val batch = BrokerBatch(
+            "iol",
+            listOf(BrokerEvent.Principal("r", t0, true, "Amortización STCEO", "BCBA:STCEO", null, d("100"), "USD")),
+            BrokerSnapshot(t0 + day, mapOf("USD" to d("100")), emptyList()),
+            listOf(stceo),
+        )
+        val plan = planBrokerImport(batch, accounts, BrokerLedgerView(), emptySet())
+        assertTrue(plan.issues.isEmpty())
+        val redemption = plan.transactions.single { it.ref == "iol:r" }
+        assertEquals(setOf(listOf("cash-usd", 10_000L, "USD", null), listOf("saldo-inicial", -10_000L, "USD", null)), redemption.lines())
+        // The cash lands on the broker's without a hand-made adjustment.
+        assertTrue(plan.differences.isEmpty())
+    }
+
+    /** RVS1O paying back $ 8.750 of its principal: the units stay, the money arrives. */
+    @Test
+    fun aPartialAmortizationIsIncomeAndLeavesThePositionAlone() {
+        val rvs = InstrumentInfo("BCBA:RVS1O", "RVS1O", kind = "on", scale = 0, pricePer = 100, quoteCommodity = "ARS")
+        val withAccount = accounts.copy(amortizations = "amortizaciones")
+        val ledger = BrokerLedgerView(
+            cash = mapOf("ARS" to 1L),
+            holdings = mapOf("BCBA:RVS1O" to HeldPosition(35_000L, 3_500_000L, "ARS")),
+        )
+        val event = BrokerEvent.Income("a", t0, true, "Amortización parcial RVS1O", IncomeKind.PrincipalReturn, d("8750"), "ARS", instrument = rvs.id)
+        val plan = planBrokerImport(BrokerBatch("iol", listOf(event), instruments = listOf(rvs)), withAccount, ledger, emptySet())
+        assertEquals(
+            setOf(listOf("cash-ars", 875_000L, "ARS", null), listOf("amortizaciones", -875_000L, "ARS", null)),
+            plan.transactions.single().lines(),
+        )
+    }
+
     // --- valuation in one currency ------------------------------------------------
 
     /** Closes: 1.200 until the 10th day, 1.500 after; today's live quote 1.600. */
