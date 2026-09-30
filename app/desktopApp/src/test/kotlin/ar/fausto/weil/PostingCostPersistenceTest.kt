@@ -66,6 +66,26 @@ class PostingCostPersistenceTest {
         assertEquals(Money(4939L, ttwo), entry.balanceAfter)
     }
 
+    /** A broker buy's commission rides inside the cost and survives every read and an edit. */
+    @Test
+    fun theCommissionInsideTheCostRoundTrips() = runBlocking {
+        val ledger = graph().ledger
+        val drafts = listOf(
+            DraftPosting(cartera, "13", "BCBA:MELI", costText = "319256,83", costCommodity = "ARS", scale = 0, feeMinor = 218_683L),
+            DraftPosting(cash, "-319256,83", "ARS"),
+        )
+        val id = ledger.add(1_790_000_000_000L, "Compra MELI", null, drafts)
+        fun Transaction.meli() = postings.single { it.commodity == "BCBA:MELI" }
+        assertEquals(218_683L, ledger.get(id)!!.meli().feeMinor)
+        assertNull(ledger.get(id)!!.postings.single { it.accountId == cash }.feeMinor)
+        assertEquals(218_683L, ledger.register(listOf(cartera)).single { it.posting.transactionId == id }.posting.feeMinor)
+        assertEquals(218_683L, ledger.holdingMovements(listOf(cartera)).single { it.commodity == "BCBA:MELI" }.feeMinor)
+
+        val stored = ledger.get(id)!!
+        ledger.update(id, stored.date, "MELI", null, stored.postings.map { it.toDraft(if (it.commodity == "BCBA:MELI") 0 else 2) })
+        assertEquals(218_683L, ledger.get(id)!!.meli().feeMinor)
+    }
+
     /** The risk named in the plan: an edit that only touches the payee. */
     @Test
     fun anEditKeepsTheCost() = runBlocking {

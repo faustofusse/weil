@@ -212,6 +212,25 @@ class SplitsAndDatedCostTest {
     }
 
     @Test
+    fun commissionsAreLeftOutOfTheGain() {
+        // Your MELI at IOL: 13 × PPC 24.390 = $ 317.070, booked at
+        // $ 319.256,83 because the $ 2.186,83 commission is capitalized.
+        val buy = BrokerEvent.Trade("m", t0, true, "Compra MELI", "BCBA:INTC", d("13"), d("317070"), "ARS", fees = d("2186.83"))
+        val plan = planBrokerImport(BrokerBatch("iol", listOf(buy), instruments = listOf(intc)), accounts, BrokerLedgerView(cash = mapOf("ARS" to 1L)), emptySet())
+        val posting = resolvePostings(plan.transactions.single().transaction.drafts).single { it.accountId == "cartera" }
+        assertEquals(31_925_683L, posting.costMinor)
+        assertEquals(218_683L, posting.feeMinor)
+
+        val holdings = mapOf("BCBA:INTC" to HeldPosition(13L, 31_925_683L, "ARS"))
+        val movements = listOf(HoldingMovement("cartera", t0 + 1, "BCBA:INTC", 13L, 31_925_683L, "ARS", 218_683L))
+        for (display in listOf(InvestmentsDisplay.Original, InvestmentsDisplay.Pesos)) {
+            assertEquals(31_707_000L, valuation.positions(holdings, display, movements).single().costMinor)
+        }
+        // Without the postings (or before fee_minor existed), the booked cost.
+        assertEquals(31_925_683L, valuation.positions(holdings).single().costMinor)
+    }
+
+    @Test
     fun mepClosesAreTheMidOfBuyAndSell() {
         val body = """[{"casa":"bolsa","compra":1509.6,"venta":1521.6,"fecha":"2026-08-14"},{"casa":"bolsa","compra":null,"venta":2,"fecha":"2026-08-15"}]"""
         val quote = parseMepHistory(body).single()

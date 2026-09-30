@@ -164,6 +164,7 @@ data class Valuation(
     ): List<PositionLine> {
         val target = display.target
         if (target != null && groupsLines(display)) return securityPositions(holdings, target, movements)
+        val dated = datedCosts(movements)
         val lines = holdings.mapNotNull { (commodity, held) ->
             val info = commodities[commodity] ?: return@mapNotNull null
             val price = priceOf(commodity)
@@ -176,14 +177,16 @@ data class Valuation(
             // with pesos has no honest number without a rate, so without a
             // MEP rate it gets none.
             val costCommodity = held.costCommodity
-            val gain = native?.takeIf { held.costMinor != 0L && costCommodity != null }
+            // Without the commissions when the postings say what they were.
+            val cost = dated[commodity]?.inCurrency(costCommodity) ?: held.costMinor
+            val gain = native?.takeIf { cost != 0L && costCommodity != null }
                 ?.let { (quote, minor) -> convertMoney(minor, quote, costCommodity!!) }
-                ?.let { it - held.costMinor }
+                ?.let { it - cost }
             PositionLine(
                 commodity = commodity,
                 info = info,
                 quantityMinor = held.quantityMinor,
-                costMinor = held.costMinor.takeIf { it != 0L },
+                costMinor = cost.takeIf { it != 0L },
                 costCommodity = costCommodity,
                 price = price,
                 valueCommodity = value?.first,
@@ -223,8 +226,10 @@ data class Valuation(
                 value = if (value != null && lineValue != null) value + lineValue else null
                 val lineCost = when {
                     held.costMinor == 0L || held.costCommodity == null -> null
+                    // From the postings when there are any: without commissions, at each day's rate.
+                    line in dated -> dated.getValue(line).inCurrency(target)
                     held.costCommodity == target -> held.costMinor
-                    else -> dated[line]?.let { if (target == "ARS") it.ars else it.usd }
+                    else -> null
                 }
                 cost = if (cost != null && lineCost != null) cost + lineCost else null
             }
@@ -262,7 +267,8 @@ data class Valuation(
             if (m.quantityMinor > 0L) {
                 walk.quantity += m.quantityMinor
                 val cost = m.costMinor?.takeIf { it != 0L } ?: continue
-                val amount = Decimal.ofMinorUnits(cost, 2)
+                // What the units cost without the commission, like a broker's average price.
+                val amount = Decimal.ofMinorUnits(cost - (m.feeMinor ?: 0L), 2)
                 val rate = mepAt(m.at)
                 when (m.costCommodity) {
                     "ARS" -> {
@@ -340,10 +346,18 @@ data class HoldingMovement(
     /** The posting's `@@` cost, signed like the quantity; null for units without a cost (a split). */
     val costMinor: Long?,
     val costCommodity: String?,
+    /** The commission inside [costMinor], left out of [Valuation.datedCosts]; null when unknown. */
+    val feeMinor: Long? = null,
 )
 
 /** What a line's open units cost in each currency, at each purchase's MEP; null when a rate was missing. */
-data class DatedCost(val ars: Long?, val usd: Long?)
+data class DatedCost(val ars: Long?, val usd: Long?) {
+    fun inCurrency(commodity: String?): Long? = when (commodity) {
+        "ARS" -> ars
+        "USD" -> usd
+        else -> null
+    }
+}
 
 /** One instrument of a holdings account, as [Valuation.positions] sees it. */
 data class PositionLine(

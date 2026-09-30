@@ -778,7 +778,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         return db.useForRead { d ->
             val entries = d.query(
                 "select p.id, p.transaction_id, p.account_id, p.amount_minor, p.commodity," +
-                    " p.cost_minor, p.cost_commodity, t.date, t.payee, t.time_known" +
+                    " p.cost_minor, p.cost_commodity, t.date, t.payee, t.time_known, p.fee_minor" +
                     " from postings p join transactions t on p.transaction_id = t.id" +
                     " where p.account_id in ($idList)$commodityFilter" +
                     (if (before == null) "" else " and ($TX_CURSOR_FILTER)") +
@@ -786,7 +786,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 params(before),
             ) { rows ->
                 rows.filter { it.size >= 10 }.mapNotNull { row ->
-                    val posting = postingOf(row) ?: return@mapNotNull null
+                    val posting = postingOf(row, feeColumn = 10) ?: return@mapNotNull null
                     val date = (row[7] as? Number)?.toLong() ?: 0L
                     val payee = row[8]?.toString() ?: ""
                     posting to Triple(date, payee, isTimeKnown(row[9]))
@@ -868,7 +868,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
         if (accountIds.isEmpty()) return emptyList()
         return db.useForRead { d ->
             d.query(
-                "select p.account_id, t.date, p.commodity, p.amount_minor, p.cost_minor, p.cost_commodity" +
+                "select p.account_id, t.date, p.commodity, p.amount_minor, p.cost_minor, p.cost_commodity, p.fee_minor" +
                     " from postings p join transactions t on t.id = p.transaction_id" +
                     " where p.account_id in (${quoteList(accountIds)}) order by t.date, t.id",
                 null,
@@ -881,6 +881,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                         quantityMinor = (row.getOrNull(3) as? Number)?.toLong() ?: return@mapNotNull null,
                         costMinor = (row.getOrNull(4) as? Number)?.toLong(),
                         costCommodity = row.getOrNull(5)?.toString(),
+                        feeMinor = (row.getOrNull(6) as? Number)?.toLong(),
                     )
                 }.toList()
             }
@@ -1032,11 +1033,14 @@ class TransactionsRepository(private val db: DatabaseProvider) {
             // named placeholder binds nothing rather than null (see
             // insertTransaction), and most postings have no cost.
             val cost = p.costMinor != null && p.costCommodity != null
+            val fee = cost && p.feeMinor != null
             execute(
                 "insert into postings(id, transaction_id, account_id, amount_minor, commodity" +
                     (if (cost) ", cost_minor, cost_commodity" else "") +
+                    (if (fee) ", fee_minor" else "") +
                     ") values(:id, :tx, :account, :amount, :commodity" +
-                    (if (cost) ", :cost, :cost_commodity" else "") + ")",
+                    (if (cost) ", :cost, :cost_commodity" else "") +
+                    (if (fee) ", :fee" else "") + ")",
                 buildMap {
                     put(":id", p.id)
                     put(":tx", p.transactionId)
@@ -1047,6 +1051,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                         put(":cost", p.costMinor!!)
                         put(":cost_commodity", p.costCommodity!!)
                     }
+                    if (fee) put(":fee", p.feeMinor!!)
                 },
             )
         }
@@ -1055,14 +1060,14 @@ class TransactionsRepository(private val db: DatabaseProvider) {
     private companion object {
         /** Every posting read selects these, in this order; see [postingOf]. */
         const val POSTING_COLUMNS =
-            "id, transaction_id, account_id, amount_minor, commodity, cost_minor, cost_commodity"
+            "id, transaction_id, account_id, amount_minor, commodity, cost_minor, cost_commodity, fee_minor"
 
         /**
          * A posting from the first seven columns of a row ([POSTING_COLUMNS]
          * order), or null when a required one is missing. A half-written
          * cost (one of the two columns null) reads as no cost.
          */
-        fun postingOf(row: List<Any?>): Posting? {
+        fun postingOf(row: List<Any?>, feeColumn: Int = 7): Posting? {
             if (row.size < 7) return null
             val costMinor = (row[5] as? Number)?.toLong()
             val costCommodity = row[6]?.toString()
@@ -1075,6 +1080,7 @@ class TransactionsRepository(private val db: DatabaseProvider) {
                 commodity = row[4]?.toString() ?: return null,
                 costMinor = if (hasCost) costMinor else null,
                 costCommodity = if (hasCost) costCommodity else null,
+                feeMinor = if (hasCost) (row.getOrNull(feeColumn) as? Number)?.toLong() else null,
             )
         }
 

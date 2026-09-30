@@ -15,7 +15,9 @@ package ar.fausto.weil
  *    brings in gross − fees. That is the basis brokers (IBKR's `Cost Basis`)
  *    and AFIP use, and it is what makes the broker's realized gain reproduce
  *    exactly instead of counting the commission twice. The fee stays visible
- *    in the transaction's note;
+ *    in the transaction's note and, on a buy, in the posting's `fee_minor`,
+ *    which the investments tab leaves out of the unrealized gain (the way a
+ *    broker's average price does);
  *  - a sale leaves the holdings at its cost basis: the broker's when it
  *    reports one (IBKR, FIFO), else the ledger's average cost (IOL, custody
  *    statements). The difference against the net proceeds is the realized
@@ -472,7 +474,7 @@ private class BrokerPlanner(
         add(
             PlannedKind.Trade, e, ref,
             listOf(
-                draft(accounts.holdings, quantity, e.instrument, cost, e.cashCommodity),
+                draft(accounts.holdings, quantity, e.instrument, cost, e.cashCommodity, fee = minor(e.fees, e.cashCommodity)),
                 draft(cashAccount, -cost, e.cashCommodity),
             ) + foreignFeeDrafts(e.foreignFees),
             note = feeNote(e.fees, e.cashCommodity, e.foreignFees),
@@ -1139,14 +1141,21 @@ private class BrokerPlanner(
         for ((commodity, fee) in fees) cash.bump(commodity, -minor(fee, commodity))
     }
 
-    private fun draft(account: String, amount: Long, commodity: String, cost: Long? = null, costCommodity: String? = null) =
-        DraftPosting(
-            accountId = account,
-            amountText = formatMinorUnits(amount),
-            commodity = commodity,
-            costText = cost?.let { formatMinorUnits(it) }.orEmpty(),
-            costCommodity = if (cost != null) costCommodity else null,
-        )
+    private fun draft(
+        account: String,
+        amount: Long,
+        commodity: String,
+        cost: Long? = null,
+        costCommodity: String? = null,
+        fee: Long? = null,
+    ) = DraftPosting(
+        accountId = account,
+        amountText = formatMinorUnits(amount),
+        commodity = commodity,
+        costText = cost?.let { formatMinorUnits(it) }.orEmpty(),
+        costCommodity = if (cost != null) costCommodity else null,
+        feeMinor = fee?.takeIf { cost != null && it != 0L },
+    )
 }
 
 /** 100 → 2: the exponent of a face-value divisor (only powers of ten occur). */

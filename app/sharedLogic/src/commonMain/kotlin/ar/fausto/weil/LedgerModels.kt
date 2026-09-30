@@ -230,6 +230,13 @@ data class Posting(
      */
     val costMinor: Long? = null,
     val costCommodity: String? = null,
+    /**
+     * The broker's commission inside [costMinor] (same commodity and sign),
+     * when a broker import knows it. Informational: the ledger balances on
+     * the whole cost (commissions are capitalized), and the investments tab
+     * leaves it out of the gain the way a broker's average price does.
+     */
+    val feeMinor: Long? = null,
 ) {
     fun money() = Money(amountMinor, commodity)
 
@@ -259,6 +266,7 @@ data class Posting(
         scale = scale,
         costText = costMinor?.let { formatMinorUnits(it) }.orEmpty(),
         costCommodity = costCommodity,
+        feeMinor = feeMinor,
     )
 }
 
@@ -364,6 +372,8 @@ data class DraftPosting(
     val costCommodity: String? = null,
     /** Decimals [amountText] is written at; the cost is money and always at 2. */
     val scale: Int = 2,
+    /** The commission inside the cost, in minor units; see [Posting.feeMinor]. Kept only with a cost. */
+    val feeMinor: Long? = null,
 )
 
 class LedgerValidationException(message: String) : Exception(message)
@@ -420,6 +430,7 @@ private fun buildValidated(
             commodity = money.commodity,
             costMinor = cost?.minorUnits,
             costCommodity = cost?.commodity,
+            feeMinor = draft.feeMinor?.takeIf { cost != null && it != 0L },
         )
         val weight = posting.weight()
         residuals[weight.commodity] = (residuals[weight.commodity] ?: 0L) + weight.minorUnits

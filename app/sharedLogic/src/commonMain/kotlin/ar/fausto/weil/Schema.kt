@@ -146,7 +146,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 16L
+private const val SCHEMA_VERSION = 17L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -390,6 +390,12 @@ fun Database.migrateSchema() {
     // exchange, which is every posting written before this column.
     addColumn("alter table postings add column cost_minor integer")
     addColumn("alter table postings add column cost_commodity text")
+    // The commission inside cost_minor, when a broker import knew it: the
+    // cost stays capitalized (what the books and the realized gain use), and
+    // the investments tab takes it out of the unrealized gain the way a
+    // broker's average price (IOL's PPC) does. Null before this column and
+    // on anything typed by hand (v17).
+    addColumn("alter table postings add column fee_minor integer")
     dropRedundantInheritedLooks()
     backfillTransactionSources()
     seedDefaultAccounts()
