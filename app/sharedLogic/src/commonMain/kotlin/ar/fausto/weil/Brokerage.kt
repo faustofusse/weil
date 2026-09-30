@@ -55,6 +55,12 @@ data class PriceQuote(
 enum class IncomeKind { Dividend, Interest }
 
 /**
+ * One itemized charge, for a transaction's note: "Comisión" $ 1.585,35 +
+ * IVA $ 332,92. Informational; the amounts that are booked are the fees.
+ */
+data class FeeItem(val label: String, val net: Decimal, val vat: Decimal, val commodity: String)
+
+/**
  * One movement at a broker. Amounts are [Decimal] in the commodity's own
  * units (dollars, shares), as the broker states them; the planner converts
  * to minor units with each commodity's scale. [ref] is unique per provider
@@ -92,6 +98,8 @@ sealed interface BrokerEvent {
         val fees: Decimal = Decimal.ZERO,
         val costBasis: Decimal? = null,
         val foreignFees: Map<String, Decimal> = emptyMap(),
+        /** [fees] + [foreignFees] itemized, when the broker says what they are. */
+        val feeItems: List<FeeItem> = emptyList(),
     ) : BrokerEvent
 
     /** Dividend or interest: [gross] before [tax] withheld, both positive. */
@@ -105,6 +113,9 @@ sealed interface BrokerEvent {
         val cashCommodity: String,
         val tax: Decimal = Decimal.ZERO,
         val instrument: String? = null,
+        /** Charges on the payment (IOL bills a coupon's commission in pesos), expensed from that currency's cash. */
+        val fees: Map<String, Decimal> = emptyMap(),
+        val feeItems: List<FeeItem> = emptyList(),
     ) : BrokerEvent
 
     /**
@@ -123,6 +134,9 @@ sealed interface BrokerEvent {
         val quantity: Decimal?,
         val cash: Decimal,
         val cashCommodity: String,
+        /** Charges on the payment, expensed from that currency's cash. */
+        val fees: Map<String, Decimal> = emptyMap(),
+        val feeItems: List<FeeItem> = emptyList(),
     ) : BrokerEvent
 
     /**
@@ -477,7 +491,7 @@ private class BrokerPlanner(
                 draft(accounts.holdings, quantity, e.instrument, cost, e.cashCommodity, fee = minor(e.fees, e.cashCommodity)),
                 draft(cashAccount, -cost, e.cashCommodity),
             ) + foreignFeeDrafts(e.foreignFees),
-            note = feeNote(e.fees, e.cashCommodity, e.foreignFees),
+            note = feeNote(e.fees, e.cashCommodity, e.foreignFees, e.feeItems),
         )
         bumpForeignFees(e.foreignFees)
         holdings[e.instrument] = HeldPosition(
@@ -495,7 +509,7 @@ private class BrokerPlanner(
         val basis = e.costBasis?.let { minor(it, e.cashCommodity) }
         closePosition(
             e, ref, PlannedKind.Trade, e.instrument, sold, net, e.cashCommodity, basis,
-            feeNote(e.fees, e.cashCommodity, e.foreignFees), foreignFeeDrafts(e.foreignFees),
+            feeNote(e.fees, e.cashCommodity, e.foreignFees, e.feeItems), foreignFeeDrafts(e.foreignFees),
         )
         bumpForeignFees(e.foreignFees)
     }
@@ -510,7 +524,11 @@ private class BrokerPlanner(
                 .takeIf { it > 0L }
             ?: throw PlanException("redeems the whole position of ${e.instrument} but the ledger holds none")
         if (redeemed == 0L) throw PlanException("zero quantity")
-        closePosition(e, ref, PlannedKind.Principal, e.instrument, redeemed, minor(e.cash, e.cashCommodity), e.cashCommodity, null, null, emptyList())
+        closePosition(
+            e, ref, PlannedKind.Principal, e.instrument, redeemed, minor(e.cash, e.cashCommodity), e.cashCommodity, null,
+            feeNote(Decimal.ZERO, e.cashCommodity, e.fees, e.feeItems), foreignFeeDrafts(e.fees),
+        )
+        bumpForeignFees(e.fees)
     }
 
     /**
@@ -627,9 +645,10 @@ private class BrokerPlanner(
             add(draft(cashAccount, gross - tax, e.cashCommodity))
             add(draft(incomeAccount, -gross, e.cashCommodity))
             if (tax != 0L) add(draft(accounts.taxes, tax, e.cashCommodity))
-        }
-        add(PlannedKind.Income, e, ref, drafts)
+        } + foreignFeeDrafts(e.fees)
+        add(PlannedKind.Income, e, ref, drafts, note = feeNote(Decimal.ZERO, e.cashCommodity, e.fees, e.feeItems))
         cash.bump(e.cashCommodity, gross - tax)
+        bumpForeignFees(e.fees)
     }
 
     private fun planTransfer(e: BrokerEvent.CashTransfer, ref: String) {
@@ -891,7 +910,10 @@ private class BrokerPlanner(
                     c(event.cashCommodity, if (event.quantity.signum > 0) -(event.gross + event.fees) else event.gross - event.fees)
                     for ((commodity, fee) in event.foreignFees) c(commodity, -fee)
                 }
-                is BrokerEvent.Income -> c(event.cashCommodity, event.gross - event.tax)
+                is BrokerEvent.Income -> {
+                    c(event.cashCommodity, event.gross - event.tax)
+                    for ((commodity, fee) in event.fees) c(commodity, -fee)
+                }
                 is BrokerEvent.Principal -> {
                     // A whole-position redemption takes whatever is there, so
                     // the opening is the snapshot's (zero after maturity) plus
@@ -899,6 +921,7 @@ private class BrokerPlanner(
                     // other events and the snapshot like any other holding.
                     event.quantity?.let { q(event.instrument, -it.abs()) }
                     c(event.cashCommodity, event.cash)
+                    for ((commodity, fee) in event.fees) c(commodity, -fee)
                 }
                 is BrokerEvent.CashTransfer -> c(event.cashCommodity, event.amount)
                 is BrokerEvent.FxConversion -> {
@@ -1172,7 +1195,21 @@ private class BrokerPlanner(
                 .toMinorUnits(0)
         }
 
-    private fun feeNote(fees: Decimal, commodity: String, foreign: Map<String, Decimal> = emptyMap()): String? {
+    private fun feeNote(
+        fees: Decimal,
+        commodity: String,
+        foreign: Map<String, Decimal> = emptyMap(),
+        items: List<FeeItem> = emptyList(),
+    ): String? {
+        // Itemized when the broker says what each charge is: "Comisión
+        // $ 1.585,35 + IVA $ 332,92 · Derechos de mercado $ 221,95 + IVA $ 46,61".
+        if (items.isNotEmpty()) {
+            return items.joinToString(" · ") { item ->
+                val net = formatMoney(minor(item.net, item.commodity), item.commodity)
+                if (item.vat.isZero) "${item.label} $net"
+                else "${item.label} $net + IVA ${formatMoney(minor(item.vat, item.commodity), item.commodity)}"
+            }
+        }
         val parts = (listOf(commodity to fees) + foreign.toList())
             .filter { !it.second.isZero }
             .map { (c, f) -> formatMoney(minor(f, c), c) }

@@ -168,7 +168,51 @@ data class IolOperationDetail(
     val fechaOperado: String? = null,
     @Serializable(with = IolDecimalSerializer::class) val arancelesARS: Decimal? = null,
     @Serializable(with = IolDecimalSerializer::class) val arancelesUSD: Decimal? = null,
-)
+    /**
+     * The charges itemized: "Comisión" and "Derechos De Mercado", each net
+     * plus IVA. The only place a coupon's commission shows up (its peso row
+     * has arancelesARS = 0 and this list filled).
+     */
+    val aranceles: List<IolArancel> = emptyList(),
+) {
+    /** The charges per currency: the totals when IOL states them, else the itemized list summed. */
+    fun feesByCurrency(): Map<String, Decimal> {
+        val totals = mapOf("ARS" to (arancelesARS ?: Decimal.ZERO), "USD" to (arancelesUSD ?: Decimal.ZERO))
+            .filterValues { !it.isZero }
+        if (totals.isNotEmpty()) return totals
+        val summed = mutableMapOf<String, Decimal>()
+        for (a in aranceles) {
+            val currency = iolCurrency(a.moneda) ?: continue
+            summed[currency] = (summed[currency] ?: Decimal.ZERO) + a.net + a.vat
+        }
+        return summed.filterValues { !it.isZero }
+    }
+
+    /** [aranceles] as fee lines for a transaction's note, the commission first (the export's column order). */
+    fun feeItems(): List<FeeItem> = aranceles.sortedBy { !(it.tipo ?: "").startsWith("Comisi", ignoreCase = true) }.mapNotNull { a ->
+        val currency = iolCurrency(a.moneda) ?: return@mapNotNull null
+        if (a.net.isZero && a.vat.isZero) return@mapNotNull null
+        FeeItem(a.tipo?.trim()?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Arancel", a.net, a.vat, currency)
+    }
+}
+
+/**
+ * One itemized charge of an order. Amounts are raw JSON, read leniently:
+ * a charge IOL writes in a shape nobody expected must not fail a sync.
+ */
+@Serializable
+data class IolArancel(
+    val tipo: String? = null,
+    val neto: JsonElement? = null,
+    val iva: JsonElement? = null,
+    val moneda: String? = null,
+) {
+    val net: Decimal get() = lenientDecimal(neto)
+    val vat: Decimal get() = lenientDecimal(iva)
+}
+
+private fun lenientDecimal(value: JsonElement?): Decimal =
+    (value as? JsonPrimitive)?.takeIf { !it.isString || it.content.isNotBlank() }?.content?.let { Decimal.parse(it) } ?: Decimal.ZERO
 
 /**
  * The read verbs IolRepository needs — and, by construction, nothing that

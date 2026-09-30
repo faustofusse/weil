@@ -142,7 +142,8 @@ class IolImportTest {
         assertEquals(emptyList(), first.issues)
         assertEquals(emptyList(), first.differences)
         assertEquals(44, first.transactions.size)
-        assertEquals(36, source.detailCalls)
+        // 36 trades plus both halves of the 9 payments (their charges live there).
+        assertEquals(54, source.detailCalls)
 
         val ids = iol.apply(first)
         assertEquals(44, ids.size)

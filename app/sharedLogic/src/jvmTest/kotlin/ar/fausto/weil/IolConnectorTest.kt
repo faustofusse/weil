@@ -64,6 +64,33 @@ class IolConnectorTest {
         assertEquals(snapshotAt.toString(), snapshot.getValue("at").jsonPrimitive.content)
     }
 
+    /**
+     * The charges IOL's own export lists (MovimientosHistoricos.xls): a
+     * dollar coupon's commission billed on its peso row, and every trade's
+     * commission, IVA and market rights itemized.
+     */
+    @Test
+    fun couponCommissionsAreBookedAndTradeChargesItemized() {
+        val events = iolBatch(fetch()).events
+        val coupon = events.filterIsInstance<BrokerEvent.Income>().single { it.ref == "172510909" }
+        assertEquals(mapOf("ARS" to Decimal.parse("11.97")!!), coupon.fees)
+
+        val plan = planBrokerImport(iolBatch(fetch()), accounts, BrokerLedgerView(), emptySet())
+        val renta = plan.transactions.single { it.ref == "iol:172510909" }
+        val lines = resolvePostings(renta.transaction.drafts).map { it.accountId to it.amountMinor }.toSet()
+        assertTrue(("comisiones" to 1_197L) in lines && ("iol-pesos" to -1_197L) in lines)
+        assertEquals("Comisión $ 11,97", renta.transaction.note)
+        // The export's MELI row: Comis. 1.585,35 + Iva 332,92 + Otros Imp. 268,56.
+        val meli = plan.transactions.single { it.ref == "iol:185183992" }
+        assertEquals("Comisión $ 1.585,35 + IVA $ 332,92 · Derechos de mercado $ 221,95 + IVA $ 46,61", meli.transaction.note)
+        // Cash still lands on IOL's to the cent: the opening no longer absorbs them.
+        assertEquals(emptyList(), plan.differences)
+        // Both halves of a payment are fetched, for their charges.
+        val needed = iolDetailsNeeded(operations, emptySet())
+        assertTrue(172510909L in needed && 172510910L in needed)
+        assertTrue(172510910L !in iolDetailsNeeded(operations, setOf("iol:172510909")))
+    }
+
     @Test
     fun amountsAreDecodedExactly() {
         val state: IolAccountState = json.decodeFromString(text("estadocuenta.json"))

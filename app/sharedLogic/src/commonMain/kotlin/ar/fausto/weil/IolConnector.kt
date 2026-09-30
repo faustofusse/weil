@@ -127,9 +127,33 @@ fun iolDetailsNeeded(operations: List<IolOperation>, knownRefs: Set<String>): Li
     val knownOrders = knownRefs.filter { it.startsWith(prefix) }
         .flatMap { it.removePrefix(prefix).split('+') }
         .toSet()
-    return operations.filter { it.isFinished() && it.tipo.lowercase() in TRADE_TYPES }
+    val trades = operations.filter { it.isFinished() && it.tipo.lowercase() in TRADE_TYPES }
         .map { it.numero }
         .filter { it.toString() !in knownOrders }
+    // A payment's charges live in its details, often in the empty half of
+    // the pair (a coupon's commission is billed on the peso row): both
+    // halves of every payment not booked yet.
+    val payments = operations.filter { it.isFinished() && it.tipo.startsWith("Pago de", ignoreCase = true) }
+    val paymentRows = payments.filter { it.montoOperado != null && it.numero.toString() !in knownOrders }
+        .flatMap { cash -> listOf(cash) + paymentCompanions(cash, payments) }
+        .map { it.numero }
+    return (trades + paymentRows).distinct()
+}
+
+/**
+ * The rows without an amount that belong to the payment [cash]: same
+ * payment type, same security ("AO27" for "AO27 US$"), within a day.
+ */
+internal fun paymentCompanions(cash: IolOperation, payments: List<IolOperation>): List<IolOperation> {
+    val symbol = iolPaymentSymbol(cash.simbolo).first
+    val at = iolTime(cash.fechaOperada ?: cash.fechaOrden) ?: return emptyList()
+    return payments.filter { other ->
+        other.numero != cash.numero &&
+            other.montoOperado == null &&
+            other.tipo.equals(cash.tipo, true) &&
+            iolPaymentSymbol(other.simbolo).first.equals(symbol, true) &&
+            iolTime(other.fechaOperada ?: other.fechaOrden)?.let { kotlin.math.abs(it - at) <= DAY_MS } == true
+    }
 }
 
 /** Symbols traded but absent from every portfolio: their type has to be looked up. */
@@ -220,7 +244,7 @@ fun iolBatch(fetch: IolFetch): BrokerBatch {
         val kind = op.tipo.lowercase()
         val selling = kind == "venta" || kind == "rescate fci"
         val info = instrumentOf(op.simbolo, op.mercado)
-        val fees = mapOf("ARS" to (detail.arancelesARS ?: Decimal.ZERO), "USD" to (detail.arancelesUSD ?: Decimal.ZERO))
+        val fees = detail.feesByCurrency()
         events += BrokerEvent.Trade(
             ref = ref,
             at = at,
@@ -232,6 +256,7 @@ fun iolBatch(fetch: IolFetch): BrokerBatch {
             cashCommodity = cash,
             fees = fees[cash] ?: Decimal.ZERO,
             foreignFees = fees.filterKeys { it != cash }.filterValues { !it.isZero },
+            feeItems = detail.feeItems(),
         )
     }
 
@@ -247,6 +272,13 @@ fun iolBatch(fetch: IolFetch): BrokerBatch {
         }
         val (symbol, currency) = iolPaymentSymbol(op.simbolo)
         val tipo = op.tipo.lowercase()
+        val companions = paymentCompanions(op, payments)
+        // Charges on either half of the pair (IOL bills a dollar coupon's
+        // commission on its peso row), expensed from that currency's cash.
+        val rows = (listOf(op) + companions).mapNotNull { fetch.details[it.numero] }
+        val fees = mutableMapOf<String, Decimal>()
+        for (detail in rows) for ((c, f) in detail.feesByCurrency()) fees[c] = (fees[c] ?: Decimal.ZERO) + f
+        val feeItems = rows.flatMap { it.feeItems() }
         when {
             "renta" in tipo || "dividendo" in tipo -> events += BrokerEvent.Income(
                 ref = ref,
@@ -257,16 +289,11 @@ fun iolBatch(fetch: IolFetch): BrokerBatch {
                 gross = amount,
                 cashCommodity = currency,
                 instrument = instrumentOf(symbol, op.mercado).id,
+                fees = fees,
+                feeItems = feeItems,
             )
             "amortización" in tipo || "amortizacion" in tipo -> {
-                val opAt = at
-                val companion = payments.any { other ->
-                    other.montoOperado == null &&
-                        other.tipo.equals(op.tipo, true) &&
-                        iolPaymentSymbol(other.simbolo).first.equals(symbol, true) &&
-                        iolTime(other.fechaOperada ?: other.fechaOrden)?.let { kotlin.math.abs(it - opAt) <= DAY_MS } == true
-                }
-                if (!companion) {
+                if (companions.isEmpty()) {
                     // Cash with no securities leaving: a partial amortization,
                     // which lowers the residual value instead of the count.
                     // Booking it needs the residual, which IOL doesn't give.
@@ -284,6 +311,8 @@ fun iolBatch(fetch: IolFetch): BrokerBatch {
                         quantity = null,
                         cash = amount,
                         cashCommodity = currency,
+                        fees = fees,
+                        feeItems = feeItems,
                     )
                 }
             }
