@@ -772,7 +772,7 @@ acciones) y las posiciones cerradas como «0,00».
 - [x] Precio de las posiciones cerradas: el portafolio de IOL sólo cotiza
       lo que se tiene, así que cada sync pide `Titulos/{simbolo}/Cotizacion`
       de lo vendido, y `Titulos/FCI/{simbolo}` para los fondos
-      (`IolFundQuote`, campo `ultimoOperado`; no probado contra la API real)
+      (`IolFundQuote`, campo `ultimoOperado`; verificado en el teléfono)
       (`iolClosedToQuote`: sin precio de hoy; hasta 20 por sync, las de precio más viejo primero). La
       fila cerrada muestra «Último precio $ X · fecha».
 - [x] Detalle de instrumento (`InstrumentScreen`, `InstrumentRoute`): tocar

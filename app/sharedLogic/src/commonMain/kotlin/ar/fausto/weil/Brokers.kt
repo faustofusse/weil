@@ -310,9 +310,12 @@ class BrokersRepository(
      * are one SQL transaction (`addAll`). Returns their ids, for undo.
      */
     /** Upserts [prices] (deterministic ids: a day's second fetch replaces the first). */
-    suspend fun savePrices(prices: List<PriceQuote>) {
+    suspend fun savePrices(prices: List<PriceQuote>, notify: Boolean = false) {
         if (prices.isEmpty()) return
         db.use { d -> for (price in prices) d.upsertPrice(price) }
+        // Screens reload their valuation on ledger changes; a price fetched
+        // after the review opened would otherwise wait for the next refresh.
+        if (notify) ledger.changes.tryEmit(Unit)
     }
 
     /** Newest official dollar rate (see [OFFICIAL_SOURCE]), or null. */

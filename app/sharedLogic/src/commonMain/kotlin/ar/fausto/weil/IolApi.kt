@@ -169,6 +169,8 @@ data class IolFundQuote(
     @Serializable(with = IolDecimalSerializer::class) val ultimoOperado: Decimal? = null,
     @Serializable(with = IolDecimalSerializer::class) val ultimoValorCuotaParte: Decimal? = null,
     val moneda: String? = null,
+    /** The response's field names, for the log when no price was found. */
+    @kotlinx.serialization.Transient val fields: Set<String> = emptySet(),
 ) {
     val price: Decimal? get() = (ultimoOperado ?: ultimoValorCuotaParte)?.takeIf { it.signum > 0 }
 }
@@ -306,7 +308,10 @@ class IolClient(
     override suspend fun quote(market: String, symbol: String): IolQuote =
         get("/api/v2/$market/Titulos/$symbol/Cotizacion")
 
-    override suspend fun fundQuote(symbol: String): IolFundQuote = get("/api/v2/Titulos/FCI/$symbol")
+    override suspend fun fundQuote(symbol: String): IolFundQuote {
+        val obj: kotlinx.serialization.json.JsonObject = get("/api/v2/Titulos/FCI/$symbol")
+        return json.decodeFromJsonElement(IolFundQuote.serializer(), obj).copy(fields = obj.keys)
+    }
 
     private suspend inline fun <reified T> get(
         path: String,

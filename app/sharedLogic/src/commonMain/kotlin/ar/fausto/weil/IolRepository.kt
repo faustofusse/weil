@@ -104,14 +104,21 @@ class IolRepository(
         val prices = wanted.mapNotNull { (market, symbol) ->
             val id = "${market.uppercase()}:$symbol"
             val (price, moneda) = runCatching {
-                if (market == "fci") client.fundQuote(symbol).let { it.price to it.moneda }
-                else client.quote(market, symbol).let { it.ultimoPrecio?.takeIf { p -> p.signum > 0 } to it.moneda }
-            }.getOrNull() ?: return@mapNotNull null
+                if (market == "fci") {
+                    client.fundQuote(symbol).also {
+                        if (it.price == null) println("iol: no share value for $symbol, fields ${it.fields}")
+                    }.let { it.price to it.moneda }
+                } else {
+                    client.quote(market, symbol).let { it.ultimoPrecio?.takeIf { p -> p.signum > 0 } to it.moneda }
+                }
+            }.onFailure { println("iol: quote $market/$symbol failed: ${it.message}") }
+                .getOrNull() ?: return@mapNotNull null
             price ?: return@mapNotNull null
             val currency = iolCurrency(moneda) ?: valuation.commodities[id]?.quoteCommodity ?: return@mapNotNull null
             PriceQuote(id, currency, now, price, IOL_PROVIDER)
         }
-        brokers.savePrices(prices)
+        brokers.savePrices(prices, notify = true)
+        println("iol: priced ${prices.size}/${wanted.size} closed positions")
     }
 
     private suspend fun ledgerHoldings(accounts: BrokerAccounts): Map<String, HeldPosition> =
