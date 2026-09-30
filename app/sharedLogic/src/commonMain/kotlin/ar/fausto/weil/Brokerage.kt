@@ -474,7 +474,9 @@ private class BrokerPlanner(
         }
         if (splits.isNotEmpty()) {
             val inferred = splits.map { brokerRef(batch.provider, it.ref) }.toSet()
-            planned.replaceAll { if (it.ref in inferred) it.copy(inferred = true) else it }
+            // An index loop, not replaceAll: that one is java.util's and
+            // doesn't exist on JS or iOS.
+            for (i in planned.indices) if (planned[i].ref in inferred) planned[i] = planned[i].copy(inferred = true)
         }
         batch.snapshot?.let { reportHiddenSplits(it) }
 
