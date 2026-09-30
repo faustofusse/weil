@@ -88,8 +88,31 @@ class IolRepository(
             planBrokerImport(batch, accounts, view, known, scales, lines)
         }
         runCatching { brokers.savePrices(plan.prices) }
+        runCatching { priceClosedPositions(accounts) }
         return plan
     }
+
+    /**
+     * Last prices for what was sold ([iolClosedToQuote]), so a closed
+     * position still says what it trades at now. Best effort, one request
+     * per symbol; a matured letra has no quote and is simply skipped.
+     */
+    private suspend fun priceClosedPositions(accounts: BrokerAccounts) {
+        val valuation = brokers.valuation()
+        val now = epochMillis()
+        val wanted = iolClosedToQuote(ledgerHoldings(accounts), valuation.prices, now)
+        val prices = wanted.mapNotNull { (market, symbol) ->
+            val quote = runCatching { client.quote(market, symbol) }.getOrNull() ?: return@mapNotNull null
+            val price = quote.ultimoPrecio?.takeIf { it.signum > 0 } ?: return@mapNotNull null
+            val id = "${market.uppercase()}:$symbol"
+            val currency = iolCurrency(quote.moneda) ?: valuation.commodities[id]?.quoteCommodity ?: return@mapNotNull null
+            PriceQuote(id, currency, now, price, IOL_PROVIDER)
+        }
+        brokers.savePrices(prices)
+    }
+
+    private suspend fun ledgerHoldings(accounts: BrokerAccounts): Map<String, HeldPosition> =
+        brokers.ledgerView(accounts).holdings
 
     /**
      * The whole history again, planned to *replace* what earlier imports

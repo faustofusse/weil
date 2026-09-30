@@ -288,6 +288,7 @@ private suspend fun seedInvestments(graph: AppGraph): SeededInvestments {
         // Five closes a day apart: enough for "last price and its date".
         for (i in 0 until 5) {
             val at = now - (4 - i) * day
+            if (i == 4) add(PriceQuote("BCBA:S14G6", "ARS", at, d("108.02"), "iol"))
             add(PriceQuote("BCBA:MELI", "ARS", at, d("24000").plus(d((i * 120).toString())), "iol"))
             add(PriceQuote("BCBA:S13N6", "ARS", at, d("106.251"), "iol"))
             add(PriceQuote("NASDAQ:TTWO", "USD", at, d("231.40").minus(d((i * 2).toString())), "iol"))

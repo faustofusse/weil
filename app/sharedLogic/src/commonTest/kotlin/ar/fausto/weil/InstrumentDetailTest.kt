@@ -74,4 +74,26 @@ class InstrumentDetailTest {
         assertEquals("ARS", chartCurrency(valuation.commodities["BCBA:MELI"], quotes))
         assertEquals("USD", chartCurrency(null, quotes.filter { it.quoteCommodity == "USD" }))
     }
+
+    @Test
+    fun onlyClosedMarketLinesWithoutTodaysPriceAreQuoted() {
+        val now = iolTime("2026-09-30T12:00:00")!!
+        val yesterday = now - 24L * 60 * 60 * 1000
+        val holdings = mapOf(
+            "BCBA:MELI" to HeldPosition(13L, 1L, "ARS"),
+            "BCBA:GGAL" to HeldPosition(0L, 0L, null),
+            "NYSE:KO" to HeldPosition(0L, 0L, null),
+            "BCBA:AL30" to HeldPosition(0L, 0L, null),
+            "FCI:IOLCAMA" to HeldPosition(0L, 0L, null),
+            "ARS" to HeldPosition(0L, 0L, null),
+        )
+        val latest = mapOf(
+            "BCBA:AL30" to PriceQuote("BCBA:AL30", "ARS", now - 60_000, d("80000"), "iol"),
+            "BCBA:GGAL" to PriceQuote("BCBA:GGAL", "ARS", yesterday, d("5000"), "iol"),
+        )
+        // Held (MELI), priced today (AL30), funds and cash are left alone;
+        // never priced goes before priced yesterday.
+        assertEquals(listOf("nyse" to "KO", "bcba" to "GGAL"), iolClosedToQuote(holdings, latest, now))
+        assertEquals(listOf("nyse" to "KO"), iolClosedToQuote(holdings, latest, now, limit = 1))
+    }
 }

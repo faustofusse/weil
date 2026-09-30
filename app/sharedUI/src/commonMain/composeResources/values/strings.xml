@@ -312,6 +312,7 @@
     <string name="positions_title">Posiciones</string>
     <string name="positions_closed">Cerradas (%1$d)</string>
     <string name="positions_prices_at">Precios al %1$s</string>
+    <string name="positions_last_price">Último precio %1$s · %2$s</string>
     <string name="positions_no_price">Sin precio</string>
     <string name="positions_cost">Costo %1$s</string>
     <string name="positions_only">Sólo %1$s</string>

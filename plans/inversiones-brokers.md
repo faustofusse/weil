@@ -769,6 +769,11 @@ acciones) y las posiciones cerradas como «0,00».
       (el usuario prellenado), desconectar. «Ver todo» en últimos
       movimientos abre la raíz del broker con subcuentas cuando hay uno solo.
       Harness: `investments-alert`, `investments-sheet`.
+- [x] Precio de las posiciones cerradas: el portafolio de IOL sólo cotiza
+      lo que se tiene, así que cada sync pide `Titulos/{simbolo}/Cotizacion`
+      de lo vendido (`iolClosedToQuote`: sólo líneas de mercado, no FCI; sin
+      precio de hoy; hasta 20 por sync, las de precio más viejo primero). La
+      fila cerrada muestra «Último precio $ X · fecha».
 - [x] Detalle de instrumento (`InstrumentScreen`, `InstrumentRoute`): tocar
       una posición en la pestaña abre el instrumento entre todos los
       brokers. `instrumentView` (puro, `InstrumentDetail.kt`, sobre

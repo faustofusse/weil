@@ -455,3 +455,27 @@ private fun daysFromCivil(year: Int, month: Int, day: Int): Long {
     val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
     return era * 146097 + doe - 719468
 }
+
+/**
+ * The closed positions worth a price today: instruments the holdings account
+ * held and no longer does (IOL's portfolio quotes only what is held, so
+ * they would otherwise keep the price of the day they were sold), market
+ * lines only (a fund's quote is another endpoint), and not already priced
+ * today (an automatic sync every half hour must not ask again). Oldest
+ * price first, capped, so a long history is caught up over a few days.
+ */
+fun iolClosedToQuote(
+    holdings: Map<String, HeldPosition>,
+    latest: Map<String, PriceQuote>,
+    now: Long,
+    limit: Int = 20,
+): List<Pair<String, String>> {
+    val today = iolDate(now)
+    return holdings.filter { (id, held) -> held.quantityMinor == 0L && ':' in id && !id.startsWith("FCI:") }
+        .keys
+        .filter { id -> latest[id]?.let { iolDate(it.at) != today } ?: true }
+        .sortedBy { latest[it]?.at ?: 0L }
+        .take(limit)
+        .map { id -> id.substringBefore(':').lowercase() to id.substringAfter(':') }
+}
+

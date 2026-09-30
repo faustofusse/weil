@@ -39,6 +39,7 @@ import weil.app.sharedui.generated.resources.Res
 import weil.app.sharedui.generated.resources.positions_closed
 import weil.app.sharedui.generated.resources.positions_cost
 import weil.app.sharedui.generated.resources.positions_no_price
+import weil.app.sharedui.generated.resources.positions_last_price
 import weil.app.sharedui.generated.resources.positions_prices_at
 import weil.app.sharedui.generated.resources.positions_title
 
@@ -173,9 +174,15 @@ private fun PositionRow(line: PositionLine, selected: Boolean, newestDay: String
             val quantity = formatQuantity(line.quantityMinor, info.scale)
             val per = if (info.pricePer != 1) " c/${info.pricePer}" else ""
             val detail = line.price?.let { p ->
-                val day = shortDate(p.at).takeIf { it != newestDay }?.let { " · $it" }.orEmpty()
-                "$quantity × ${formatPrice(p.price, p.quoteCommodity, exact = true)}$per$day"
-            } ?: "$quantity · ${stringResource(Res.string.positions_no_price)}"
+                val price = formatPrice(p.price, p.quoteCommodity, exact = true) + per
+                if (line.closed) {
+                    // Nothing held: what it trades at now, and since when.
+                    stringResource(Res.string.positions_last_price, price, shortDate(p.at))
+                } else {
+                    val day = shortDate(p.at).takeIf { it != newestDay }?.let { " · $it" }.orEmpty()
+                    "$quantity × $price$day"
+                }
+            } ?: if (line.closed) stringResource(Res.string.positions_no_price) else "$quantity · ${stringResource(Res.string.positions_no_price)}"
             Text(
                 detail,
                 style = MaterialTheme.typography.bodySmall,
