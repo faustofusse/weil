@@ -166,6 +166,8 @@ fun InvestmentsScreen(
     var connecting by remember { mutableStateOf(false) }
     var syncing by remember { mutableStateOf(false) }
     var confirmDisconnect by remember { mutableStateOf(false) }
+    /** True from a pull until the syncs it started are done; see the PullToRefreshBox. */
+    var pulling by remember { mutableStateOf(false) }
     var confirmRebuild by remember { mutableStateOf(false) }
     // IBKR's token, like IOL's password: this device's only, re-read after changes here.
     var ibkrQuery by remember { mutableStateOf(ibkr.queryId.takeIf { ibkr.hasToken }) }
@@ -334,9 +336,17 @@ fun InvestmentsScreen(
         },
         bottomBar = bottomBar,
     ) { innerPadding ->
+        // The pull indicator answers the gesture only. A sync started any
+        // other way (the top-bar icon, opening the tab, a broker's sheet)
+        // already shows in the top bar, and a second spinner over the list
+        // would announce work nobody pulled for — same rule as the journal.
+        LaunchedEffect(pulling, syncing, ibkrSyncing, ledgerState.pullRefreshing) {
+            if (!syncing && !ibkrSyncing && !ledgerState.pullRefreshing) pulling = false
+        }
         PullToRefreshBox(
-            isRefreshing = ledgerState.pullRefreshing || syncing || ibkrSyncing,
+            isRefreshing = pulling,
             onRefresh = {
+                pulling = true
                 ledgerState.refresh(userInitiated = true)
                 if (iolUser != null) sync()
                 if (ibkrQuery != null) syncIbkr()
