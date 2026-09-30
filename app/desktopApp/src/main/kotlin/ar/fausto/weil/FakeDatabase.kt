@@ -51,7 +51,10 @@ class FakeDatabase(
      * JDBC `?` positional ones, in encounter order. */
     private fun prepare(sql: String, params: Map<String, Any>?) = run {
         val order = mutableListOf<String>()
-        val rewritten = Regex(":[A-Za-z_][A-Za-z0-9_]*").replace(sql) { m ->
+        // String literals are matched first and kept as they are: an id like
+        // 'BCBA:MELI' is not a ":MELI" placeholder.
+        val rewritten = Regex("'(?:[^']|'')*'|:[A-Za-z_][A-Za-z0-9_]*").replace(sql) { m ->
+            if (m.value.startsWith("'")) return@replace m.value
             order += m.value
             "?"
         }

@@ -205,6 +205,32 @@ class BrokersRepository(
         ) { rows -> rows.mapNotNull { it.firstOrNull()?.toString() }.toSet() }
     }
 
+    /** Every stored price of [commodities], oldest first: the instrument screen's chart. */
+    suspend fun priceHistory(commodities: Collection<String>): List<PriceQuote> {
+        if (commodities.isEmpty()) return emptyList()
+        // Bound, not inlined: an id like 'BCBA:MELI' reads as a ":MELI"
+        // placeholder to anything that rewrites named parameters.
+        val params = commodities.toList().mapIndexed { i, c -> ":c$i" to c }.toMap()
+        return db.useForRead { d ->
+            d.query(
+                "select commodity, quote_commodity, at, price, source from prices" +
+                    " where commodity in (${params.keys.joinToString(", ")}) order by at",
+                params,
+            ) { rows ->
+                rows.mapNotNull { row ->
+                    val price = Decimal.parse(row.getOrNull(3)?.toString().orEmpty()) ?: return@mapNotNull null
+                    PriceQuote(
+                        row.getOrNull(0)?.toString() ?: return@mapNotNull null,
+                        row.getOrNull(1)?.toString() ?: return@mapNotNull null,
+                        (row.getOrNull(2) as? Number)?.toLong() ?: 0L,
+                        price,
+                        row.getOrNull(4)?.toString().orEmpty(),
+                    )
+                }.toList()
+            }
+        }
+    }
+
     /**
      * What every balance on screen is valued with: the described commodities
      * and the latest price of each (in the commodity's quote currency when

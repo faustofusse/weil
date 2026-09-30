@@ -147,6 +147,7 @@ fun InvestmentsScreen(
     onReviewImport: (BrokerImportRoute) -> Unit,
     onOpenAccount: (AccountDetailRoute) -> Unit,
     onOpenTransaction: (id: String) -> Unit,
+    onOpenInstrument: (commodity: String) -> Unit,
     bottomBar: @Composable () -> Unit = {},
     /** Opens the platform picker for an IBKR report; AppRoot routes what comes back. */
     pickReport: suspend () -> Unit = {},
@@ -457,18 +458,8 @@ fun InvestmentsScreen(
                             PositionsCard(
                                 lines = positions,
                                 selected = null,
-                                // The broker that holds most of it; with one
-                                // broker, simply its register for that instrument.
-                                onSelect = { commodity ->
-                                    commodity ?: return@PositionsCard
-                                    // A security row stands for all its trading lines.
-                                    val lines = if (valuation.groupsLines(display)) valuation.linesOf(commodity) else setOf(commodity)
-                                    val holder = connected.maxByOrNull { c ->
-                                        val held = holdings[c.provider].orEmpty().filterKeys { it in lines }.values
-                                        if (held.isEmpty()) Long.MIN_VALUE else held.sumOf { it.quantityMinor }
-                                    }
-                                    holder?.let { onOpenAccount(AccountDetailRoute(it.accounts.holdings, commodity)) }
-                                },
+                                // The instrument across every broker holding it.
+                                onSelect = { commodity -> commodity?.let { onOpenInstrument(it) } },
                             )
                         }
                     }

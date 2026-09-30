@@ -304,6 +304,11 @@
     <string name="detail_account_fallback">Cuenta</string>
     <string name="detail_include_subaccounts">Incluir subcuentas</string>
     <string name="detail_no_postings">Todavía no hay movimientos</string>
+    <string name="instrument_price">Precio</string>
+    <string name="instrument_no_history">Todavía no hay historia de precios: se arma con cada sincronización.</string>
+    <string name="instrument_brokers">Dónde lo tenés</string>
+    <string name="instrument_movements">Movimientos</string>
+    <string name="instrument_units">%1$s unidades</string>
     <string name="positions_title">Posiciones</string>
     <string name="positions_closed">Cerradas (%1$d)</string>
     <string name="positions_prices_at">Precios al %1$s</string>

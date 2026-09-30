@@ -103,6 +103,9 @@ data class TransactionEditRoute(val id: String)
  * on the read-only detail. */
 data class TransactionSimilarRoute(val id: String)
 
+/** One instrument across every broker: value, gain, price history, holders, movements. */
+data class InstrumentRoute(val commodity: String)
+
 /**
  * One account's register; [commodity] opens it narrowed to that instrument,
  * [subtree] with its subaccounts' movements included (a broker's root).

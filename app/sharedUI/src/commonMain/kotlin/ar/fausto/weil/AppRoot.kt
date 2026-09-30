@@ -528,6 +528,7 @@ fun RootScreen(
                                                 brokers = graph.brokers,
                                                 onReviewImport = { navigate(it) },
                                                 onOpenAccount = { navigate(it) },
+                                                onOpenInstrument = { navigate(InstrumentRoute(it)) },
                                                 pickReport = {
                                                     val picker = graph.documents
                                                     if (picker == null) {
@@ -644,6 +645,17 @@ fun RootScreen(
                                         valuation = ledgerState.valuation,
                                         onSaved = { pop() },
                                         onNavigateBack = { pop() },
+                                    )
+                                }
+                                entry<InstrumentRoute> { route ->
+                                    LaunchedEffect(Unit) { if (!ledgerState.loaded) ledgerState.refresh() }
+                                    InstrumentScreen(
+                                        ledgerState = ledgerState,
+                                        brokers = graph.brokers,
+                                        commodity = route.commodity,
+                                        onNavigateBack = { pop() },
+                                        onOpenAccount = { navigate(it) },
+                                        onOpenTransaction = { navigate(TransactionDetailRoute(it)) },
                                     )
                                 }
                                 entry<AccountDetailRoute> { route ->

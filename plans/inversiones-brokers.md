@@ -367,9 +367,9 @@ configurar IBKR».
 - Tocar un broker abre su hoja (`BrokerSheet`: usuario conectado, sincronizar,
   ver cartera, ver movimientos, cambiar credenciales, desconectar), no la
   `Cartera` directamente.
-- Posiciones: una fila por instrumento sumando brokers, pero **sin** el
-  desglose por broker adentro ni los chips por tipo; tocar abre el registro
-  filtrado del broker con más cantidad.
+- Posiciones: una fila por instrumento sumando brokers, **sin** los chips por
+  tipo; el desglose por broker está en el detalle de instrumento, que es lo
+  que abre tocar.
 - Movimientos con `MovementRow` (el de Inicio). «Ver todo» sólo con un broker:
   abre su raíz con subcuentas.
 - En el top bar hay un ícono de sincronizar en vez del overflow; «Sumar otra
@@ -381,6 +381,8 @@ Cantidad por broker, costo, valor, ganancia no realizada, último precio con
 fecha, y el registro de compras/ventas/rentas de ese commodity. El gráfico de
 precios (de la tabla `prices`) queda para después: no hay historia hasta que
 se acumulen syncs.
+
+**Estado:** hecho, gráfico incluido (fase 5).
 
 ### Estado vacío y conexión
 
@@ -408,7 +410,8 @@ cuentas como cualquier otra (entran en el orden de `home.account_order`).
 
 `-Pshot.route=investments` (y `investments-empty`, `investments-alert` con un
 aviso sembrado, `investments-sheet` con la hoja de IOL abierta), más `holdings`
-e `instrument` para la vista de posiciones y `broker-import` para la revisión,
+e `holdings-filtered` para la vista de posiciones, `instrument` para el
+detalle de instrumento y `broker-import` para la revisión,
 con brokers, posiciones y precios sembrados en `FakeDatabase`. Usar
 `-Pshot.seconds=12`: la siembra tarda.
 
@@ -738,7 +741,7 @@ acciones) y las posiciones cerradas como «0,00».
       la fila sólo si es más vieja, cerradas plegadas. Tocar una posición
       filtra el registro por ese commodity (`register(commodity =)`; el
       saldo corrido ya era por commodity) y `AccountDetailRoute(id, commodity)`
-      abre directo filtrado. Harness: `-Pshot.route=holdings` / `instrument`
+      abre directo filtrado. Harness: `-Pshot.route=holdings` / `holdings-filtered`
       (`-Pshot.seconds=12`: la siembra tarda). Sólo con la cuenta sola, no con
       «incluir subcuentas» (el costo es por cuenta).
 - [x] Escala por commodity al **mostrar y tipear** en el editor (movido desde
@@ -766,8 +769,18 @@ acciones) y las posiciones cerradas como «0,00».
       (el usuario prellenado), desconectar. «Ver todo» en últimos
       movimientos abre la raíz del broker con subcuentas cuando hay uno solo.
       Harness: `investments-alert`, `investments-sheet`.
-- [ ] Detalle de instrumento propio (desglose por broker, historia de
-      precios); hoy tocar una posición abre el registro filtrado.
+- [x] Detalle de instrumento (`InstrumentScreen`, `InstrumentRoute`): tocar
+      una posición en la pestaña abre el instrumento entre todos los
+      brokers. `instrumentView` (puro, `InstrumentDetail.kt`, sobre
+      `Valuation.positions`, así los números son los de la tarjeta de
+      posiciones): el total con valor, ganancia, unidades y costo, y una fila
+      por cuenta de cartera que lo tuvo (cada una abre su registro
+      filtrado). Precio: `BrokersRepository.priceHistory` + `dailySeries`
+      (un punto por día argentino, en una sola moneda), línea con el último
+      precio y la variación del período; con menos de dos días, un texto en
+      vez del gráfico. Movimientos de ese título en todas las carteras.
+      Una línea en dólares (AAPLD) abre su título (AAPL). Harness:
+      `instrument` (el registro filtrado pasó a `holdings-filtered`).
 
 ### Fase 6 — entradas automáticas
 

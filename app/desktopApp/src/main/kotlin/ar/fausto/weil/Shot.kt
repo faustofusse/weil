@@ -226,7 +226,8 @@ fun main(args: Array<String>) {
                     }
                     "holdings" -> invest?.let { AccountDetailRoute(it.accounts.holdings) }
                     "broker-root" -> invest?.let { AccountDetailRoute(it.root, subtree = true) }
-                    "instrument" -> invest?.let { AccountDetailRoute(it.accounts.holdings, "BCBA:MELI") }
+                    "holdings-filtered" -> invest?.let { AccountDetailRoute(it.accounts.holdings, "BCBA:MELI") }
+                    "instrument" -> invest?.let { InstrumentRoute("BCBA:MELI") }
                     "tx-buy" -> invest?.let { TransactionEditRoute(it.fractionalBuy) }
                     "tx-buy-detail" -> invest?.let { TransactionDetailRoute(it.fractionalBuy) }
                     else -> null
@@ -249,7 +250,7 @@ fun main(args: Array<String>) {
 }
 
 
-private val INVESTMENT_ROUTES = setOf("investments", "investments-mep", "broker-root", "investments-alert", "investments-sheet", "holdings", "tx-buy", "tx-buy-detail", "instrument")
+private val INVESTMENT_ROUTES = setOf("investments", "investments-mep", "broker-root", "investments-alert", "investments-sheet", "holdings", "tx-buy", "tx-buy-detail", "instrument", "holdings-filtered")
 
 private class SeededInvestments(val accounts: BrokerAccounts, val fractionalBuy: String, val root: String)
 
