@@ -144,11 +144,13 @@ class SplitsAndDatedCostTest {
         HoldingMovement("cartera", at, commodity, quantity, cost, costCommodity)
 
     @Test
-    fun theRateOfAPurchaseIsThePreviousClose() {
+    fun theRateOfAPurchaseIsItsDaysClose() {
         assertEquals(d("1200"), valuation.mepAt(t0 + 9 * day + 1))
         assertEquals(d("1500"), valuation.mepAt(t0 + 10 * day))
+        // A purchase earlier in the day than the close still reads that day's.
+        assertEquals(d("1500"), valuation.mepAt(t0 + 10 * day - 60_000))
         // Before the history, or past a week-long hole in it: no rate.
-        assertNull(valuation.mepAt(t0 - 1))
+        assertNull(valuation.mepAt(t0 - day))
         assertNull(valuation.mepAt(t0 + 29 * day))
     }
 
