@@ -219,6 +219,7 @@ fun iolBatch(fetch: IolFetch): BrokerBatch {
             to = dollars - dollarFees,
             toCommodity = "USD",
             fees = pesoFees,
+            feeItems = buyDetail.feeItems() + detail.feeItems(),
         )
     }
 

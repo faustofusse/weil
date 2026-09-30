@@ -70,7 +70,7 @@ class BrokersRepository(
             val ids = accounts.tree().flatMap { it.selfAndDescendants }.map { it.account.id }.toSet()
             // A report that brings a new currency (IBKR converting to EUR)
             // falls through: findOrCreate reuses everything and adds its cash.
-            val complete = currencies.all { it in existing.cash }
+            val complete = currencies.all { it in existing.cash } && existing.vat != null && existing.marketFees != null
             if (existing.holdings in ids && complete) return existing
         }
         val known = accountsFor(provider)?.cash?.keys.orEmpty()
@@ -95,6 +95,8 @@ class BrokersRepository(
             commissions = findOrCreate("Comisiones", AccountType.Expense, expense),
             opening = findOrCreate("Saldo inicial", AccountType.Equity, equity),
             adjustments = findOrCreate("Ajustes", AccountType.Equity, equity),
+            vat = findOrCreate("IVA", AccountType.Expense, expense),
+            marketFees = findOrCreate("Derechos de mercado", AccountType.Expense, expense),
         )
         settings.set(brokerAccountsKey(provider), json.encodeToString(BrokerAccounts.serializer(), result))
         return result

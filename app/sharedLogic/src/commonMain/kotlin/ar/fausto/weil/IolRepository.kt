@@ -73,8 +73,9 @@ class IolRepository(
      * show today's values even while the plan waits for a look.
      */
     suspend fun preview(): BrokerPlan {
-        val accounts = brokers.accountsFor(IOL_PROVIDER)
-            ?: brokers.connect(IOL_PROVIDER, "IOL", listOf("ARS", "USD"))
+        // connect() is idempotent and adds accounts newer builds book into
+        // (IVA, Derechos de mercado) to a connection made before them.
+        val accounts = brokers.connect(IOL_PROVIDER, "IOL", listOf("ARS", "USD"))
         val known = brokers.knownRefs(IOL_PROVIDER)
         val fetched = fetch(known, full = false)
         val view = brokers.ledgerView(accounts)
@@ -99,8 +100,9 @@ class IolRepository(
      * is applied, and then in one SQL transaction.
      */
     suspend fun rebuildPreview(): BrokerPlan {
-        val accounts = brokers.accountsFor(IOL_PROVIDER)
-            ?: brokers.connect(IOL_PROVIDER, "IOL", listOf("ARS", "USD"))
+        // connect() is idempotent and adds accounts newer builds book into
+        // (IVA, Derechos de mercado) to a connection made before them.
+        val accounts = brokers.connect(IOL_PROVIDER, "IOL", listOf("ARS", "USD"))
         val replaced = brokers.importedTransactionIds(IOL_PROVIDER, accounts)
         val counterparts = brokers.counterparts(replaced, accounts)
         val fetched = fetch(emptySet(), full = true)

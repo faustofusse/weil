@@ -11,6 +11,9 @@ package ar.fausto.weil
  *
  * Accounting rules, following ledger-cli (see the plan's decisions):
  *  - an instrument is a commodity; a buy is an exchange with a cost (`@@`);
+ *  - a broker that itemizes its charges (IOL: commission, market rights,
+ *    IVA) gets each one expensed to its own account and the units at their
+ *    price, which is also the broker's average price; otherwise
  *  - **commissions are capitalized**: a buy costs gross + fees, a sale
  *    brings in gross − fees. That is the basis brokers (IBKR's `Cost Basis`)
  *    and AFIP use, and it is what makes the broker's realized gain reproduce
@@ -166,6 +169,8 @@ sealed interface BrokerEvent {
         val to: Decimal,
         val toCommodity: String,
         val fees: Decimal = Decimal.ZERO,
+        /** The charges itemized (both orders of an IOL pair); those in [fromCommodity] split [fees] by type. */
+        val feeItems: List<FeeItem> = emptyList(),
     ) : BrokerEvent
 
     /** A split, a spin-off, a correction: units appear or vanish, cost untouched. */
@@ -233,10 +238,18 @@ data class BrokerAccounts(
     val dividends: String,
     val capitalGains: String,
     val taxes: String,
-    /** FX fees; trade fees are capitalized and never land here. */
+    /**
+     * Commissions that are expensed: FX fees, a coupon's commission, and a
+     * broker's itemized commission ([FeeItem]); an un-itemized trade fee is
+     * capitalized and never lands here.
+     */
     val commissions: String,
     val opening: String,
     val adjustments: String,
+    /** IVA on itemized charges. Null on connections made before it existed ([BrokersRepository.connect] adds it). */
+    val vat: String? = null,
+    /** The market's fee ("Derechos de mercado") of itemized charges; null like [vat]. */
+    val marketFees: String? = null,
 )
 
 /** A holding as the ledger has it: quantity and total cost, both minor units. */
@@ -482,18 +495,25 @@ private class BrokerPlanner(
         if (e.quantity.isZero) throw PlanException("zero quantity")
         val cashAccount = cashAccount(e.cashCommodity)
         val quantity = quantityMinor(e.quantity, e.instrument)
-        val cost = minor(e.gross + e.fees, e.cashCommodity)
+        val itemized = itemizedCharges(e.feeItems, mapOf(e.cashCommodity to e.fees) + e.foreignFees)
+        // Itemized charges are expenses, each in its account, and the units
+        // cost their price (what the broker's own average price is); a fee
+        // nobody itemized is capitalized, the ledger's default.
+        val cost = minor(if (itemized != null) e.gross else e.gross + e.fees, e.cashCommodity)
         val position = holdings[e.instrument]
         checkCostCommodity(position, e.cashCommodity, e.instrument)
         add(
             PlannedKind.Trade, e, ref,
             listOf(
-                draft(accounts.holdings, quantity, e.instrument, cost, e.cashCommodity, fee = minor(e.fees, e.cashCommodity)),
+                draft(
+                    accounts.holdings, quantity, e.instrument, cost, e.cashCommodity,
+                    fee = if (itemized != null) null else minor(e.fees, e.cashCommodity),
+                ),
                 draft(cashAccount, -cost, e.cashCommodity),
-            ) + foreignFeeDrafts(e.foreignFees),
+            ) + (itemized?.paidDrafts() ?: foreignFeeDrafts(e.foreignFees)),
             note = feeNote(e.fees, e.cashCommodity, e.foreignFees, e.feeItems),
         )
-        bumpForeignFees(e.foreignFees)
+        if (itemized != null) itemized.bumpCash() else bumpForeignFees(e.foreignFees)
         holdings[e.instrument] = HeldPosition(
             (position?.quantityMinor ?: 0L) + quantity,
             (position?.costMinor ?: 0L) + cost,
@@ -505,13 +525,16 @@ private class BrokerPlanner(
     private fun planSale(e: BrokerEvent.Trade, ref: String) {
         val sold = quantityMinor(e.quantity.abs(), e.instrument)
         if (sold == 0L) throw PlanException("zero quantity")
-        val net = minor(e.gross - e.fees, e.cashCommodity)
+        val itemized = itemizedCharges(e.feeItems, mapOf(e.cashCommodity to e.fees) + e.foreignFees)
+        // Itemized: the sale brings in its price and the charges are expensed.
+        val net = minor(if (itemized != null) e.gross else e.gross - e.fees, e.cashCommodity)
         val basis = e.costBasis?.let { minor(it, e.cashCommodity) }
         closePosition(
             e, ref, PlannedKind.Trade, e.instrument, sold, net, e.cashCommodity, basis,
-            feeNote(e.fees, e.cashCommodity, e.foreignFees, e.feeItems), foreignFeeDrafts(e.foreignFees),
+            feeNote(e.fees, e.cashCommodity, e.foreignFees, e.feeItems),
+            itemized?.paidDrafts() ?: foreignFeeDrafts(e.foreignFees),
         )
-        bumpForeignFees(e.foreignFees)
+        if (itemized != null) itemized.bumpCash() else bumpForeignFees(e.foreignFees)
     }
 
     private fun planPrincipal(e: BrokerEvent.Principal, ref: String) {
@@ -526,7 +549,8 @@ private class BrokerPlanner(
         if (redeemed == 0L) throw PlanException("zero quantity")
         closePosition(
             e, ref, PlannedKind.Principal, e.instrument, redeemed, minor(e.cash, e.cashCommodity), e.cashCommodity, null,
-            feeNote(Decimal.ZERO, e.cashCommodity, e.fees, e.feeItems), foreignFeeDrafts(e.fees),
+            feeNote(Decimal.ZERO, e.cashCommodity, e.fees, e.feeItems),
+            itemizedCharges(e.feeItems, e.fees)?.paidDrafts() ?: foreignFeeDrafts(e.fees),
         )
         bumpForeignFees(e.fees)
     }
@@ -645,7 +669,7 @@ private class BrokerPlanner(
             add(draft(cashAccount, gross - tax, e.cashCommodity))
             add(draft(incomeAccount, -gross, e.cashCommodity))
             if (tax != 0L) add(draft(accounts.taxes, tax, e.cashCommodity))
-        } + foreignFeeDrafts(e.fees)
+        } + (itemizedCharges(e.feeItems, e.fees)?.paidDrafts() ?: foreignFeeDrafts(e.fees))
         add(PlannedKind.Income, e, ref, drafts, note = feeNote(Decimal.ZERO, e.cashCommodity, e.fees, e.feeItems))
         cash.bump(e.cashCommodity, gross - tax)
         bumpForeignFees(e.fees)
@@ -682,9 +706,13 @@ private class BrokerPlanner(
         val drafts = buildList {
             add(draft(toAccount, to, e.toCommodity, from - fees, e.fromCommodity))
             add(draft(fromAccount, -from, e.fromCommodity))
-            if (fees != 0L) add(draft(accounts.commissions, fees, e.fromCommodity))
+            if (fees != 0L) {
+                // By type when the broker itemized this currency's charges.
+                val itemized = itemizedCharges(e.feeItems.filter { it.commodity == e.fromCommodity }, mapOf(e.fromCommodity to e.fees))
+                addAll(itemized?.expenseDrafts ?: listOf(draft(accounts.commissions, fees, e.fromCommodity)))
+            }
         }
-        add(PlannedKind.Fx, e, ref, drafts)
+        add(PlannedKind.Fx, e, ref, drafts, note = feeNote(Decimal.ZERO, e.fromCommodity, emptyMap(), e.feeItems))
         cash.bump(e.fromCommodity, -from)
         cash.bump(e.toCommodity, to)
     }
@@ -1214,6 +1242,44 @@ private class BrokerPlanner(
             .filter { !it.second.isZero }
             .map { (c, f) -> formatMoney(minor(f, c), c) }
         return if (parts.isEmpty()) null else "Comisión " + parts.joinToString(" + ")
+    }
+
+    /** Itemized charges as expense drafts per account, and what they took from each currency's cash. */
+    private inner class ItemizedCharges(val expenseDrafts: List<DraftPosting>, val charged: Map<String, Long>) {
+        /** The expenses plus the cash they came out of. */
+        fun paidDrafts(): List<DraftPosting> =
+            expenseDrafts + charged.map { (commodity, amount) -> draft(cashAccount(commodity), -amount, commodity) }
+
+        fun bumpCash() {
+            for ((commodity, amount) in charged) cash.bump(commodity, -amount)
+        }
+    }
+
+    /**
+     * [items] split into Comisiones / Derechos de mercado / IVA, when they
+     * add up to [totals] (per currency, to the cent); null otherwise, and
+     * the caller books the charges the un-itemized way. An item the broker
+     * names in no known way is a commission.
+     */
+    private fun itemizedCharges(items: List<FeeItem>, totals: Map<String, Decimal>): ItemizedCharges? {
+        if (items.isEmpty()) return null
+        val drafts = mutableListOf<DraftPosting>()
+        val charged = mutableMapOf<String, Long>()
+        for (item in items) {
+            val net = minor(item.net, item.commodity)
+            val vat = minor(item.vat, item.commodity)
+            val label = item.label.lowercase()
+            val account = when {
+                "derecho" in label -> accounts.marketFees ?: accounts.commissions
+                else -> accounts.commissions
+            }
+            if (net != 0L) drafts += draft(account, net, item.commodity)
+            if (vat != 0L) drafts += draft(accounts.vat ?: accounts.taxes, vat, item.commodity)
+            charged.bump(item.commodity, net + vat)
+        }
+        val expected = totals.filterValues { !it.isZero }.mapValues { (c, v) -> minor(v, c) }
+        if (charged.filterValues { it != 0L } != expected) return null
+        return ItemizedCharges(drafts, charged)
     }
 
     /** Fees in another currency than the trade's: an expense from that currency's cash. */

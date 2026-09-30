@@ -79,6 +79,18 @@ class IolConnectorTest {
         val renta = plan.transactions.single { it.ref == "iol:172510909" }
         val lines = resolvePostings(renta.transaction.drafts).map { it.accountId to it.amountMinor }.toSet()
         assertTrue(("comisiones" to 1_197L) in lines && ("iol-pesos" to -1_197L) in lines)
+        // A trade's charges, each in its account; the units cost their price (IOL's PPC).
+        val withSplit = accounts.copy(vat = "iva", marketFees = "derechos")
+        val meliSplit = planBrokerImport(iolBatch(fetch()), withSplit, BrokerLedgerView(), emptySet())
+            .transactions.single { it.ref == "iol:185183992" }
+        val postings = resolvePostings(meliSplit.transaction.drafts)
+        assertEquals(31_707_000L, postings.single { it.accountId == "iol-cartera" }.costMinor)
+        assertEquals(
+            mapOf("comisiones" to 158_535L, "iva" to 33_292L + 4_661L, "derechos" to 22_195L),
+            postings.filter { it.accountId in setOf("comisiones", "iva", "derechos") }
+                .groupBy { it.accountId }.mapValues { (_, p) -> p.sumOf { it.amountMinor } },
+        )
+        assertEquals(-31_925_683L, postings.filter { it.accountId == "iol-pesos" }.sumOf { it.amountMinor })
         assertEquals("Comisión $ 11,97", renta.transaction.note)
         // The export's MELI row: Comis. 1.585,35 + Iva 332,92 + Otros Imp. 268,56.
         val meli = plan.transactions.single { it.ref == "iol:185183992" }
@@ -169,10 +181,11 @@ class IolConnectorTest {
         assertEquals(PlannedKind.Opening, plan.transactions.first().kind)
         // Opening + 32 trades + 2 currency purchases + 3 coupons + 6 amortizations.
         assertEquals(1 + 32 + 2 + 3 + 6, plan.transactions.size)
-        // S29G5: bought for $ 995.468,80 + $ 2.000,89, paid back $ 1.009.280.
+        // S29G5: bought for $ 995.468,80 (+ $ 2.000,89 of itemized charges,
+        // expensed), paid back $ 1.009.280.
         val s29 = plan.transactions.single { it.ref == "iol:141961954" }
         val gain = resolvePostings(s29.transaction.drafts).single { it.accountId == "ganancias" }
-        assertEquals(-1_181_031L, gain.amountMinor)
+        assertEquals(-1_381_120L, gain.amountMinor)
     }
 
     @Test

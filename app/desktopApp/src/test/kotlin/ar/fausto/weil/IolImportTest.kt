@@ -137,6 +137,8 @@ class IolImportTest {
         assertEquals("IOL:Cartera", paths[accounts.holdings])
         assertEquals("Rendimientos:Ganancias de capital", paths[accounts.capitalGains])
         assertEquals("Costos de inversión:Comisiones", paths[accounts.commissions])
+        assertEquals("Costos de inversión:IVA", paths[accounts.vat])
+        assertEquals("Costos de inversión:Derechos de mercado", paths[accounts.marketFees])
 
         val first = iol.preview()
         assertEquals(emptyList(), first.issues)
@@ -151,8 +153,8 @@ class IolImportTest {
         // What the real SQL reads back is what IOL says.
         val view = graph.brokers.ledgerView(accounts)
         assertEquals(mapOf("ARS" to 54_257_383L, "USD" to 304_966L), view.cash)
-        assertEquals(HeldPosition(13L, 31_925_683L, "ARS"), view.holdings["BCBA:MELI"])
-        assertEquals(HeldPosition(1_923_076L, 199_351_722L, "ARS"), view.holdings["BCBA:S13N6"])
+        assertEquals(HeldPosition(13L, 31_707_000L, "ARS"), view.holdings["BCBA:MELI"])
+        assertEquals(HeldPosition(1_923_076L, 198_951_828L, "ARS"), view.holdings["BCBA:S13N6"])
         // Closed positions sit at zero quantity and zero cost: average cost
         // left no residue behind.
         assertEquals(0L, view.holdings.getValue("FCI:IOLPORA").quantityMinor)
@@ -242,7 +244,7 @@ class IolImportTest {
         assertTrue(graph.ledger.get(typed) != null)
         val view = graph.brokers.ledgerView(accounts)
         assertEquals(mapOf("ARS" to 54_257_383L, "USD" to 304_966L), view.cash)
-        assertEquals(HeldPosition(13L, 31_925_683L, "ARS"), view.holdings["BCBA:MELI"])
+        assertEquals(HeldPosition(13L, 31_707_000L, "ARS"), view.holdings["BCBA:MELI"])
         val after = iol.preview()
         assertEquals(emptyList(), after.transactions)
         assertEquals(emptyList(), after.differences)
