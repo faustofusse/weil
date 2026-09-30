@@ -750,22 +750,26 @@ private class BrokerPlanner(
             val lines = quantity.filter { speciesOf(it.key) == species && !it.value.isZero }
             val (line, ours) = lines.entries.singleOrNull() ?: continue
             if (ours.signum <= 0 || ours == held.quantity) continue
-            val bought = paid[species]?.takeIf { it.keys == setOf(costCommodity) }?.get(costCommodity) ?: continue
-            if (bought.second.signum <= 0) continue
-            val ourUnit = bought.first.divide(bought.second, 8)
-            val brokerUnit = brokerCost.divide(held.quantity, 8)
             val forward = held.quantity > ours
-            val factor = if (forward) held.quantity.divide(ours, 0) else ours.divide(held.quantity, 0)
-            if (factor < Decimal.of(2)) continue
-            if ((if (forward) ours * factor else held.quantity * factor) != (if (forward) held.quantity else ours)) continue
-            // After a 1:r split the broker's unit cost is ours / r; after r:1, ours × r.
-            val expected = if (forward) ourUnit.divide(factor, 8) else ourUnit * factor
-            if (!roughlyEqual(brokerUnit, expected)) continue
+            val whole = run whole@{
+                val bought = paid[species]?.takeIf { it.keys == setOf(costCommodity) }?.get(costCommodity) ?: return@whole null
+                if (bought.second.signum <= 0) return@whole null
+                val ourUnit = bought.first.divide(bought.second, 8)
+                val brokerUnit = brokerCost.divide(held.quantity, 8)
+                val factor = if (forward) held.quantity.divide(ours, 0) else ours.divide(held.quantity, 0)
+                if (factor < Decimal.of(2)) return@whole null
+                if ((if (forward) ours * factor else held.quantity * factor) != (if (forward) held.quantity else ours)) return@whole null
+                // After a 1:r split the broker's unit cost is ours / r; after r:1, ours × r.
+                val expected = if (forward) ourUnit.divide(factor, 8) else ourUnit * factor
+                if (!roughlyEqual(brokerUnit, expected)) return@whole null
+                factor to snapshot.at - 1
+            }
+            val (factor, at) = whole ?: (if (forward) partialSplit(species, held.quantity - ours, events) else null) ?: continue
             val symbol = batch.instruments.firstOrNull { it.id == species }?.symbol ?: species.substringAfter(':')
             val ratio = factor.stripTrailingZeros().toPlainString()
             result += BrokerEvent.QuantityChange(
                 ref = "split:$species:${snapshot.at}",
-                at = snapshot.at - 1,
+                at = at,
                 timeKnown = false,
                 description = if (forward) "Split $symbol 1:$ratio" else "Contrasplit $symbol $ratio:1",
                 instrument = line,
@@ -775,6 +779,54 @@ private class BrokerPlanner(
             )
         }
         return result
+    }
+
+    /**
+     * A split that multiplied only the units held before some later trade
+     * (a CEDEAR's ratio change: 3 SPYD bought at US$ 31 became 9, and 15
+     * more were bought at US$ 13, so the broker holds 24 where the history
+     * explains 18). The gap has to be a whole multiple of what was held at
+     * exactly one point between trades, and the trades on either side of
+     * that point have to be priced apart by about the same factor (within
+     * 40 %: the market moves between them, a split moves the price by the
+     * whole factor). Returns the factor and a date just before the first
+     * trade after the split, or null.
+     */
+    private fun partialSplit(species: String, gap: Decimal, events: List<BrokerEvent>): Pair<Decimal, Long>? {
+        val moves = events.filter {
+            (it is BrokerEvent.Trade && speciesOf(it.instrument) == species) ||
+                (it is BrokerEvent.Principal && speciesOf(it.instrument) == species)
+        }
+        if (moves.size < 2 || gap.signum <= 0) return null
+        var held = Decimal.ZERO
+        for ((line, position) in ledger.holdings) {
+            if (speciesOf(line) == species) held += Decimal.ofMinorUnits(position.quantityMinor, scaleOf(line))
+        }
+        val candidates = mutableListOf<Pair<Int, Decimal>>()
+        for ((k, move) in moves.withIndex()) {
+            // A split right before moves[k] multiplied what was held then.
+            if (k > 0 && held.signum > 0) {
+                val extra = gap.divide(held, 0)
+                if (extra.signum > 0 && extra * held == gap) candidates += k to (extra + Decimal.of(1))
+            }
+            held += when (move) {
+                is BrokerEvent.Trade -> move.quantity
+                is BrokerEvent.Principal -> -(move.quantity ?: return null).abs()
+                else -> Decimal.ZERO
+            }
+        }
+        val (k, factor) = candidates.singleOrNull() ?: return null
+        val before = moves.take(k).filterIsInstance<BrokerEvent.Trade>().lastOrNull() ?: return null
+        val after = moves.drop(k).filterIsInstance<BrokerEvent.Trade>()
+            .firstOrNull { it.cashCommodity == before.cashCommodity } ?: return null
+        val priceBefore = before.gross.divide(before.quantity.abs(), 8)
+        val priceAfter = after.gross.divide(after.quantity.abs(), 8)
+        if (priceAfter.signum <= 0) return null
+        val moved = priceBefore.divide(priceAfter, 8)
+        val ten = Decimal.of(10)
+        val fourteen = Decimal.of(14)
+        if (moved * fourteen < factor * ten || moved * ten > factor * fourteen) return null
+        return factor to moves[k].at - 1
     }
 
     /**

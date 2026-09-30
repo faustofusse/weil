@@ -117,6 +117,44 @@ class SplitsAndDatedCostTest {
         assertEquals(listOf(BalanceDifference("cartera", "BCBA:YPFD", 10L, 20L)), plan.differences)
     }
 
+    /**
+     * Axel's SPY: 3 SPYD at US$ 31,39 in Dec-2024, a 1:3 CEDEAR ratio change,
+     * 15 SPYD at US$ 12,89 in Jul-2026. IOL reports 24 SPY at a PPC in pesos.
+     */
+    private val spy = InstrumentInfo("BCBA:SPY", "SPY", kind = "cedear", scale = 0, quoteCommodity = "ARS")
+    private val spyd = InstrumentInfo("BCBA:SPYD", "SPYD", kind = "cedear", scale = 0, quoteCommodity = "USD")
+
+    private fun spyBatch(julyGross: String) = BrokerBatch(
+        "iol",
+        listOf(
+            BrokerEvent.Trade("dec", t0, true, "Compra SPYD", "BCBA:SPYD", d("3"), d("93.60"), "USD", fees = d("0.57")),
+            BrokerEvent.Trade("jul", t0 + 570 * day, true, "Compra SPYD", "BCBA:SPYD", d("15"), julyGross.let(::d), "USD", fees = d("1.16")),
+        ),
+        BrokerSnapshot(
+            t0 + 600 * day,
+            mapOf("USD" to d("0")),
+            listOf(SnapshotPosition("BCBA:SPY", d("24"), price = d("20600"), cost = d("392681.74"), costCommodity = "ARS")),
+        ),
+        listOf(spy, spyd),
+    )
+
+    @Test
+    fun aSplitBetweenTwoPurchasesIsInferredFromTheirPrices() {
+        val plan = planBrokerImport(spyBatch("192.15"), accounts, BrokerLedgerView(), emptySet())
+        val split = plan.transactions.single { it.kind == PlannedKind.QuantityChange }
+        assertEquals("Split SPY 1:3", split.transaction.payee)
+        assertTrue(split.lines().contains(listOf("cartera", 6L, "BCBA:SPYD", null)))
+        // Between the two buys, right before the second.
+        assertEquals(t0 + 570 * day - 1, split.transaction.date)
+        assertTrue(plan.transactions.filter { it.kind == PlannedKind.Opening }.none { o -> o.lines().any { it[0] == "cartera" } })
+        assertTrue(plan.differences.none { it.accountId == "cartera" })
+
+        // Same quantities, but the second buy priced like the first: no
+        // split, the 6 were there before the history.
+        val flat = planBrokerImport(spyBatch("480.00"), accounts, BrokerLedgerView(), emptySet())
+        assertTrue(flat.transactions.none { it.kind == PlannedKind.QuantityChange })
+    }
+
     @Test
     fun aSplitAnEarlierImportHidIsReported() {
         // What the first import wrote before splits were inferred: 10 units
