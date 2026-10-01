@@ -26,6 +26,17 @@ class DatabaseProvider(
     /** For pure reads only — never for mutations or `sync()`. See [readContext]. */
     suspend fun <T> useForRead(block: (Database) -> T): T = run(readContext, block)
 
+    /**
+     * Runs several [useForRead] calls back to back on the database thread.
+     * Each of them alone hops onto that thread and back, and in the gap a
+     * queued `sync()` (low priority, but nothing outranks it while the
+     * thread is idle) starts and holds the next read for a network round
+     * trip — at launch, Home's first paint waited seconds that way. Inside
+     * this block the reads find themselves already on [readContext] and run
+     * inline, so the batch only yields if one of them truly suspends.
+     */
+    suspend fun <T> readBatch(block: suspend () -> T): T = withContext(readContext) { block() }
+
     private suspend fun <T> run(context: CoroutineContext, block: (Database) -> T): T {
         var attempt = 0
         while (true) {

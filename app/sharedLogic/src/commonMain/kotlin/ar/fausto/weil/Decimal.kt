@@ -180,7 +180,11 @@ class Decimal private constructor(
             val fracPart = if (dot >= 0) body.substring(dot + 1) else ""
             if (intPart.isEmpty() && fracPart.isEmpty()) return null
             if (!(intPart + fracPart).all { it in '0'..'9' }) return null
-            var unscaled = BigInteger.parseString((intPart + fracPart).ifEmpty { "0" }, 10)
+            val digits = (intPart + fracPart).ifEmpty { "0" }
+            // bignum's parseString costs ~1 ms per call on a phone, and a
+            // price or a rate always fits a Long: 18 digits can't overflow.
+            var unscaled = if (digits.length <= 18) BigInteger.fromLong(digits.toLong())
+            else BigInteger.parseString(digits, 10)
             if (negative) unscaled = unscaled.negate()
             // 1.5E-3: scale = 1 - (-3) = 4 → 0.0015. A positive exponent that
             // exceeds the fractional digits multiplies instead.

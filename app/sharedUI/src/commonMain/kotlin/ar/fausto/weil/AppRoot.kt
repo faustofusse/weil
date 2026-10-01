@@ -233,7 +233,7 @@ fun RootScreen(
                     // animates that replace with the shared transition specs.
                     val loggedIn = authState is AuthState.LoggedIn
                     val ledgerState = remember(loggedIn) {
-                        LedgerState(graph.accounts, graph.ledger, graph.settings, graph.brokers, graph.officialRates)
+                        LedgerState(graph.accounts, graph.ledger, graph.settings, graph.brokers, graph.officialRates, graph.db)
                     }
                     // Hoisted above the nav host, same reasoning as [ledgerState]: the
                     // journal keeps its loaded page across a visit to a transaction and

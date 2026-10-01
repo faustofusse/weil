@@ -239,7 +239,18 @@ class BrokersRepository(
     suspend fun valuation(): Valuation = db.useForRead { d ->
         val commodities = d.commodities()
         val latest = mutableMapOf<String, PriceQuote>()
-        d.query("select commodity, quote_commodity, at, price, source from prices order by at desc", null) { rows ->
+        // Only the newest row of each (commodity, quote) can win below, so
+        // the database narrows the table to those instead of handing over
+        // every price ever stored: on Android each row costs a dozen JNA
+        // calls, and the full table took seconds to read on every refresh.
+        d.query(
+            "select p.commodity, p.quote_commodity, p.at, p.price, p.source from prices p" +
+                " join (select commodity, quote_commodity, max(at) as newest from prices" +
+                " group by commodity, quote_commodity) n" +
+                " on p.commodity = n.commodity and p.quote_commodity = n.quote_commodity and p.at = n.newest" +
+                " order by p.at desc",
+            null,
+        ) { rows ->
             for (row in rows) {
                 val commodity = row.getOrNull(0)?.toString() ?: continue
                 val quote = row.getOrNull(1)?.toString() ?: continue
@@ -256,16 +267,24 @@ class BrokersRepository(
                 }
             }
         }
+        // Hundreds of daily closes, folded into one text value: one row to
+        // fetch instead of one per close (see above), split here.
         val mepHistory = d.query(
-            "select at, price, source from prices where commodity = 'USD' and quote_commodity = 'ARS'" +
-                " and source in (:live, :close) order by at",
+            "select group_concat(at || ' ' || price || ' ' || source, ';') from prices" +
+                " where commodity = 'USD' and quote_commodity = 'ARS' and source in (:live, :close)",
             mapOf(":live" to MEP_SOURCE, ":close" to MEP_CLOSE_SOURCE),
-        ) { rows ->
-            rows.mapNotNull { row ->
-                val price = Decimal.parse(row.getOrNull(1)?.toString().orEmpty()) ?: return@mapNotNull null
-                PriceQuote("USD", "ARS", (row.getOrNull(0) as? Number)?.toLong() ?: 0L, price, row.getOrNull(2)?.toString().orEmpty())
-            }.toList()
-        }
+        ) { rows -> rows.firstOrNull()?.getOrNull(0)?.toString() }
+            .orEmpty()
+            .split(';')
+            .mapNotNull { entry ->
+                val parts = entry.split(' ')
+                if (parts.size != 3) return@mapNotNull null
+                val at = parts[0].toLongOrNull() ?: return@mapNotNull null
+                val price = Decimal.parse(parts[1]) ?: return@mapNotNull null
+                PriceQuote("USD", "ARS", at, price, parts[2])
+            }
+            // group_concat's order is unspecified; mepAt binary-searches.
+            .sortedBy { it.at }
         // Today's rate is the broker's live quote; without one (no sync yet,
         // or an older one), the newest close.
         val mep = listOfNotNull(d.latestRate(MEP_SOURCE), d.latestRate(MEP_CLOSE_SOURCE)).maxByOrNull { it.at }

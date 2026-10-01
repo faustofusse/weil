@@ -26,6 +26,8 @@ class LedgerState(
     private val brokers: BrokersRepository? = null,
     /** Keeps the official dollar current; null leaves the converted line to stored rates. */
     private val officialRates: OfficialRatesRepository? = null,
+    /** Runs [loadLocal]'s reads as one turn of the database thread; see [DatabaseProvider.readBatch]. */
+    private val db: DatabaseProvider? = null,
 ) {
     /**
      * What the net worth is restated in at the official rate (`USD`, `ARS`
@@ -251,13 +253,20 @@ class LedgerState(
         // valuation painted raw instrument quantities ("BCBA:S13N6 19.230,76")
         // in the hero, unordered tiles and an empty movements list for a
         // moment on every cold start.
-        val newTree = accounts.tree()
-        val leafs = ledger.leafBalances()
-        val newValuation = brokers?.let { b -> runCatching { b.valuation() }.getOrNull() }
-        val newDefaults = settings.defaultAccounts()
-        val newOrder = if (homeOrderWrites > 0) null else settings.homeAccountOrder()
-        val rows = settings.all()
-        val newRecent = ledger.page(limit = RECENT_COUNT)
+        val skipOrder = homeOrderWrites > 0
+        val read = suspend {
+            LocalRead(
+                tree = accounts.tree(),
+                leafs = ledger.leafBalances(),
+                valuation = brokers?.let { b -> runCatching { b.valuation() }.getOrNull() },
+                defaults = settings.defaultAccounts(),
+                order = if (skipOrder) null else settings.homeAccountOrder(),
+                rows = settings.all(),
+                recent = ledger.page(limit = RECENT_COUNT),
+            )
+        }
+        val (newTree, leafs, newValuation, newDefaults, newOrder, rows, newRecent) =
+            db?.readBatch(read) ?: read()
         tree = newTree
         storedLeafTotals = leafs
         newValuation?.let { valuation = it }
@@ -510,3 +519,14 @@ fun formatTotals(totals: Map<String, Long>): String =
         totals.entries.sortedByDescending { it.value }
             .joinToString(" · ") { (c, v) -> formatMoney(v, c, signed = true) }
     }
+
+/** Everything [LedgerState.loadLocal] reads, gathered before any of it is published. */
+private data class LocalRead(
+    val tree: List<AccountNode>,
+    val leafs: Map<String, Map<String, Long>>,
+    val valuation: Valuation?,
+    val defaults: Map<AccountType, String>,
+    val order: List<String>?,
+    val rows: Map<String, String>,
+    val recent: List<Transaction>,
+)
