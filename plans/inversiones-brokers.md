@@ -28,7 +28,7 @@ que resolvieron las fases 1 y 5; ver cada fase.
 | `Money` / `formatMinorUnits` / `Money.parse` | `LedgerModels.kt` | **escala fija 2** en todos lados (`whole * 100 + frac`). 341.922,4514 cuotapartes no entra |
 | `resolvePostings` | `LedgerModels.kt` | balancea **por commodity**; el cambio de moneda es una excepción angosta (exactamente 2 postings, la tasa en la prosa). Una compra con comisión (3 postings, 2 commodities) hoy se rechaza |
 | `LedgerState.netWorth` | `LedgerState.kt` | suma por commodity, **sin valuación**: una tenencia se mostraría como «0,4939 TTWO» |
-| ~~`accounts.commodity`~~ | `Schema.kt` | quitada: la columna sigue en la base, pero la app ya no la lee ni la escribe |
+| ~~`accounts.commodity`~~ | `Schema.kt` | quitada (columna borrada en el esquema v18) |
 | `AccountType.Equity` | `LedgerModels.kt` | existe: `Patrimonio:Saldo inicial` para abrir con la tenencia actual |
 | `transaction_sources(kind, ref, event_key)` | `Schema.kt` | idempotencia gratis: `('iol', numero)`, `('ibkr', transactionID)` |
 | `Reconcile.kt` (`Mirror`) | sharedLogic | el depósito en el broker es la otra pata de una transferencia que el banco ya avisó por notificación/mail |
@@ -309,7 +309,7 @@ Patrimonio:{Saldo inicial, Ajustes}
 
 Raíces con nombres distintos porque un nombre de raíz es único entre los cinco
 tipos. Las cuentas no declaran moneda: la moneda por cuenta se sacó de la app
-(`accounts.commodity` queda muerta en el esquema, ver `todo.md`). Elegir
+(`accounts.commodity` se borró en el esquema v18). Elegir
 cuentas existentes en vez de crearlas no está hecho.
 
 ---

@@ -146,7 +146,7 @@ const val SCHEMA_SQL =
  * other one: 5 is `accounts.in_net_worth`, which already-stamped installs
  * skipped straight past, so every account read failed with "no such column".
  */
-private const val SCHEMA_VERSION = 17L
+private const val SCHEMA_VERSION = 18L
 
 /**
  * Applies [SCHEMA_SQL] plus [migrateSchema], skipping both when this
@@ -290,6 +290,20 @@ private fun Database.addColumn(sql: String) {
     }
 }
 
+/**
+ * [addColumn]'s mirror: the pragma guard reads local state, which can lag
+ * behind a drop another device already pushed, and the engine then answers
+ * "no such column" — already done, not an error.
+ */
+private fun Database.dropColumn(sql: String) {
+    try {
+        execute(sql)
+    } catch (e: Exception) {
+        val message = e.message.orEmpty()
+        if ("no such column" !in message && "does not exist" !in message) throw e
+    }
+}
+
 fun Database.migrateSchema() {
     val columns = query("pragma table_info(accounts)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()
@@ -323,15 +337,16 @@ fun Database.migrateSchema() {
         // so storing a single color would still leave the app guessing.
         addColumn("alter table accounts add column color text")
     }
-    if ("commodity" !in columns) {
-        // Unused. It held a declared currency per asset account, a feature
-        // since removed; the app, the worker and the web app neither read nor
-        // write it any more. `drop column` does replicate on the sync engine
-        // (docs/sync-engine-ddl.md), but it must wait until no installed build
-        // still reads the column: older builds select it in every account
-        // query and would fail all of them once the drop reached them. The
-        // doc has the steps.
-        addColumn("alter table accounts add column commodity text")
+    if ("commodity" in columns) {
+        // Dead since per-account currency was removed; every installed build
+        // has stopped reading it (docs/sync-engine-ddl.md has the order of
+        // steps). Push pending row changes first so they are not rendered
+        // against the new shape; best-effort, offline the drop goes ahead.
+        try {
+            sync()
+        } catch (_: Exception) {
+        }
+        dropColumn("alter table accounts drop column commodity")
     }
     val txColumns = query("pragma table_info(transactions)", null) { rows ->
         rows.mapNotNull { it.getOrNull(1)?.toString() }.toSet()

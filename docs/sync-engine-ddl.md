@@ -88,8 +88,8 @@ So the order is:
    `migrateLegacyTransactionsTable()` does: pushing pending row changes first
    keeps them from being rendered against the new shape.
 
-Status of `accounts.commodity`: step 1 is done. Steps 2–3 are not; the column
-is still created and simply unused.
+Status of `accounts.commodity`: dropped in schema v18 (`dropColumn` in
+`migrateSchema()`), once every installed build had stopped reading it.
 
 ## Running the probe
 
