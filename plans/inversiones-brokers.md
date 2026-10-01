@@ -104,20 +104,10 @@ que resolvieron las fases 1 y 5; ver cada fase.
   archivo; el parser guarda sólo las monedas que se tienen.
 - `CashReport.endingCash` (1.895,07) = suma de las cash transactions: la
   aserción de saldo cierra exacto.
-- **Pendiente**: el formato de `Trades`/`OpenPositions`/`SecuritiesInfo`. Hay una
-  compra hecha (0,4939 TTWO por 99,98 USD, ≈ 202,43, `IB Order ID` 2124812991);
-  el XML del día siguiente confirma signos de `proceeds`, `ibCommission`,
-  `netCash`, `Cost Basis` y `Realized P/L`. Esperado:
-
-  | campo | esperado |
-  | --- | --- |
-  | `quantity` | 0,4939 |
-  | `tradePrice` | ≈ 202,43 |
-  | `proceeds` | −99,98 |
-  | `ibCommission` | ≈ −1,00 |
-  | `netCash` | ≈ −100,98 |
-  | `Cost Basis` | ≈ +100,98 |
-  | `CashReport` USD | ≈ 1.794,09 |
+- `Trades`/`OpenPositions`/`SecuritiesInfo`: confirmados con la compra de
+  TTWO (fixture `trade-ttwo.xml`, ver fase 0): dos ejecuciones de una orden,
+  `proceeds` e `ibCommission` negativos, `cost` = `-netCash`, y el `CashReport`
+  en dólares cierra con la caja que deja la compra.
 
 ### Galicia — resumen PDF de cuenta comitente (ejemplo de otra usuaria)
 
@@ -480,7 +470,7 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
 
 ## Fases
 
-### Fase 0 — fixtures (en curso)
+### Fase 0 — fixtures (hecha)
 
 - [x] IOL: estructura de todos los endpoints de lectura (en vivo).
 - [x] IOL: fixtures reales **scrubbeados** (números de cuenta reemplazados,
@@ -501,8 +491,8 @@ eventos con ref conocida se descartan antes de planear. Los pares de IOL
       25/09, no antes. El backfill del depósito no se había guardado:
       `backfill-deposit.xml` lo reconstruye con los montos y fechas anotados
       acá.
-- [ ] Sacar los campos personales de *Account Information* de la query
-      (dejar Account ID, Currency, Name, Account Type, Date Opened).
+- [x] Sacar los campos personales de *Account Information* de la query
+      (hecho por el usuario en Client Portal).
 
 ### Fase 0.5 — navegación (hecha)
 
