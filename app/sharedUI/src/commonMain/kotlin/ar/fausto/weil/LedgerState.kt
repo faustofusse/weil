@@ -239,15 +239,26 @@ class LedgerState(
 
     private suspend fun loadLocal() {
         val settled = written.toSet()
+        // Read everything first and publish it with no suspension in between:
+        // each `await` is a frame, and assigning the balances before the
+        // valuation painted raw instrument quantities ("BCBA:S13N6 19.230,76")
+        // in the hero, unordered tiles and an empty movements list for a
+        // moment on every cold start.
         val newTree = accounts.tree()
         val leafs = ledger.leafBalances()
+        val newValuation = brokers?.let { b -> runCatching { b.valuation() }.getOrNull() }
+        val newDefaults = settings.defaultAccounts()
+        val newOrder = if (homeOrderWrites > 0) null else settings.homeAccountOrder()
+        val rows = settings.all()
+        val newRecent = ledger.page(limit = RECENT_COUNT)
         tree = newTree
         storedLeafTotals = leafs
-        brokers?.let { b -> runCatching { b.valuation() }.getOrNull()?.let { valuation = it } }
-        defaultAccounts = settings.defaultAccounts()
-        reloadHomeOrder()
-        reloadNetWorthCurrency()
-        storedRecent = ledger.page(limit = RECENT_COUNT)
+        newValuation?.let { valuation = it }
+        defaultAccounts = newDefaults
+        if (newOrder != null && homeOrderWrites == 0) homeOrder = newOrder
+        netWorthCurrency = rows[NET_WORTH_CURRENCY_KEY] ?: DEFAULT_NET_WORTH_CURRENCY
+        investmentsDisplay = InvestmentsDisplay.parse(rows[INVESTMENTS_DISPLAY_KEY])
+        storedRecent = newRecent
         if (settled.isNotEmpty()) {
             pending = pending.filterNot { it.id in settled }
             written.removeAll(settled)
