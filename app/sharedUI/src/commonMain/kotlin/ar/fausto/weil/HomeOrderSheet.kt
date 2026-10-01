@@ -264,7 +264,7 @@ private fun HomeOrderRow(
             )
             Text(
                 if (onHome) {
-                    maskedAmount(entry?.value ?: 0L, entry?.key ?: Money.DEFAULT_COMMODITY, hidden)
+                    maskedAmount((entry?.value ?: 0L) * naturalSign(node.account.type), entry?.key ?: Money.DEFAULT_COMMODITY, hidden)
                 } else {
                     stringResource(Res.string.home_order_hidden)
                 },

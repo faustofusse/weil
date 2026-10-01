@@ -66,9 +66,16 @@ class LedgerState(
     var homeOrder by mutableStateOf<List<String>>(emptyList())
         private set
 
-    /** Root asset accounts in the user's Home order; Home shows the first few. */
+    /**
+     * Root asset and income accounts in the user's Home order; Home shows the
+     * first few. Assets go first by default, so an unordered Home still
+     * summarizes the money the user holds; an income source («Sueldo») only
+     * reaches a tile when the user drags it there.
+     */
     val homeAccounts: List<AccountNode> by derivedStateOf {
-        applyHomeOrder(tree.filter { it.account.type == AccountType.Asset }, homeOrder)
+        val assets = tree.filter { it.account.type == AccountType.Asset }
+        val income = tree.filter { it.account.type == AccountType.Income }
+        applyHomeOrder(assets + income, homeOrder)
     }
     /** Icon/color per account, subaccounts inheriting their parent's; see [accountLooks]. */
     val looks: Map<String, AccountLook> by derivedStateOf { tree.accountLooks() }

@@ -588,7 +588,13 @@ private fun AccountTile(
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            maskedAmount(entry?.value ?: 0L, entry?.key ?: Money.DEFAULT_COMMODITY, hidden),
+            // Natural sign, like the tree: an income tile says what came in,
+            // not the credit-side minus the books keep.
+            maskedAmount(
+                (entry?.value ?: 0L) * naturalSign(node.account.type),
+                entry?.key ?: Money.DEFAULT_COMMODITY,
+                hidden,
+            ),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             // No red for a negative balance here either — an account tile is
