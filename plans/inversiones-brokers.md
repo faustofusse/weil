@@ -248,8 +248,16 @@ consistente:
   fechada justo antes del movimiento más viejo de la caja, con deshacer. Una
   diferencia de **cantidad** no tiene botón: un split, un traspaso entre
   brokers o un trade faltante no se arreglan con plata.
-- **Pendiente**: antes de ofrecer el ajuste, buscar la pata en el banco
-  (`Reconcile`, relación `Mirror`) y proponer asociarla.
+- **Hecho** (`BrokerTransfers.kt`): la pata del banco. Para cada depósito o
+  extracción de la revisión se busca entre las transacciones guardadas
+  (±7 días, monto **exacto**, no vinculadas ya a otro evento del broker) la
+  otra mitad: la del banco cargada contra una categoría o patrimonio (se
+  vincula moviendo esa pata a la caja del broker: dos filas a medias quedan
+  en una transferencia) o una transferencia ya cargada a mano en la caja del
+  broker (sólo se le agrega la ref). La mejor queda preseleccionada, una por
+  movimiento; la hoja deja elegir otra o una cuenta. Una diferencia de caja de
+  IOL busca lo mismo sin fecha, pero sólo si el payee nombra al broker, y
+  ofrece «Vincular» al lado de «Ajustar». Todo se deshace desde el snackbar.
 - Es lo que tapa el agujero de IOL (no informa depósitos) y el de Galicia (no
   informa operaciones).
 

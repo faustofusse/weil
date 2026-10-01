@@ -1,5 +1,19 @@
 package ar.fausto.weil
 
+import weil.app.sharedui.generated.resources.broker_counterpart_linked_hint
+import weil.app.sharedui.generated.resources.broker_difference_maybe
+import weil.app.sharedui.generated.resources.broker_counterpart_linked
+import weil.app.sharedui.generated.resources.broker_link_other_account
+import weil.app.sharedui.generated.resources.broker_link_sheet_hint
+import weil.app.sharedui.generated.resources.broker_link_label
+import weil.app.sharedui.generated.resources.broker_linked
+import weil.app.sharedui.generated.resources.broker_link
+import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -87,11 +101,55 @@ fun BrokerImportScreen(
     val rebuiltMessage = stringResource(Res.string.broker_rebuild_done, route.brokerName)
     val undoLabel = stringResource(Res.string.action_undo)
     val adjustedMessage = stringResource(Res.string.broker_adjusted)
+    val linkedMessage = stringResource(Res.string.broker_linked)
     // Differences settled on this screen: they leave the list, and come back
     // if the adjustment is undone.
     var adjusted by remember { mutableStateOf<Set<BalanceDifference>>(emptySet()) }
     var adjusting by remember { mutableStateOf<BalanceDifference?>(null) }
-    val differences = plan.differences.filter { it !in adjusted }
+
+    // The bank's half of each deposit/withdrawal (BrokerTransfers.kt): the
+    // candidates per ref, and the one this import will link instead of
+    // creating a new transaction. Preselected once, when the facts load.
+    val cashAccounts = route.accounts.cash.values.toSet()
+    val brokerAccounts = cashAccounts + route.accounts.holdings
+    var transferCandidates by remember { mutableStateOf<Map<String, List<TransferLink>>>(emptyMap()) }
+    var links by remember { mutableStateOf<Map<String, TransferLink>>(emptyMap()) }
+    // An IOL cash difference is usually a bank transfer IOL never reported.
+    var differenceLinks by remember { mutableStateOf<Map<BalanceDifference, TransferLink>>(emptyMap()) }
+    LaunchedEffect(plan) {
+        val range = transferSearchRange(plan, epochMillis())
+        val facts = runCatching { ledger.reconcileFacts(range.first, range.last) }.getOrNull() ?: return@LaunchedEffect
+        val candidates = plan.transactions.mapNotNull { planned ->
+            val ref = planned.ref ?: return@mapNotNull null
+            if (!planned.needsCounterpart) return@mapNotNull null
+            val leg = transferLeg(planned, cashAccounts) ?: return@mapNotNull null
+            transferLinks(leg, planned.transaction.date, brokerAccounts, route.provider, facts)
+                .takeIf { it.isNotEmpty() }?.let { ref to it }
+        }.toMap()
+        transferCandidates = candidates
+        links = assignTransferLinks(candidates)
+        val taken = links.values.map { it.transactionId }.toSet()
+        // No date to anchor a difference, so the payee has to name the broker.
+        differenceLinks = plan.differences.filter { it.accountId in cashAccounts && it.deltaMinor != 0L }
+            .mapNotNull { d ->
+                transferLinks(TransferLeg(d.accountId, d.deltaMinor, d.commodity), null, brokerAccounts, route.provider, facts)
+                    .firstOrNull { it.transactionId !in taken && namesBroker(it.payee, route.provider) }
+                    ?.let { d to it }
+            }.toMap()
+    }
+
+    // A transfer the user had already typed into the broker's account is in
+    // the ledger side of every difference; linking it instead of creating a
+    // second one takes it back out.
+    val recordedTwice = links.values.filter { it.kind == TransferLink.Kind.Recorded }
+    val differences = plan.differences.filter { it !in adjusted }.mapNotNull { d ->
+        val linkedLegs = links.entries.filter { it.value.kind == TransferLink.Kind.Recorded }.mapNotNull { (ref, _) ->
+            plan.transactions.firstOrNull { it.ref == ref }?.let { transferLeg(it, cashAccounts) }
+        }.filter { it.accountId == d.accountId && it.commodity == d.commodity }.sumOf { it.amountMinor }
+        if (recordedTwice.isEmpty() || linkedLegs == 0L) d
+        else d.copy(ledgerMinor = d.ledgerMinor - linkedLegs).takeIf { it.deltaMinor != 0L }
+    }
+    var choosingLink by remember { mutableStateOf<PlannedTransaction?>(null) }
     // Where each deposit/withdrawal really came from or went to, by ref.
     // Unpicked ones stay on the opening balance (the planner's fallback).
     var counterparts by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -140,18 +198,28 @@ fun BrokerImportScreen(
                                 error = null
                                 scope.launch {
                                     try {
+                                        val linked = plan.transactions.mapNotNull { p ->
+                                            val link = p.ref?.let { links[it] } ?: return@mapNotNull null
+                                            val cash = transferLeg(p, cashAccounts)?.accountId ?: return@mapNotNull null
+                                            transferAssociation(link, p.ref, cash)
+                                        }
+                                        val linkedRefs = links.keys
                                         val chosen = plan.copy(
-                                            transactions = plan.transactions.map { p ->
+                                            transactions = plan.transactions.filter { it.ref !in linkedRefs }.map { p ->
                                                 p.ref?.let { counterparts[it] }
                                                     ?.let { p.withCounterpart(route.accounts.opening, it) } ?: p
                                             },
                                         )
                                         val ids = apply(chosen)
+                                        val undos = ledger.associate(linked)
                                         onDone()
                                         // A rebuild deleted what it replaced: undoing
                                         // it would leave neither, so it has no undo.
                                         if (plan.replaces.isEmpty()) {
-                                            Feedback.undoable(doneMessage, undoLabel) { ledger.deleteAll(ids) }
+                                            Feedback.undoable(doneMessage, undoLabel) {
+                                                ledger.deleteAll(ids)
+                                                ledger.revertAssociations(undos)
+                                            }
                                         } else {
                                             Feedback.show(rebuiltMessage)
                                         }
@@ -252,6 +320,31 @@ fun BrokerImportScreen(
                             )
                             // Cash only (see BrokersRepository.adjustOpening):
                             // a position that disagrees isn't fixed with money.
+                            val suggested = differenceLinks[difference]
+                            if (cash && suggested != null && adjusting != difference) {
+                                TextButton(
+                                    onClick = {
+                                        adjusting = difference
+                                        scope.launch {
+                                            try {
+                                                val undos = ledger.associate(listOf(transferAssociation(suggested, null, difference.accountId)))
+                                                adjusted = adjusted + difference
+                                                Feedback.undoable(linkedMessage, undoLabel) {
+                                                    ledger.revertAssociations(undos)
+                                                    adjusted = adjusted - difference
+                                                }
+                                            } catch (e: Throwable) {
+                                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                                Feedback.show(e.message ?: e.toString())
+                                            } finally {
+                                                adjusting = null
+                                            }
+                                        }
+                                    },
+                                    enabled = adjusting == null,
+                                    modifier = Modifier.padding(start = 8.dp),
+                                ) { Text(stringResource(Res.string.broker_link)) }
+                            }
                             if (cash) {
                                 if (adjusting == difference) {
                                     CircularProgressIndicator(
@@ -284,6 +377,14 @@ fun BrokerImportScreen(
                                 }
                             }
                         }
+                        differenceLinks[difference]?.let { link ->
+                            Text(
+                                stringResource(Res.string.broker_difference_maybe, linkLabel(link, paths)),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
                     }
                     Spacer(Modifier.height(16.dp))
                 }
@@ -307,7 +408,8 @@ fun BrokerImportScreen(
             if (needCounterpart > 0) {
                 item(key = "counterpart-hint") {
                     Text(
-                        stringResource(Res.string.broker_counterpart_hint),
+                        if (links.isEmpty()) stringResource(Res.string.broker_counterpart_hint)
+                        else stringResource(Res.string.broker_counterpart_linked_hint, links.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 12.dp),
@@ -320,13 +422,52 @@ fun BrokerImportScreen(
                 } else {
                     null
                 }
+                val link = planned.ref?.let { links[it] }
                 PlannedRow(
                     planned, route.accounts, scales, symbols,
-                    counterpart = other?.let { id -> paths[id]?.let { stringResource(if (planned.isDeposit(route.accounts)) Res.string.broker_counterpart_from else Res.string.broker_counterpart_to, it) } },
-                    onClick = if (planned.needsCounterpart) ({ picking = planned }) else null,
+                    // «desde Banco USD · vinculado»: the account first, it's
+                    // what the user checks; the movement is in the sheet.
+                    counterpart = (link?.ownAccountId ?: other)?.let { id ->
+                        paths[id]?.let {
+                            stringResource(if (planned.isDeposit(route.accounts)) Res.string.broker_counterpart_from else Res.string.broker_counterpart_to, it) +
+                                (if (link != null) " · " + stringResource(Res.string.broker_counterpart_linked) else "")
+                        }
+                    },
+                    onClick = when {
+                        !planned.needsCounterpart -> null
+                        planned.ref?.let { transferCandidates[it] }.isNullOrEmpty() -> ({ picking = planned })
+                        else -> ({ choosingLink = planned })
+                    },
                 )
             }
         }
+    }
+
+    choosingLink?.let { planned ->
+        val ref = planned.ref
+        val deposit = planned.isDeposit(route.accounts)
+        // A movement already linked to another deposit isn't offered twice.
+        val takenElsewhere = links.filterKeys { it != ref }.values.map { it.transactionId }.toSet()
+        TransferLinkSheet(
+            title = stringResource(if (deposit) Res.string.broker_counterpart_from_title else Res.string.broker_counterpart_to_title),
+            subtitle = planned.transaction.payee,
+            candidates = ref?.let { transferCandidates[it] }.orEmpty().filter { it.transactionId !in takenElsewhere },
+            selected = ref?.let { links[it] },
+            paths = paths,
+            onPick = { link ->
+                if (ref != null) {
+                    links = links + (ref to link)
+                    counterparts = counterparts - ref
+                }
+                choosingLink = null
+            },
+            onOtherAccount = {
+                if (ref != null) links = links - ref
+                choosingLink = null
+                picking = planned
+            },
+            onDismiss = { choosingLink = null },
+        )
     }
 
     picking?.let { planned ->
@@ -344,12 +485,99 @@ fun BrokerImportScreen(
             onPick = { node ->
                 val ref = planned.ref
                 if (ref != null) {
+                    links = links - ref
                     counterparts = if (node.account.id == route.accounts.opening) counterparts - ref
                     else counterparts + (ref to node.account.id)
                 }
                 picking = null
             },
         )
+    }
+}
+
+/** «Transferencia a Interactive Brokers» del 23/08 en Banco USD. */
+@Composable
+private fun linkLabel(link: TransferLink, paths: Map<String, String>): String = stringResource(
+    Res.string.broker_link_label,
+    link.payee.censored(),
+    shortDate(link.date),
+    paths[link.ownAccountId] ?: "",
+)
+
+/**
+ * Where a deposit came from, when the ledger already has a candidate for
+ * the bank's half: each stored movement that matches (linking it makes the
+ * two one transfer), and a way out to pick an account instead.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TransferLinkSheet(
+    title: String,
+    subtitle: String,
+    candidates: List<TransferLink>,
+    selected: TransferLink?,
+    paths: Map<String, String>,
+    onPick: (TransferLink) -> Unit,
+    onOtherAccount: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    stringResource(Res.string.broker_link_sheet_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+                )
+            }
+            candidates.forEach { link ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(link) }
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(link.payee.censored(), style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                        Text(
+                            listOf(
+                                shortDate(link.date),
+                                paths[link.ownAccountId].orEmpty(),
+                            ).filter { it.isNotBlank() }.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        formatMoney(link.amountMinor, link.commodity, signed = true),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (link.transactionId == selected?.transactionId) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 12.dp).size(20.dp),
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            Text(
+                stringResource(Res.string.broker_link_other_account),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOtherAccount)
+                    .padding(horizontal = 24.dp, vertical = 14.dp),
+            )
+        }
     }
 }
 
@@ -394,7 +622,7 @@ private fun PlannedRow(
     val cash = postings.filter { it.accountId in cashAccounts }
         .groupBy { it.commodity }
         .map { (commodity, legs) -> formatMoney(legs.sumOf { it.amountMinor }, commodity, signed = true) }
-    val day = dateInputOf(planned.transaction.date).split('-').reversed().joinToString("/")
+    val day = shortDate(planned.transaction.date)
     AppListRow(
         icon = if (planned.kind == PlannedKind.Opening) Icons.Filled.AccountTree else Icons.Filled.TrendingUp,
         paint = accountPaint(null),

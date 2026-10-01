@@ -126,6 +126,14 @@
     <string name="broker_rebuild_replaces">Reemplaza %1$d movimientos importados antes</string>
     <string name="broker_rebuild_done">Historial de %1$s reimportado</string>
     <string name="broker_positions_hint">Si una posición no coincide, puede que el saldo inicial se haya calculado mal. «Reimportar todo el historial» lo recalcula.</string>
+    <string name="broker_counterpart_linked">vinculado</string>
+    <string name="broker_counterpart_linked_hint">Encontré en tus cuentas el otro lado de %1$d transferencias: se vinculan a ese movimiento en vez de crear otro. Tocá una para cambiarlo.</string>
+    <string name="broker_link_label">«%1$s» del %2$s en %3$s</string>
+    <string name="broker_link_sheet_hint">Estos movimientos de tus cuentas coinciden en monto y fecha. Vincular uno lo convierte en esta transferencia en vez de crear otra.</string>
+    <string name="broker_link_other_account">Elegir una cuenta</string>
+    <string name="broker_difference_maybe">Puede ser %1$s, que quedó como gasto o ingreso.</string>
+    <string name="broker_link">Vincular</string>
+    <string name="broker_linked">Movimiento vinculado</string>
     <string name="broker_counterpart_hint">El broker no dice de qué cuenta salió la plata de cada depósito. Tocalo para elegirla; si no, queda contra el saldo inicial.</string>
     <string name="broker_counterpart_from">desde %1$s</string>
     <string name="broker_counterpart_to">hacia %1$s</string>

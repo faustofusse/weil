@@ -67,4 +67,44 @@ class IbkrImportTest {
         assertEquals("2026-08-27" to "2026-09-04", preview.gap)
         assertTrue(preview.plan.issues.any { "2026-08-27" in it.message })
     }
+
+    /**
+     * The bank push of the wire was already recorded under «Otros»: the
+     * review links it instead of creating the deposit, which leaves one
+     * transfer bank → IBKR and nothing for the next import to add.
+     */
+    @Test
+    fun theBankHalfOfADepositBecomesTheTransfer() = runBlocking {
+        val backfill = graph.ibkr.preview(bytes("backfill-deposit.xml"))
+        val deposit = backfill.plan.transactions.single { it.kind == PlannedKind.Transfer }
+        val bank = graph.accounts.add("Banco Nación USD", AccountType.Asset, null)
+        val push = graph.ledger.add(
+            date = deposit.transaction.date - 2 * 86_400_000L,
+            payee = "Transferencia a Interactive Brokers LLC",
+            note = null,
+            drafts = listOf(DraftPosting(bank, "-1895.07", "USD"), DraftPosting(EXTERNAL_EXPENSE_ID, "1895.07", "USD")),
+        )
+        val cash = backfill.accounts.cash.values.toSet()
+        val leg = transferLeg(deposit, cash)!!
+        val range = transferSearchRange(backfill.plan, deposit.transaction.date)
+        val facts = graph.ledger.reconcileFacts(range.first, range.last)
+        val link = transferLinks(leg, deposit.transaction.date, cash + backfill.accounts.holdings, IBKR_PROVIDER, facts).single()
+        assertEquals(push, link.transactionId)
+
+        // What the review's «Importar» does.
+        graph.ibkr.apply(backfill.plan.copy(transactions = backfill.plan.transactions - deposit))
+        val undos = graph.ledger.associate(listOf(transferAssociation(link, deposit.ref, leg.accountId)))
+
+        val stored = graph.ledger.get(push)!!
+        assertEquals(setOf(bank, leg.accountId), stored.postings.map { it.accountId }.toSet())
+        assertEquals(189_507L, graph.brokers.ledgerView(backfill.accounts).cash["USD"])
+        // The next import knows the deposit and books nothing.
+        val again = graph.ibkr.preview(bytes("backfill-deposit.xml"))
+        assertEquals(emptyList(), again.plan.transactions.filter { it.kind == PlannedKind.Transfer })
+        assertEquals(emptyList(), again.plan.differences)
+
+        // Undo puts the push back under «Otros».
+        graph.ledger.revertAssociations(undos)
+        assertTrue(graph.ledger.get(push)!!.postings.any { it.accountId == EXTERNAL_EXPENSE_ID })
+    }
 }

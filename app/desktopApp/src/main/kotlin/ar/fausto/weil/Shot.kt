@@ -222,6 +222,20 @@ fun main(args: Array<String>) {
                     // The deposit backfill: a transfer whose source the user picks.
                     "ibkr-deposit" -> kotlinx.coroutines.runBlocking {
                         val preview = graph.ibkr.preview(File("../sharedLogic/src/jvmTest/resources/ibkr/backfill-deposit.xml").readBytes())
+                        // The bank push of the same wire, filed under «Otros»
+                        // two days earlier: the review links it instead of
+                        // booking the deposit against the opening balance.
+                        val deposit = preview.plan.transactions.first { it.kind == PlannedKind.Transfer }
+                        val bankUsd = "seed-asset-bank-usd"
+                        graph.ledger.add(
+                            date = deposit.transaction.date - 2 * 24L * 60 * 60 * 1000,
+                            payee = "Transferencia a Interactive Brokers LLC",
+                            note = null,
+                            drafts = listOf(
+                                DraftPosting(bankUsd, "-1895.07", "USD"),
+                                DraftPosting(EXTERNAL_EXPENSE_ID, "1895.07", "USD"),
+                            ),
+                        )
                         BrokerImportRoute("IBKR", IBKR_PROVIDER, preview.plan, preview.accounts, graph.brokers.scales())
                     }
                     "holdings" -> invest?.let { AccountDetailRoute(it.accounts.holdings) }
