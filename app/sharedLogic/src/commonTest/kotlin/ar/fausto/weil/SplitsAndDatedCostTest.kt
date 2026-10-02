@@ -279,6 +279,33 @@ class SplitsAndDatedCostTest {
         assertEquals(setOf("BCBA:INTC", "BCBA:INTCD"), valuation.linesOf("BCBA:INTC"))
     }
 
+    /** Your MELI in IOL's dollar view: 13 at MELID's US$ 14,73, not $ 22.840 / MEP. */
+    @Test
+    fun inDollarsAPesoCedearIsWorthItsDollarLine() {
+        val withLine = valuation.copy(
+            prices = valuation.prices + ("BCBA:INTCD" to PriceQuote("BCBA:INTCD", "USD", t0 + 30 * day, d("24.5"), "iol")),
+        )
+        val holdings = mapOf("BCBA:INTC" to HeldPosition(7L, 3_600_000L, "ARS"))
+        val movements = listOf(move(t0 + 1, "BCBA:INTC", 7L, 3_600_000L, "ARS"))
+        val mep = withLine.positions(holdings, InvestmentsDisplay.Mep, movements).single()
+        assertEquals("USD" to 17_150L, mep.valueCommodity to mep.valueMinor)
+        assertEquals(17_150L - 3_000L, mep.unrealizedMinor)
+        // The totals say the same as the rows; pesos keep the peso quote.
+        val totals = mapOf("BCBA:INTC" to 7L, "USD" to 100L, "ARS" to 160_000L)
+        assertEquals(mapOf("USD" to 17_150L + 100L + 100L), withLine.valueInDisplay(totals, InvestmentsDisplay.Mep))
+        assertEquals(mapOf("ARS" to 26_880_000L + 160_000L + 160_000L), withLine.valueInDisplay(totals, InvestmentsDisplay.Pesos))
+        // A dollar quote a day staler than the peso one is not used.
+        val stale = valuation.copy(
+            prices = valuation.prices + ("BCBA:INTCD" to PriceQuote("BCBA:INTCD", "USD", t0 + 28 * day, d("24.5"), "iol")),
+        )
+        assertEquals(16_800L, stale.positions(holdings, InvestmentsDisplay.Mep, movements).single().valueMinor)
+        // Which lines to ask IOL for.
+        assertEquals(
+            listOf("BCBA:INTCD", "BCBA:YPFDD"),
+            iolDollarLines(holdings + ("BCBA:YPFD" to HeldPosition(1L, 1L, "ARS")), valuation.commodities).map { it.id },
+        )
+    }
+
     @Test
     fun aPurchaseWithoutARateLeavesItsSecurityWithoutAGain() {
         val holdings = mapOf("BCBA:INTC" to HeldPosition(7L, 3_600_000L, "ARS"))

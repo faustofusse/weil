@@ -368,6 +368,17 @@ fun iolBatch(fetch: IolFetch): BrokerBatch {
     )
 }
 
+/**
+ * The dollar trading line ("D") of every CEDEAR or share held in pesos on
+ * BYMA: the same units, quoted in dollars, described like their peso line.
+ */
+fun iolDollarLines(holdings: Map<String, HeldPosition>, commodities: Map<String, InstrumentInfo>): List<InstrumentInfo> =
+    holdings.filter { it.value.quantityMinor > 0L }.keys.mapNotNull { id ->
+        val info = commodities[id] ?: return@mapNotNull null
+        if (!id.startsWith("BCBA:") || info.quoteCommodity != "ARS" || info.kind !in setOf("cedear", "stock")) return@mapNotNull null
+        info.copy(id = id + "D", symbol = info.symbol + "D", quoteCommodity = "USD", isin = null, conid = null)
+    }
+
 /** Commodity, kind, scale and face value of an IOL symbol. */
 fun iolInstrumentInfo(symbol: String, market: String?, title: IolInstrument?): InstrumentInfo {
     val tipo = title?.tipo.orEmpty().lowercase()

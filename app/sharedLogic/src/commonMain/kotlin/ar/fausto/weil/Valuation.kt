@@ -109,6 +109,45 @@ data class Valuation(
     }
 
     /**
+     * The trading line of [security] that is quoted in [target] itself, when
+     * its own price is no staler than the security's (a day at most): MELID
+     * for MELI in dollars. Its market price is what the units are worth in
+     * that currency — a broker's app states a peso CEDEAR in dollars at the D
+     * line's quote, not at the MEP rate — and it differs from converting by
+     * whatever the two markets disagree on.
+     */
+    fun lineQuotedIn(security: String, target: String): String? {
+        val base = prices[security]
+        return linesOf(security).firstOrNull { line ->
+            val own = prices[line] ?: return@firstOrNull false
+            own.quoteCommodity == target && own.price.signum > 0 &&
+                (base == null || base.quoteCommodity == target || own.at >= base.at - DAY_MS)
+        }
+    }
+
+    /**
+     * [totals] (commodity → minor units: cash and instruments) as [display]
+     * states them: like [inDisplay] over [value], except that an instrument
+     * with a trading line quoted in the target currency ([lineQuotedIn]) is
+     * valued at that line's price, so the totals add up to [positions].
+     */
+    fun valueInDisplay(totals: Map<String, Long>, display: InvestmentsDisplay): Map<String, Long> {
+        val target = display.target ?: return value(totals)
+        if (!groupsLines(display)) return inDisplay(value(totals), display)
+        val rest = mutableMapOf<String, Long>()
+        var direct = 0L
+        for ((commodity, minor) in totals) {
+            if (minor == 0L) continue
+            val line = commodities[commodity]?.let { lineQuotedIn(securityOf(commodity), target) }
+            val valued = line?.let { valueOf(it, minor) }
+            if (valued != null) direct += valued.second else rest[commodity] = minor
+        }
+        val result = inDisplay(value(rest), display).toMutableMap()
+        if (direct != 0L) result[target] = (result[target] ?: 0L) + direct
+        return result.filterValues { it != 0L }
+    }
+
+    /**
      * [totals] (commodity → minor units) as money: currencies kept, priced
      * instruments converted into their quote currency and added to it, zero
      * lines dropped. An instrument without a price has no money value to
@@ -221,11 +260,18 @@ data class Valuation(
         val lines = groups.map { (security, entries) ->
             val info = commodities[security] ?: commodities.getValue(entries.first().key)
             val quantity = entries.sumOf { it.value.quantityMinor }
+            // Every line is the same unit, so a line quoted in the target
+            // values them all; otherwise each line converts its own value.
+            val direct = lineQuotedIn(security, target)
             var value: Long? = 0L
             var cost: Long? = 0L
             for ((line, held) in entries) {
                 if (held.quantityMinor == 0L) continue
-                val lineValue = valueOf(line, held.quantityMinor)?.let { (quote, minor) -> convertMoney(minor, quote, target) }
+                val lineValue = if (direct != null) {
+                    valueOf(direct, held.quantityMinor)?.second
+                } else {
+                    valueOf(line, held.quantityMinor)?.let { (quote, minor) -> convertMoney(minor, quote, target) }
+                }
                 value = if (value != null && lineValue != null) value + lineValue else null
                 val lineCost = when {
                     held.costMinor == 0L || held.costCommodity == null -> null

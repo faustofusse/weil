@@ -337,6 +337,12 @@ class BrokersRepository(
         if (notify) ledger.changes.tryEmit(Unit)
     }
 
+    /** Describes [instruments] the ledger doesn't know yet (insert or ignore). */
+    suspend fun describe(instruments: List<InstrumentInfo>) {
+        if (instruments.isEmpty()) return
+        db.use { d -> for (c in instruments) d.insertCommodity(c) }
+    }
+
     /** Newest official dollar rate (see [OFFICIAL_SOURCE]), or null. */
     suspend fun latestOfficialRate(): PriceQuote? = db.useForRead { d -> d.officialRate() }
 

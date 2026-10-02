@@ -380,19 +380,24 @@ fun InvestmentsScreen(
                     item(key = "hero") {
                         // What the brokers' accounts are worth: their cash and
                         // their holdings, instruments at the last price.
-                        val money = remember(connected, ledgerState.displayLeafTotals) {
+                        // By commodity, so a display in one currency can value a
+                        // CEDEAR at its line in that currency, as the rows do.
+                        val holdingsByCommodity = remember(connected, ledgerState.leafTotals) {
                             val sum = mutableMapOf<String, Long>()
                             for (c in connected) {
                                 for (id in c.accounts.cash.values + c.accounts.holdings) {
-                                    ledgerState.displayLeafTotals[id]?.forEach { (k, v) -> sum[k] = (sum[k] ?: 0L) + v }
+                                    ledgerState.leafTotals[id]?.forEach { (k, v) -> sum[k] = (sum[k] ?: 0L) + v }
                                 }
                             }
                             sum.filterValues { it != 0L }
                         }
+                        val money = remember(holdingsByCommodity, valuation) { valuation.value(holdingsByCommodity) }
                         // All in pesos or all in MEP converts at the MEP rate,
                         // which is then the one line worth saying; the
                         // official one only restates the currencies as they are.
-                        val shown = remember(money, valuation, display) { valuation.inDisplay(money, display) }
+                        val shown = remember(holdingsByCommodity, valuation, display) {
+                            valuation.valueInDisplay(holdingsByCommodity, display)
+                        }
                         InvestmentsHero(
                             money = shown,
                             gains = remember(positions) { unrealizedTotals(positions) },
@@ -433,10 +438,10 @@ fun InvestmentsScreen(
                         val rootId = parents[holdingsId]
                         val title = (rootId?.let { names[it] } ?: names[holdingsId]).orEmpty()
                         val value = (c.accounts.cash.values + holdingsId)
-                            .flatMap { ledgerState.displayLeafTotals[it].orEmpty().entries }
+                            .flatMap { ledgerState.leafTotals[it].orEmpty().entries }
                             .groupBy({ it.key }, { it.value })
                             .mapValues { it.value.sum() }
-                            .let { valuation.inDisplay(it, display) }
+                            .let { valuation.valueInDisplay(it, display) }
                             .filterValues { it != 0L }
                             .entries.sortedByDescending { abs(it.value) }
                         val isIol = c.provider == IOL_PROVIDER

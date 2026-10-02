@@ -89,7 +89,30 @@ class IolRepository(
         }
         runCatching { brokers.savePrices(plan.prices) }
         runCatching { priceClosedPositions(accounts) }
+        runCatching { priceDollarLines(accounts) }
         return plan
+    }
+
+    /**
+     * The dollar line's quote of every peso CEDEAR or share held (MELID for
+     * MELI, [iolDollarLines]), described and priced so the investments tab
+     * in dollars values them at it, as IOL's own app does. Best effort.
+     */
+    private suspend fun priceDollarLines(accounts: BrokerAccounts) {
+        val valuation = brokers.valuation()
+        val wanted = iolDollarLines(ledgerHoldings(accounts), valuation.commodities)
+        if (wanted.isEmpty()) return
+        val now = epochMillis()
+        val quoted = wanted.mapNotNull { line ->
+            val quote = runCatching { client.quote("bcba", line.symbol) }
+                .onFailure { println("iol: quote ${line.symbol} failed: ${it.message}") }
+                .getOrNull() ?: return@mapNotNull null
+            val price = quote.ultimoPrecio?.takeIf { it.signum > 0 } ?: return@mapNotNull null
+            if (iolCurrency(quote.moneda) != "USD") return@mapNotNull null
+            line to PriceQuote(line.id, "USD", now, price, IOL_PROVIDER)
+        }
+        brokers.describe(quoted.map { it.first })
+        brokers.savePrices(quoted.map { it.second }, notify = true)
     }
 
     /**
