@@ -52,6 +52,9 @@ const ops = ((await get(
   "operaciones.json",
 )) ?? []) as Op[];
 await get("/api/v2/estadocuenta", "estadocuenta.json");
+// IOL's reference MEP rate vs the AL30/AL30D last-trade ratio the app falls back to.
+for (const s of ["AL30", "AL30D", "GD30"]) await get(`/api/v2/Cotizaciones/MEP/${s}`, `mep-${s}.json`);
+for (const s of ["AL30", "AL30D"]) await get(`/api/v2/bcba/Titulos/${s}/Cotizacion`, `cotizacion-${s}.json`);
 
 // Every non-trade row: payments (both halves of each pair) and anything else.
 const trades = new Set(["compra", "venta", "suscripción fci", "rescate fci"]);

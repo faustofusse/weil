@@ -307,6 +307,17 @@ class SplitsAndDatedCostTest {
     }
 
     @Test
+    fun iolsReferenceMepWinsOverTheBondRatio() {
+        val quotes = mapOf("AL30" to d("100000"), "AL30D" to d("64.3"))
+        assertEquals(d("1551.3"), iolMepRate(quotes, t0, d("1551.3"))!!.price)
+        assertEquals(d("1555.21"), iolMepRate(quotes, t0, null)!!.price)
+        assertEquals(d("1555.21"), iolMepRate(quotes, t0, d("0"))!!.price)
+        // Something that isn't a peso rate near the market's is ignored.
+        assertEquals(d("1555.21"), iolMepRate(quotes, t0, d("0.00064"))!!.price)
+        assertEquals(d("1700"), iolMepRate(emptyMap(), t0, d("1700"))!!.price)
+    }
+
+    @Test
     fun aPurchaseWithoutARateLeavesItsSecurityWithoutAGain() {
         val holdings = mapOf("BCBA:INTC" to HeldPosition(7L, 3_600_000L, "ARS"))
         val line = valuation.positions(holdings, InvestmentsDisplay.Mep, listOf(move(t0 - 100 * day, "BCBA:INTC", 7L, 3_600_000L, "ARS"))).single()

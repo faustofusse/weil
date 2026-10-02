@@ -243,7 +243,10 @@ class IolRepository(
         val quotes = IOL_MEP_BONDS.flatMap { listOf(it, it + "D") }.mapNotNull { symbol ->
             runCatching { client.quote("bcba", symbol).ultimoPrecio }.getOrNull()?.let { symbol to it }
         }.toMap()
-        val fetched = IolFetch(now, state, portfolios, operations, details, instruments, quotes)
+        val mepReference = runCatching { client.mepReference(IOL_MEP_BONDS.first()) }
+            .onFailure { println("iol: MEP reference failed: ${it.message}") }
+            .getOrNull()?.takeIf { it.signum > 0 }
+        val fetched = IolFetch(now, state, portfolios, operations, details, instruments, quotes, mepReference)
         // IOL's own figures, for checking a reported mismatch; never fails the sync.
         try {
             settings.set(IOL_SNAPSHOT_KEY, iolSnapshotJson(fetched))

@@ -251,6 +251,14 @@ interface IolSource {
     /** A fund's last share value; recorded sources have none. */
     suspend fun fundQuote(symbol: String): IolFundQuote =
         throw UnsupportedOperationException("no fund quotes")
+
+    /**
+     * `GET /api/v2/Cotizaciones/MEP/{simbolo}`: IOL's reference MEP rate
+     * through [symbol] (pesos per dollar, a bare number) — the rate its own
+     * app states dollar values at. Recorded sources have none.
+     */
+    suspend fun mepReference(symbol: String): Decimal =
+        throw UnsupportedOperationException("no MEP reference")
 }
 
 /**
@@ -307,6 +315,9 @@ class IolClient(
 
     override suspend fun quote(market: String, symbol: String): IolQuote =
         get("/api/v2/$market/Titulos/$symbol/Cotizacion")
+
+    override suspend fun mepReference(symbol: String): Decimal =
+        lenientDecimal(get<JsonElement>("/api/v2/Cotizaciones/MEP/$symbol"))
 
     override suspend fun fundQuote(symbol: String): IolFundQuote {
         val obj: kotlinx.serialization.json.JsonObject = get("/api/v2/Titulos/FCI/$symbol")

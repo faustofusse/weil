@@ -35,6 +35,8 @@ data class IolFetch(
     val instruments: Map<String, IolInstrument> = emptyMap(),
     /** Last price by symbol, for the [IOL_MEP_BONDS] lines; missing ones are simply absent. */
     val quotes: Map<String, Decimal> = emptyMap(),
+    /** IOL's own reference MEP rate (`Cotizaciones/MEP`), preferred over the [quotes] ratio. */
+    val mepReference: Decimal? = null,
 )
 
 /**
@@ -44,13 +46,24 @@ data class IolFetch(
  */
 val IOL_MEP_BONDS = listOf("AL30", "GD30")
 
-/** Pesos per MEP dollar from [quotes] (see [IOL_MEP_BONDS]), or null when no pair is quoted. */
-fun iolMepRate(quotes: Map<String, Decimal>, at: Long): PriceQuote? =
-    IOL_MEP_BONDS.firstNotNullOfOrNull { bond ->
+/**
+ * Pesos per MEP dollar: IOL's [reference] rate when it gave one — what its
+ * app converts at, which the last-trade ratio below missed by 0,2 % on a
+ * letra — else from [quotes] (see [IOL_MEP_BONDS]); null when neither.
+ */
+fun iolMepRate(quotes: Map<String, Decimal>, at: Long, reference: Decimal? = null): PriceQuote? {
+    val ratio = IOL_MEP_BONDS.firstNotNullOfOrNull { bond ->
         val pesos = quotes[bond]?.takeIf { it.signum > 0 } ?: return@firstNotNullOfOrNull null
         val dollars = quotes[bond + "D"]?.takeIf { it.signum > 0 } ?: return@firstNotNullOfOrNull null
-        PriceQuote("USD", "ARS", at, pesos.divide(dollars, 2), MEP_SOURCE)
+        pesos.divide(dollars, 2)
     }
+    // The reference only when it reads like a peso rate near the market's:
+    // an endpoint answering something else must not move every dollar value.
+    val trusted = reference?.takeIf { ref ->
+        ref.signum > 0 && (ratio == null || (ref - ratio).abs() * Decimal.of(20) <= ratio)
+    }
+    return (trusted ?: ratio)?.let { PriceQuote("USD", "ARS", at, it, MEP_SOURCE) }
+}
 
 const val IOL_PROVIDER = "iol"
 
@@ -363,7 +376,7 @@ fun iolBatch(fetch: IolFetch): BrokerBatch {
         events = events,
         snapshot = snapshot,
         instruments = instruments.values.sortedBy { it.id },
-        prices = listOfNotNull(iolMepRate(fetch.quotes, fetch.at)),
+        prices = listOfNotNull(iolMepRate(fetch.quotes, fetch.at, fetch.mepReference)),
         notes = notes,
     )
 }
