@@ -55,6 +55,10 @@ await get("/api/v2/estadocuenta", "estadocuenta.json");
 // IOL's reference MEP rate vs the AL30/AL30D last-trade ratio the app falls back to.
 for (const s of ["AL30", "AL30D", "GD30"]) await get(`/api/v2/Cotizaciones/MEP/${s}`, `mep-${s}.json`);
 for (const s of ["AL30", "AL30D"]) await get(`/api/v2/bcba/Titulos/${s}/Cotizacion`, `cotizacion-${s}.json`);
+// Price history around a purchase day: does IOL keep intraday rows (to read the MEP at the trade's minute)?
+const day = process.env.IOL_DAY ?? "2026-08-14";
+const next = new Date(Date.parse(day) + 2 * 86_400_000).toISOString().slice(0, 10);
+for (const s of ["AL30", "AL30D"]) await get(`/api/v2/bcba/Titulos/${s}/Cotizacion/seriehistorica/${day}/${next}/sinAjustar`, `serie-${s}.json`);
 
 // Every non-trade row: payments (both halves of each pair) and anything else.
 const trades = new Set(["compra", "venta", "suscripción fci", "rescate fci"]);
