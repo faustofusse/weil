@@ -327,9 +327,41 @@ class EmbeddingsRepository(
         into: List<EmbedKind>,
         k: Int = 5,
         exclude: String? = null,
+    ): Map<EmbedKind, List<SimilarItem>> =
+        similarToTexts(listOf(text), into, k, exclude).firstOrNull().orEmpty()
+
+    /**
+     * One search per query text, all embedded in **one** call; the result has
+     * one map per text, in order (blank texts get an empty map).
+     *
+     * For when one sentence cannot carry both questions: the suggestion asks
+     * "what reads like this movement" *and* "what did I record under this
+     * merchant", and a single vector of "débito Santander en LAVISION" ranks
+     * every other Santander purchase above the LAVISION rows paid from
+     * another wallet.
+     */
+    suspend fun similarToTexts(
+        texts: List<String>,
+        into: List<EmbedKind>,
+        k: Int = 5,
+        exclude: String? = null,
+    ): List<Map<EmbedKind, List<SimilarItem>>> {
+        val wanted = texts.filter { it.isNotBlank() }
+        if (wanted.isEmpty() || into.isEmpty()) return texts.map { emptyMap() }
+        val vectors = embedder.embed(wanted)
+        val byText = wanted.zip(vectors).toMap()
+        return texts.map { text ->
+            val vector = byText[text] ?: return@map emptyMap()
+            nearest(vector, into, k, exclude)
+        }
+    }
+
+    private suspend fun nearest(
+        vector: List<Double>,
+        into: List<EmbedKind>,
+        k: Int,
+        exclude: String?,
     ): Map<EmbedKind, List<SimilarItem>> {
-        if (text.isBlank() || into.isEmpty()) return emptyMap()
-        val vector = embedder.embed(listOf(text)).firstOrNull() ?: return emptyMap()
         val literal = vector.toVectorLiteral()
         val want = k.coerceIn(1, 50)
         return db.useForRead { d ->

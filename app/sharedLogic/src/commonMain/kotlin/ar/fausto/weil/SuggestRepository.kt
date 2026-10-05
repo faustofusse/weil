@@ -236,17 +236,23 @@ class SuggestRepository(
             }
             // Neighbours are searched with the *plain* sentence the reader
             // wrote, not with the bank's template: that is what makes the hits
-            // purchases instead of rows that share boilerplate. Both tables in
-            // one call — the query vector is the expensive part, and it is the
-            // same vector for both.
+            // purchases instead of rows that share boilerplate. And with the
+            // payee alone, because that sentence names the account too: "débito
+            // Santander en LAVISION" ranked six other Santander purchases above
+            // the two LAVISION rows paid with Mercado Pago, so the category
+            // they were filed under never reached Jev. Both queries and both
+            // tables in one embed call.
             val similar = async {
                 try {
-                    embeddings.similarToText(
-                        read.normalized,
+                    val (bySentence, byPayee) = embeddings.similarToTexts(
+                        listOf(read.normalized, read.payee.trim()),
                         listOf(ownKind, EmbedKind.Transaction),
                         k = 6,
                         exclude = id,
                     )
+                    listOf(ownKind, EmbedKind.Transaction).associateWith { kind ->
+                        interleaveNeighbours(byPayee[kind].orEmpty(), bySentence[kind].orEmpty())
+                    }
                 } catch (e: Throwable) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
                     emptyMap()
@@ -278,8 +284,8 @@ class SuggestRepository(
         // "how was this recorded" is the accounts, not only the payee — a
         // withdrawal fixed by hand to land in cash has to say so to the next
         // run.
-        val recordedAs = recordedPrecedents
-            .mapNotNull { it.recordedIn.firstOrNull() }
+        val similarShown = similarTransactions.take(MAX_PRECEDENTS)
+        val recordedAs = (recordedPrecedents.mapNotNull { it.recordedIn.firstOrNull() } + similarShown.map { it.id })
             .distinct()
             .associateWith { txId ->
                 try {
@@ -290,19 +296,19 @@ class SuggestRepository(
                 }
             }
         val pathOf = flat.associate { it.account.id to it.path }
+        fun side(tx: Transaction?, negative: Boolean) = tx?.postings
+            ?.filter { it.amountMinor != 0L && (it.amountMinor < 0) == negative }
+            ?.mapNotNull { pathOf[it.accountId] }
+            ?.distinct()
+            ?.takeIf { it.isNotEmpty() }
+            ?.joinToString(", ")
         val wirePrecedents = recordedPrecedents.map { p ->
             val tx = p.recordedIn.firstOrNull()?.let { recordedAs[it] }
-            fun side(negative: Boolean) = tx?.postings
-                ?.filter { it.amountMinor != 0L && (it.amountMinor < 0) == negative }
-                ?.mapNotNull { pathOf[it.accountId] }
-                ?.distinct()
-                ?.takeIf { it.isNotEmpty() }
-                ?.joinToString(", ")
             WirePrecedent(
                 text = "${p.item.title} — ${p.item.subtitle.take(160)}",
                 payee = tx?.payee,
-                from = side(negative = true),
-                to = side(negative = false),
+                from = side(tx, negative = true),
+                to = side(tx, negative = false),
                 `when` = relativeDay(message.at, p.item.date),
             )
         }
@@ -334,10 +340,15 @@ class SuggestRepository(
                     // them to this message, so they are weaker than a
                     // precedent — but they exist from the first run, and
                     // precedents do not until the user has linked one by hand.
-                    similar = similarTransactions.take(MAX_PRECEDENTS).map {
+                    // With the accounts each one was filed under: a payee
+                    // alone shows a habit exists but not which category it is.
+                    similar = similarShown.map {
+                        val tx = recordedAs[it.id]
                         WirePrecedent(
                             text = it.title + (it.subtitle.take(80).let { s -> if (s.isBlank()) "" else " — $s" }),
                             payee = it.title,
+                            from = side(tx, negative = true),
+                            to = side(tx, negative = false),
                             `when` = relativeDay(message.at, it.date),
                         )
                     },
@@ -743,6 +754,22 @@ private fun wireType(type: AccountType): String = when (type) {
     AccountType.Expense -> "expense"
     AccountType.Income -> "income"
     AccountType.Equity -> "equity"
+}
+
+/**
+ * Two neighbour lists merged by turns, [first] leading, duplicates dropped.
+ * Turns rather than by distance: the two queries' distances are not on the
+ * same scale (a lone merchant name sits further from everything), so sorting
+ * the union would let the sentence query crowd the merchant hits out again.
+ */
+internal fun interleaveNeighbours(first: List<SimilarItem>, second: List<SimilarItem>): List<SimilarItem> {
+    val seen = HashSet<String>()
+    val out = ArrayList<SimilarItem>(first.size + second.size)
+    for (i in 0 until maxOf(first.size, second.size)) {
+        first.getOrNull(i)?.let { if (seen.add(it.id)) out += it }
+        second.getOrNull(i)?.let { if (seen.add(it.id)) out += it }
+    }
+    return out
 }
 
 /** "hace 3 h" / "hace 2 días", relative to the message being studied. */
