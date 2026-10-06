@@ -4,7 +4,9 @@
   "scripts": {
     "deploy": "WRANGLER_DOCKER_BIN=false cf deploy",
     "dev": "WRANGLER_DOCKER_BIN=false cf dev",
-    "typecheck": "WRANGLER_DOCKER_BIN=false cf workers types && tsc --noEmit"
+    "typecheck": "WRANGLER_DOCKER_BIN=false cf workers types && tsc --noEmit",
+    "tail": "wrangler tail finance",
+    "secret": "wrangler secret put --name finance"
   },
   "devDependencies": {
     "cf": "^1.0.0-beta.12",

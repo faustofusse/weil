@@ -2,8 +2,9 @@ import { bindings, defineConfig } from "cf/config";
 
 import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
 
-// `wrangler.jsonc` stays beside this file only for the commands `cf` does not
-// cover yet (`wrangler secret put`, `wrangler tail`); deploys read this one.
+// The only config of this Worker. The two jobs `cf` cannot do yet go through
+// Wrangler by Worker name, so they need no Wrangler config file:
+// `npm run tail` and `npm run secret -- <NAME>`.
 export default defineConfig({
 	accountId: "f12da7851e4dd1d107a80417a1d4cbbd",
 	worker: {
@@ -31,7 +32,7 @@ export default defineConfig({
 			DOCS: bindings.r2({ name: "finance-docs" }),
 			// Workers AI: the second reader for a captured message (GLM).
 			AI: bindings.ai({}),
-			// Set with `wrangler secret put <NAME>`; declared so they are typed.
+			// Set with `npm run secret -- <NAME>`; declared so they are typed.
 			// `secret()` means required, so the optional AI_GATEWAY_TOKEN (unset
 			// today, read through `ImportEnv`) is deliberately not listed.
 			TURSO_API_TOKEN: bindings.secret(),
