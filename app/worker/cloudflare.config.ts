@@ -3,7 +3,7 @@ import { bindings, defineConfig } from "cf/config";
 import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
 
 // The only config of this Worker. The two jobs `cf` cannot do yet go through
-// Wrangler by Worker name, so they need no Wrangler config file:
+// Wrangler by Worker name (fetched by npx; it is not a dependency):
 // `npm run tail` and `npm run secret -- <NAME>`.
 export default defineConfig({
 	accountId: "f12da7851e4dd1d107a80417a1d4cbbd",

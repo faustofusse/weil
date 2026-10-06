@@ -5,13 +5,14 @@
     "deploy": "WRANGLER_DOCKER_BIN=false cf deploy",
     "dev": "WRANGLER_DOCKER_BIN=false cf dev",
     "typecheck": "WRANGLER_DOCKER_BIN=false cf workers types && tsc --noEmit",
-    "tail": "wrangler tail finance",
-    "secret": "wrangler secret put --name finance"
+    "tail": "npx -y wrangler@4 tail finance --format pretty",
+    "secret": "npx -y wrangler@4 secret put --name finance"
   },
   "devDependencies": {
-    "cf": "^1.0.0-beta.12",
+    "@cloudflare/vite-plugin": "2.0.0-beta.sha-52b0dc0e9",
+    "cf": "1.0.0-beta.12",
     "typescript": "^5.9.2",
-    "wrangler": "^4.147.0"
+    "vite": "^8.3.3"
   },
   "dependencies": {
     "@libsql/client": "^0.15.15",
