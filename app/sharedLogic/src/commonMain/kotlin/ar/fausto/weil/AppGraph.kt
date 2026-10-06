@@ -47,6 +47,8 @@ class AppGraph(
     // passes a canned rate so a shot never depends on the BCRA answering.
     officialRates: OfficialRateSource? = null,
     mepHistory: MepHistorySource? = null,
+    // IOL's API; the harness passes recorded answers.
+    iolSource: IolSource? = null,
     dbContext: CoroutineContext,
     dbFactory: (userId: String, url: String, token: String) -> Database,
     // Optional higher-priority context for pure reads; defaults to dbContext
@@ -118,7 +120,7 @@ class AppGraph(
     val brokers = BrokersRepository(db, accounts, ledger, settings)
 
     /** InvertirOnline: credentials in this device's secure store, read-only API. */
-    val iol = IolRepository(store, brokers, settings)
+    val iol = IolRepository(store, brokers, settings, iolSource)
 
     /** Interactive Brokers: Flex reports picked or shared into the app. */
     val ibkr = IbkrRepository(brokers, settings, store)

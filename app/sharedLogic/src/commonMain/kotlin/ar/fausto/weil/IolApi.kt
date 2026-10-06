@@ -259,6 +259,13 @@ interface IolSource {
      */
     suspend fun mepReference(symbol: String): Decimal =
         throw UnsupportedOperationException("no MEP reference")
+
+    /**
+     * Any read endpoint, answered raw (the explorer, [iolExplorerPath]):
+     * GET only, whatever the status. Recorded sources have none.
+     */
+    suspend fun raw(path: String): IolRawResponse =
+        throw UnsupportedOperationException("no raw access")
 }
 
 /**
@@ -322,6 +329,17 @@ class IolClient(
     override suspend fun fundQuote(symbol: String): IolFundQuote {
         val obj: kotlinx.serialization.json.JsonObject = get("/api/v2/Titulos/FCI/$symbol")
         return json.decodeFromJsonElement(IolFundQuote.serializer(), obj).copy(fields = obj.keys)
+    }
+
+    override suspend fun raw(path: String): IolRawResponse {
+        val checked = iolExplorerPath(path)
+        val started = epochMillis()
+        var response = http.get(baseUrl + checked) { header(HttpHeaders.Authorization, "Bearer ${token()}") }
+        if (response.status == HttpStatusCode.Unauthorized) {
+            mutex.withLock { accessToken = null }
+            response = http.get(baseUrl + checked) { header(HttpHeaders.Authorization, "Bearer ${token()}") }
+        }
+        return IolRawResponse(checked, response.status.value, response.bodyAsText(), epochMillis() - started)
     }
 
     private suspend inline fun <reified T> get(

@@ -65,6 +65,8 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.navigation3Ui)
             implementation(libs.kotlinx.datetime)
+            // The IOL explorer walks raw API responses as JSON trees.
+            implementation(libs.kotlinx.serialization.json)
             implementation(libs.qrose)
         }
         commonTest.dependencies {

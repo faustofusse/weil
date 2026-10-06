@@ -40,6 +40,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -255,6 +256,9 @@ fun RootScreen(
                     // calls and ~20 s, so stepping into the review screen and
                     // back must find the trace still there.
                     val suggestDebugState = remember(loggedIn) { SuggestDebugState(graph.suggestions) }
+                    // The IOL explorer's answers: a list, its item and the
+                    // lists inside are separate screens over one response.
+                    val iolExplorerState = remember(loggedIn) { IolExplorerState { graph.iol.explore(it) } }
                     val chainState = remember(loggedIn) { ChainState(graph.chain, { graph.scanner }) }
                     // Home greets with the name and Profile edits it; one
                     // holder above the nav host keeps the two in step.
@@ -529,6 +533,7 @@ fun RootScreen(
                                                 onReviewImport = { navigate(it) },
                                                 onOpenAccount = { navigate(it) },
                                                 onOpenInstrument = { navigate(InstrumentRoute(it)) },
+                                                onExploreIol = { navigate(IolExplorerRoute) },
                                                 pickReport = {
                                                     val picker = graph.documents
                                                     if (picker == null) {
@@ -645,6 +650,38 @@ fun RootScreen(
                                         valuation = ledgerState.valuation,
                                         onSaved = { pop() },
                                         onNavigateBack = { pop() },
+                                    )
+                                }
+                                entry<IolExplorerRoute> {
+                                    LaunchedEffect(Unit) { if (!ledgerState.loaded) ledgerState.refresh() }
+                                    // What IOL holds for this user, each a door to its queries:
+                                    // the connection's holdings account, read from the ledger.
+                                    val iolHoldings by produceState<String?>(null) {
+                                        value = runCatching { graph.brokers.connections() }.getOrNull()
+                                            ?.firstOrNull { it.provider == IOL_PROVIDER }?.accounts?.holdings
+                                    }
+                                    val held = remember(iolHoldings, ledgerState.leafTotals, ledgerState.valuation) {
+                                        iolHoldings?.let { id ->
+                                            iolExplorerInstruments(ledgerState.leafTotals[id].orEmpty(), ledgerState.valuation.commodities)
+                                        }.orEmpty()
+                                    }
+                                    IolExplorerScreen(
+                                        held = held,
+                                        onNavigateBack = { pop() },
+                                        onOpen = { navigate(it) },
+                                        onSymbol = { navigate(it) },
+                                    )
+                                }
+                                entry<IolSymbolRoute> { route ->
+                                    IolSymbolScreen(route = route, onNavigateBack = { pop() }, onOpen = { navigate(it) })
+                                }
+                                entry<IolResponseRoute> { route ->
+                                    IolResponseScreen(
+                                        state = iolExplorerState,
+                                        route = route,
+                                        onNavigateBack = { pop() },
+                                        onOpen = { navigate(it) },
+                                        onSymbol = { navigate(it) },
                                     )
                                 }
                                 entry<InstrumentRoute> { route ->

@@ -113,6 +113,7 @@ fun main(args: Array<String>) {
         categorySuggester = FakeCategorySuggester(),
         officialRates = fixedOfficialRate,
         mepHistory = flatMepHistory,
+        iolSource = RecordedIolExplorer,
         dbContext = jvmDbDispatcher,
         dbFactory = { _, _, _ -> FakeDatabase(dbFile) },
     )
@@ -242,6 +243,14 @@ fun main(args: Array<String>) {
                     "broker-root" -> invest?.let { AccountDetailRoute(it.root, subtree = true) }
                     "holdings-filtered" -> invest?.let { AccountDetailRoute(it.accounts.holdings, "BCBA:MELI") }
                     "instrument" -> invest?.let { InstrumentRoute("BCBA:MELI") }
+                    // Canned answers (RecordedIolExplorer): the sandbox has no IOL account.
+                    "iol-explorer" -> IolExplorerRoute
+                    "iol-explorer-symbol" -> IolSymbolRoute("MELI", "bcba", "cedear", "Cedear Mercadolibre Inc.")
+                    "iol-explorer-list" -> IolResponseRoute("/api/v2/portafolio/argentina", "Portafolio Argentina")
+                    "iol-explorer-item" -> IolResponseRoute("/api/v2/portafolio/argentina", "MELI", "activos/0")
+                    "iol-explorer-fields" -> IolResponseRoute("/api/v2/portafolio/argentina", "Portafolio Argentina", view = "fields")
+                    "iol-explorer-raw" -> IolResponseRoute("/api/v2/portafolio/argentina", "Portafolio Argentina", view = "raw")
+                    "iol-explorer-op" -> IolResponseRoute("/api/v2/operaciones/185135140", "Operación 185135140")
                     "tx-buy" -> invest?.let { TransactionEditRoute(it.fractionalBuy) }
                     "tx-buy-detail" -> invest?.let { TransactionDetailRoute(it.fractionalBuy) }
                     else -> null
@@ -264,7 +273,7 @@ fun main(args: Array<String>) {
 }
 
 
-private val INVESTMENT_ROUTES = setOf("investments", "investments-mep", "broker-root", "investments-alert", "investments-sheet", "holdings", "tx-buy", "tx-buy-detail", "instrument", "holdings-filtered")
+private val INVESTMENT_ROUTES = setOf("iol-explorer", "iol-explorer-symbol", "iol-explorer-list", "iol-explorer-item", "iol-explorer-fields", "iol-explorer-raw", "iol-explorer-op", "investments", "investments-mep", "broker-root", "investments-alert", "investments-sheet", "holdings", "tx-buy", "tx-buy-detail", "instrument", "holdings-filtered")
 
 private class SeededInvestments(val accounts: BrokerAccounts, val fractionalBuy: String, val root: String)
 
@@ -379,4 +388,42 @@ private fun demoBrokerImport(): BrokerImportRoute {
     // One difference on show, as a second sync with an unreported deposit would have.
     val shown = plan.copy(differences = listOf(BalanceDifference("iol-ars", "ARS", 54_257_383L, 74_257_383L)))
     return BrokerImportRoute("IOL", "iol", shown, accounts, emptyMap())
+}
+
+
+/** The explorer's answers in the harness: a small Argentine portfolio, shaped like IOL's. */
+private object RecordedIolExplorer : IolSource {
+    private fun no(): Nothing = throw UnsupportedOperationException("recorded explorer only")
+    override suspend fun verify(candidate: IolCredentials) = no()
+    override suspend fun accountState(): IolAccountState = no()
+    override suspend fun portfolio(country: String): IolPortfolio = no()
+    override suspend fun operations(from: String, to: String): List<IolOperation> = no()
+    override suspend fun operation(numero: Long): IolOperationDetail = no()
+    override suspend fun instrument(market: String, symbol: String): IolInstrument = no()
+    override suspend fun raw(path: String): IolRawResponse = IolRawResponse(
+        path = iolExplorerPath(path),
+        status = 200,
+        elapsedMs = 184,
+        body = if ("/operaciones/" in path) ORDER else PORTFOLIO,
+    )
+
+    private val ORDER = """{"numero":185135140,"mercado":"bcba","simbolo":"MELI","moneda":"peso_Argentino","tipo":1,
+        "fechaAlta":"2025-08-14T11:02:33.47","validez":"2025-08-14T17:00:00","fechaOperado":"2025-08-14T11:02:35",
+        "estadoActual":"terminada",
+        "estados":[{"detalle":"Iniciada","fecha":"2025-08-14T11:02:33"},{"detalle":"En Proceso","fecha":"2025-08-14T11:02:34"},{"detalle":"Terminada","fecha":"2025-08-14T11:02:35"}],
+        "aranceles":[{"tipo":"Comisión","neto":9533.25,"iva":2001.98,"moneda":"PESO_ARGENTINO"},{"tipo":"Derechos De Mercado","neto":953.32,"iva":200.2,"moneda":"PESO_ARGENTINO"}],
+        "operaciones":[{"fecha":"2025-08-14T11:02:35","cantidad":120,"precio":15890.0,"monto":1906800.0}],
+        "precio":15890.0,"cantidad":120,"monto":1906800.0,"fondosParaOperacion":null,"montoOperacion":1906800.0,
+        "modalidad":"precio_Limite","arancelesARS":12688.75,"arancelesUSD":0.0,"plazo":"t1"}"""
+
+    private val PORTFOLIO = """{"pais":"argentina","activos":[
+            {"cantidad":120,"comprometido":0,"puntosVariacion":-12.5,"variacionDiaria":-0.39,"ultimoPrecio":15890.0,"ppc":14210.44,
+             "gananciaPorcentaje":11.82,"gananciaDinero":201547.2,"valorizado":1906800.0,
+             "titulo":{"simbolo":"MELI","descripcion":"Cedear Mercadolibre Inc.","pais":"argentina","mercado":"bcba","tipo":"CEDEARS","plazo":"t1","moneda":"peso_Argentino"},
+             "parking":null},
+            {"cantidad":3500,"comprometido":0,"puntosVariacion":0.4,"variacionDiaria":0.05,"ultimoPrecio":851.2,"ppc":798.1,
+             "gananciaPorcentaje":6.65,"gananciaDinero":1858.5,"valorizado":29792.0,
+             "titulo":{"simbolo":"AL30","descripcion":"Bonos Rep. Arg. U${"$"}S Step Up V.09/07/30","pais":"argentina","mercado":"bcba","tipo":"TitulosPublicos","plazo":"t1","moneda":"peso_Argentino"},
+             "parking":null}
+        ]}"""
 }

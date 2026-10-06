@@ -103,6 +103,19 @@ data class TransactionEditRoute(val id: String)
  * on the read-only detail. */
 data class TransactionSimilarRoute(val id: String)
 
+/** IOL's read API, what can be asked of it: account, securities, market, funds. */
+data object IolExplorerRoute
+
+/** What can be asked about one security; [market] is IOL's path segment, [kind] an [InstrumentInfo.kind]. */
+data class IolSymbolRoute(val symbol: String, val market: String = "bcba", val kind: String = "other", val name: String? = null)
+
+/**
+ * One IOL answer ([path]) or one node inside it: [pointer] is keys and
+ * indexes split by '/' ("activos/3"), empty for the answer itself. [view]
+ * opens the answer on "fields" or "raw" instead of the data.
+ */
+data class IolResponseRoute(val path: String, val title: String, val pointer: String = "", val view: String? = null)
+
 /** One instrument across every broker: value, gain, price history, holders, movements. */
 data class InstrumentRoute(val commodity: String)
 

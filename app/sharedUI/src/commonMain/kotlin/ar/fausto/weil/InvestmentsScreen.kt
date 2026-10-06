@@ -108,6 +108,7 @@ import weil.app.sharedui.generated.resources.investments_soon_message
 import weil.app.sharedui.generated.resources.investments_source_ibkr
 import weil.app.sharedui.generated.resources.investments_source_ibkr_hint
 import weil.app.sharedui.generated.resources.investments_source_iol
+import weil.app.sharedui.generated.resources.iol_explorer_open
 import weil.app.sharedui.generated.resources.investments_source_iol_hint
 import weil.app.sharedui.generated.resources.investments_source_statement
 import weil.app.sharedui.generated.resources.investments_source_statement_hint
@@ -148,6 +149,8 @@ fun InvestmentsScreen(
     onOpenAccount: (AccountDetailRoute) -> Unit,
     onOpenTransaction: (id: String) -> Unit,
     onOpenInstrument: (commodity: String) -> Unit,
+    /** IOL's raw API over this account (connected here only). */
+    onExploreIol: () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
     /** Opens the platform picker for an IBKR report; AppRoot routes what comes back. */
     pickReport: suspend () -> Unit = {},
@@ -584,6 +587,7 @@ fun InvestmentsScreen(
             },
             onImport = if (c.provider == IBKR_PROVIDER) ({ managing = null; importReport() }) else null,
             onRebuild = if (isIol && iolUser != null) ({ managing = null; confirmRebuild = true }) else null,
+            onExplore = if (isIol && iolUser != null) ({ managing = null; onExploreIol() }) else null,
             onHoldings = { managing = null; onOpenAccount(AccountDetailRoute(c.accounts.holdings)) },
             onMovements = rootId?.let { root -> { managing = null; onOpenAccount(AccountDetailRoute(root, subtree = true)) } },
             onConnect = { managing = null; if (isIol) connecting = true else ibkrHelp = true },
@@ -847,6 +851,8 @@ private fun BrokerSheet(
     onImport: (() -> Unit)?,
     /** Plans the whole history again, to replace what was imported (IOL). */
     onRebuild: (() -> Unit)? = null,
+    /** IOL's raw API, for whoever wants to see what it answers. */
+    onExplore: (() -> Unit)? = null,
     onHoldings: () -> Unit,
     onMovements: (() -> Unit)?,
     onConnect: () -> Unit,
@@ -875,6 +881,7 @@ private fun BrokerSheet(
             onMovements?.let { SheetAction(Icons.Filled.ListAlt, stringResource(Res.string.broker_see_movements), onClick = it) }
             SheetAction(Icons.Filled.Person, connectLabel, onClick = onConnect)
             onRebuild?.let { SheetAction(Icons.Filled.Refresh, stringResource(Res.string.broker_rebuild), onClick = it) }
+            onExplore?.let { SheetAction(Icons.Filled.Science, stringResource(Res.string.iol_explorer_open), onClick = it) }
             onDisconnect?.let {
                 SheetAction(
                     Icons.Filled.Logout,

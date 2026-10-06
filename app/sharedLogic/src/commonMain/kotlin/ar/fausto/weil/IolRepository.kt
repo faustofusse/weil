@@ -60,6 +60,9 @@ class IolRepository(
      * Forgets the credentials on this device. The accounts and everything
      * imported stay: disconnecting stops syncing, it doesn't rewrite history.
      */
+    /** One GET for the API explorer, answered raw; credentials as for a sync. */
+    suspend fun explore(path: String): IolRawResponse = client.raw(path)
+
     fun disconnect() {
         store.write(USERNAME_KEY, null)
         store.write(PASSWORD_KEY, null)
