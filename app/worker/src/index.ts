@@ -11,24 +11,7 @@ import { handleSuggestAccounts, handleSuggestCategory } from './suggest';
 import { handleReadMessage } from './message';
 import { handleInbound, handleLink, handleLinkStatus, handleUnlink } from './whatsapp';
 
-interface Env {
-  AUTH_DB: D1Database;
-  DOCS: R2Bucket;
-  TURSO_ORG: string;
-  APP_SLUG: string;
-  FORWARD_TO: string;
-  TURSO_API_TOKEN: string;
-  ACCOUNT_ID: string;
-  AI_GATEWAY: string;
-  GEMINI_MODELS: string;
-  GEMINI_API_KEY: string;
-  TYPESAFE_API_KEY: string;
-  BRIDGE_SECRET: string;
-  AI: Ai;
-  AI_GATEWAY_TOKEN?: string;
-  BRIDGE_URL?: string;
-  WHATSAPP_NUMBER?: string;
-}
+// `Env` is generated from cloudflare.config.ts (`cf workers types`).
 
 
 let cachedToken: { dbName: string; jwt: string } | null = null;
